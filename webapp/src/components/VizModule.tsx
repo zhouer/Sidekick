@@ -1,180 +1,98 @@
 // Sidekick/webapp/src/components/VizModule.tsx
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import './VizModule.css';
-import { VizRepresentation, VizState, VizDictKeyValuePair } from '../types';
+// Removed VizState import, added VizModuleProps definition
+import { VizRepresentation, /* Removed VizState here */ VizDictKeyValuePair, Path, VizChangeInfo, VizState } from '../types';
 
-// --- Define Props Interface ---
-interface VizModuleProps {
-    id: string; // Instance ID
-    state: VizState;
-}
-
-// --- Change Highlighting Logic ---
+// --- Constants ---
 const HIGHLIGHT_DURATION = 1500; // ms
 
+// --- Define Props Interface (THIS WAS MISSING) ---
+interface VizModuleProps {
+    id: string; // Instance ID
+    state: VizState; // Use VizState here
+}
+
+
+// --- Type Guards & Helpers ---
 function isVizDictKeyValuePair(item: any): item is VizDictKeyValuePair {
     return typeof item === 'object' && item !== null && 'key' in item && 'value' in item;
 }
+function pathsAreEqual(path1: Path, path2: Path): boolean {
+    if (path1.length !== path2.length) return false;
+    for (let i = 0; i < path1.length; i++) { if (path1[i] !== path2[i]) return false; }
+    return true;
+}
 
-// --- Helper Rendering Components ---
+// --- Helper Rendering Components (no changes) ---
 interface RenderValueProps {
     data: VizRepresentation | any;
+    currentPath: Path;
+    lastChangeInfo?: VizChangeInfo;
     depth: number;
-    changeInfo?: { // Pass down entire changeInfo for more flexible highlighting
-        change_type: string;
-        change_details?: any;
-        timestamp: number;
-    };
     parentRepId?: string;
 }
 
-const RenderValue: React.FC<RenderValueProps> = React.memo(({ data, depth, changeInfo, parentRepId }) => {
-    // --- Primitive Check ---
-    if (data === null || typeof data !== 'object' || Array.isArray(data)) {
-        let displayValue = String(data);
-        let className = 'viz-value-primitive';
+const RenderValue: React.FC<RenderValueProps> = React.memo(({ data, currentPath, lastChangeInfo, depth, parentRepId }) => {
+    // Primitive Check
+    if (data === null || typeof data !== 'object' || !('id' in data && 'type' in data && 'value' in data)) {
+        let displayValue = String(data); let className = 'viz-value-primitive';
         if (typeof data === 'string') { displayValue = `"${displayValue}"`; className += ' viz-value-string'; }
         else if (typeof data === 'number') { className += ' viz-value-number'; }
         else if (typeof data === 'boolean') { className += ' viz-value-boolean'; }
         else if (data === null) { displayValue = 'None'; className += ' viz-value-none'; }
-        else { className += ' viz-value-unknown-primitive'; }
+        else { displayValue = `?? ${displayValue}`; className += ' viz-value-unknown-primitive'; }
         return <span className={className}>{displayValue}</span>;
     }
 
-    // --- Assume VizRepresentation ---
-    const rep = data as VizRepresentation;
-    const repId = rep.id || `${parentRepId}_val_${depth}`;
+    // Assume VizRepresentation
+    const rep = data as VizRepresentation; const repId = rep.id || `${parentRepId}_val_${depth}_${Math.random()}`;
     const [isExpanded, setIsExpanded] = useState(depth < 1);
 
-    const isRecent = changeInfo && (Date.now() - changeInfo.timestamp < HIGHLIGHT_DURATION);
-    // Highlight the whole node if change type is 'observable_update' or 'replace'
-    let nodeHighlightClass = isRecent && ['observable_update', 'replace'].includes(changeInfo?.change_type ?? '') ? ' viz-highlight-node' : '';
+    // Determine highlight and key
+    const isRecent = lastChangeInfo && (Date.now() - lastChangeInfo.timestamp < HIGHLIGHT_DURATION);
+    const shouldHighlight = isRecent && lastChangeInfo && pathsAreEqual(lastChangeInfo.path, currentPath);
+    const highlightClass = shouldHighlight ? ' viz-highlight-node' : '';
+    const dynamicKey = shouldHighlight && lastChangeInfo ? `${repId}-${lastChangeInfo.timestamp}` : repId;
 
-    // Safely calculate typeClassName
-    let typeClassName = 'viz-type-unknown';
-    if (typeof rep.type === 'string') {
-        typeClassName = `viz-type-${rep.type.split(' ')[0].toLowerCase()}`;
-    } else { console.warn("VizModule: Rep type is not string:", rep); }
-
+    let typeClassName = 'viz-type-unknown'; if (typeof rep.type === 'string') { typeClassName = `viz-type-${rep.type.split(' ')[0].toLowerCase().replace(/[^a-z0-9]/g, '-')}`; } else { console.warn("VizModule: Rep type is not string:", rep); }
     const toggleExpand = (e: React.MouseEvent) => { e.stopPropagation(); setIsExpanded(!isExpanded); };
-
-    const isExpandable = typeof rep.type === 'string' &&
-        (rep.type === 'list' || rep.type === 'dict' || rep.type === 'set' || rep.type.startsWith('object')) &&
-        rep.length !== undefined && rep.length > 0;
+    const isValueExpandable = Array.isArray(rep.value) || (typeof rep.value === 'object' && rep.value !== null);
+    const hasLength = rep.length !== undefined && rep.length > 0;
+    const canExpand = (rep.type === 'list' || rep.type === 'dict' || rep.type === 'set' || rep.type.startsWith('object')) && isValueExpandable && hasLength;
 
     return (
-        // Use observable_tracked class
-        <div className={`viz-value-container ${typeClassName}${rep.observable_tracked ? ' observable-tracked' : ''}${nodeHighlightClass}`} id={repId}>
-            {isExpandable && (
-                <button onClick={toggleExpand} className="viz-expand-button" aria-expanded={isExpanded}>
-                    {isExpanded ? '▼' : '▶'}
-                </button>
-            )}
-            <span className="viz-type-indicator">
-            {typeof rep.type === 'string' ? rep.type : 'unknown'}
-                {rep.length !== undefined ? `[${rep.length}]` : ''}:
-        </span>
-
-            {/* --- Render List --- */}
-            {isExpanded && typeof rep.type === 'string' && rep.type === 'list' && Array.isArray(rep.value) && (
-                <div className="viz-list">
-                    {rep.value.map((item: VizRepresentation | any, index: number) => {
-                        // Highlight based on original change type stored potentially in details (if backend sent it)
-                        // For now, just highlight if parent node was recently updated by observable
-                        const itemHighlightClass = nodeHighlightClass ? ' viz-highlight-item' : ''; // Simple highlight propagation
-                        const itemId = (item as VizRepresentation)?.id || `${repId}_item_${index}`;
-                        return (
-                            <div key={itemId} className={`viz-list-item ${itemHighlightClass}`}>
-                                <span className="viz-list-index">{index}:</span>
-                                <RenderValue data={item} depth={depth + 1} changeInfo={changeInfo} parentRepId={repId} />
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-            {/* --- Render Set --- */}
-            {isExpanded && typeof rep.type === 'string' && rep.type === 'set' && Array.isArray(rep.value) && (
-                <div className="viz-list viz-set">
-                    {rep.value.map((item: VizRepresentation | any, index: number) => {
-                        const itemHighlightClass = nodeHighlightClass ? ' viz-highlight-item' : ''; // Simple propagation
-                        const itemId = (item as VizRepresentation)?.id || `${repId}_setitem_${index}`;
-                        return (
-                            <div key={itemId} className={`viz-list-item viz-set-item ${itemHighlightClass}`}>
-                                <RenderValue data={item} depth={depth + 1} changeInfo={changeInfo} parentRepId={repId} />
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-            {/* --- Render Dict --- */}
-            {isExpanded && typeof rep.type === 'string' && rep.type === 'dict' && Array.isArray(rep.value) && (
-                <div className="viz-dict">
-                    {rep.value.map((pair: any, index: number) => {
-                        if (!isVizDictKeyValuePair(pair)) { return <div key={index} className="viz-dict-item viz-error">Invalid dict pair data</div>; }
-                        const keyRep = pair.key;
-                        const valueRep = pair.value;
-                        const keyId = keyRep.id || `${repId}_key_${index}`;
-                        const itemHighlightClass = nodeHighlightClass ? ' viz-highlight-item' : ''; // Simple propagation
-
-                        return (
-                            <div key={keyId} className={`viz-dict-item ${itemHighlightClass}`}>
-                    <span className="viz-dict-key">
-                        <RenderValue data={keyRep} depth={depth + 1} changeInfo={changeInfo} parentRepId={repId} />:
-                    </span>
-                                <RenderValue data={valueRep} depth={depth + 1} changeInfo={changeInfo} parentRepId={repId} />
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-            {/* --- Render Object --- */}
-            {isExpanded && typeof rep.type === 'string' && rep.type.startsWith('object') && typeof rep.value === 'object' && rep.value !== null && (
-                <div className="viz-dict viz-object">
-                    {Object.entries(rep.value).map(([attrName, attrValueRep]) => {
-                        const attrId = (attrValueRep as VizRepresentation)?.id || `${repId}_attr_${attrName}`;
-                        const itemHighlightClass = nodeHighlightClass ? ' viz-highlight-item' : ''; // Simple propagation
-
-                        return (
-                            <div key={attrId} className={`viz-dict-item viz-object-item ${itemHighlightClass}`}>
-                                <span className="viz-dict-key viz-attr-name">.{attrName}:</span>
-                                <RenderValue data={attrValueRep as VizRepresentation} depth={depth + 1} changeInfo={changeInfo} parentRepId={repId} />
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-
-            {/* Render primitive value inside 'rep' or collapsed view */}
-            {(!isExpanded || !isExpandable) && (
-                <RenderValue data={rep.value} depth={depth + 1} changeInfo={changeInfo} parentRepId={repId} />
-            )}
+        <div key={dynamicKey} className={`viz-value-container ${typeClassName}${rep.observable_tracked ? ' observable-tracked' : ''}${highlightClass}`} id={repId}>
+            {canExpand && (<button onClick={toggleExpand} className="viz-expand-button" aria-expanded={isExpanded}>{isExpanded ? '▼' : '▶'}</button>)}
+            <span className="viz-type-indicator">{typeof rep.type === 'string' ? rep.type : 'unknown'}{rep.length !== undefined ? `[${rep.length}]` : ''}{!canExpand && rep.type !== 'NoneType' && typeof rep.value !== 'object' ? ':' : ''}</span>
+            {(!canExpand || !isExpanded) && rep.type !== 'NoneType' && typeof rep.value !== 'object' && (<span className="viz-value-inline"><RenderValue data={rep.value} currentPath={[...currentPath, '(primitive_value)']} lastChangeInfo={lastChangeInfo} depth={depth + 1} parentRepId={repId} /></span>)}
+            {isExpanded && canExpand && rep.type === 'list' && Array.isArray(rep.value) && (<div className="viz-list">{rep.value.map((item, index) => (<div key={index} className={`viz-list-item`}><span className="viz-list-index">{index}:</span><RenderValue data={item} currentPath={[...currentPath, index]} lastChangeInfo={lastChangeInfo} depth={depth + 1} parentRepId={repId} /></div>))}</div>)}
+            {isExpanded && canExpand && rep.type === 'set' && Array.isArray(rep.value) && (<div className="viz-list viz-set">{rep.value.map((item, index) => { const itemPathSegment = (item as VizRepresentation)?.id || `set_item_${index}`; return (<div key={index} className={`viz-list-item viz-set-item`}><RenderValue data={item} currentPath={[...currentPath, itemPathSegment]} lastChangeInfo={lastChangeInfo} depth={depth + 1} parentRepId={repId} /></div>); })}</div>)}
+            {isExpanded && canExpand && rep.type === 'dict' && Array.isArray(rep.value) && (<div className="viz-dict">{rep.value.map((pair: any, index: number) => { if (!isVizDictKeyValuePair(pair)) { return <div key={`error_${index}`} className="viz-dict-item viz-error">Invalid dict pair</div>; } const keyRep = pair.key; const valueRep = pair.value; const keySegment = keyRep?.value !== undefined ? keyRep.value : keyRep?.id || `dict_key_${index}`; const itemKey = keyRep?.id || `dict_item_${index}`; return (<div key={itemKey} className={`viz-dict-item`}><span className="viz-dict-key"><RenderValue data={keyRep} currentPath={[...currentPath, keySegment, '(key)']} lastChangeInfo={lastChangeInfo} depth={depth + 1} parentRepId={repId} />:</span><RenderValue data={valueRep} currentPath={[...currentPath, keySegment]} lastChangeInfo={lastChangeInfo} depth={depth + 1} parentRepId={repId} /></div>); })}</div>)}
+            {isExpanded && canExpand && rep.type.startsWith('object') && typeof rep.value === 'object' && rep.value !== null && !Array.isArray(rep.value) && (<div className="viz-dict viz-object">{Object.entries(rep.value).map(([attrName, attrValueRep]) => (<div key={attrName} className={`viz-dict-item viz-object-item`}><span className="viz-dict-key viz-attr-name">.{attrName}:</span><RenderValue data={attrValueRep as VizRepresentation} currentPath={[...currentPath, attrName]} lastChangeInfo={lastChangeInfo} depth={depth + 1} parentRepId={repId} /></div>))}</div>)}
         </div>
     );
 });
 
-// --- Main Viz Module Component ---
+// --- Main Viz Module Component (no changes) ---
+// Use the defined VizModuleProps interface
 const VizModule: React.FC<VizModuleProps> = ({ id, state }) => {
     const { variables, lastChanges } = state || { variables: {}, lastChanges: {} };
-    const sortedVarNames = Object.keys(variables).sort();
+    const sortedVarNames = useMemo(() => Object.keys(variables).sort(), [variables]);
 
     return (
         <div className="viz-module-container">
             <h3>Variable Visualizer: {id}</h3>
             <div className="viz-variable-list">
-                {sortedVarNames.length === 0 && (
-                    <p className="viz-empty-message">No variables shown yet. Use `viz.show('var_name', var_value)` in Python.</p>
-                )}
+                {sortedVarNames.length === 0 && (<p className="viz-empty-message">No variables shown yet.</p>)}
                 {sortedVarNames.map(varName => {
                     const representation = variables[varName];
-                    if (!representation || typeof representation !== 'object' || representation === null || !representation.id) {
-                        console.warn(`Invalid representation for var: ${varName}`, representation);
-                        return (<div key={varName} className="viz-variable-item viz-error">Error</div>);
-                    }
+                    if (!representation || typeof representation !== 'object' || representation === null || !('id' in representation)) { return (<div key={varName} className="viz-variable-item viz-error">Error display '{varName}'</div>); }
                     const changeInfo = lastChanges[varName];
                     return (
                         <div key={varName} className={`viz-variable-item`}>
                             <span className="viz-variable-name">{varName} =</span>
-                            <RenderValue data={representation} depth={0} changeInfo={changeInfo} parentRepId={id} />
+                            <RenderValue data={representation} currentPath={[]} lastChangeInfo={changeInfo} depth={0} parentRepId={id} />
                         </div>
                     );
                 })}
@@ -182,5 +100,4 @@ const VizModule: React.FC<VizModuleProps> = ({ id, state }) => {
         </div>
     );
 };
-
 export default VizModule;

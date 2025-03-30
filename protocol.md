@@ -23,7 +23,7 @@ All messages share a common JSON structure.
 {
 "id": number,       // Reserved (defaults to 0).
 "module": string,   // Target module type ("grid", "console", "viz", "canvas").
-"method": string,   // Action ("spawn", "update", "remove", "remove_var").
+"method": string,   // Action ("spawn", "update", "remove").
 "target": string,   // Unique ID of the target module instance.
 "payload": object|null // Method-specific data.
 }
@@ -55,9 +55,8 @@ All messages share a common JSON structure.
 ## 4. Core Methods
 
 *   **`spawn`** (Hero -> Sidekick): Creates a module instance. Payload contains initial config.
-*   **`update`** (Hero -> Sidekick): Modifies an existing instance. Payload contains state changes or commands.
+*   **`update`** (Hero -> Sidekick): Modifies an existing instance. Payload contains state changes or commands (see module specifics).
 *   **`remove`** (Hero -> Sidekick): Destroys a module instance.
-*   **`remove_var`** (Hero -> Sidekick): Specific to `viz`, removes a variable display. Payload: `{ "variable_name": string }`.
 *   **`notify`** (Sidekick -> Hero): Sends event information (e.g., user input). Payload depends on the source module.
 *   **`error`** (Sidekick -> Hero): Reports an error. Payload typically includes `{ "message": string }`.
 
@@ -84,10 +83,11 @@ All messages share a common JSON structure.
 *   **`spawn` Payload:** `{}`
 *   **`update` Payload:**
     *   `variable_name`: `string` (Required)
-    *   `representation`: `VizRepresentation` (Required - See Section 6)
-    *   `change_type`: `string` (Optional - Hint: `"replace"`, `"observable_update"`)
-    *   `change_details`: `object` (Optional - Context, e.g., `{ "_obs_value_id": string }`)
-*   **`remove_var` Payload:** `{ "variable_name": string }` (Required)
+    *   `change_type`: `string` (Required - `"set"` | `"setitem"` | `"append"` | `"pop"` | `"insert"` | `"update_dict"` | `"delitem"` | `"remove"` | `"add_set"` | `"discard_set"` | `"clear"` | `"remove_variable"`)
+    *   `path`: `Array<string | number>` (Required - Path to the changed element within the variable's structure. Empty array `[]` targets the root variable itself, used for `set`, `clear`, `remove_variable`).
+    *   `value_representation`: `VizRepresentation | null` (Required for `"set"`, `"setitem"`, `"append"`, `"insert"`, `"add_set"`, `"clear"`. Represents the new value at the path, or the container itself for `set`/`clear`. `null` otherwise).
+    *   `key_representation`: `VizRepresentation | null` (Optional - Used by `"setitem"` or `"delitem"` when operating on a dictionary key. Represents the key involved).
+    *   `length`: `number | null` (Optional - New length of container after operations like `append`, `pop`, `insert`, `clear`, `add_set`, `discard_set`, `delitem`).
 
 ### 5.4 Module: `canvas`
 
@@ -101,20 +101,20 @@ All messages share a common JSON structure.
 
 ## 6. Data Representation (`VizRepresentation`)
 
-Used within the `payload` of `viz` module `update` messages.
+Used within the `payload` of `viz` module `update` messages (`value_representation`, `key_representation`).
 
 A `VizRepresentation` is a JSON object:
 
-*   `type`: (String) Python type name or special type (e.g., `"int"`, `"list"`, `"dict"`, `"set"`, `"object (ClassName)"`, `"truncated"`).
-*   `id`: (String) Unique ID for this representation node.
+*   `type`: (String) Python type name or special type (e.g., `"int"`, `"list"`, `"dict"`, `"set"`, `"object (ClassName)"`, `"truncated"`, `"NoneType"`).
+*   `id`: (String) Unique ID for this representation node (e.g., based on Python `id()` or observable ID).
 *   `value`:
     *   Primitive: The actual value.
     *   `NoneType`: String `"None"`.
     *   `list`, `set`: Array `[]` of nested `VizRepresentation`.
     *   `dict`: Array `[]` of `{ "key": VizRepresentation, "value": VizRepresentation }`.
-    *   `object`: Object `{}` mapping attr names to `VizRepresentation`, or `repr()` string.
-    *   Special types: Descriptive string.
-*   `length`: (Integer | undefined) Item/attribute count.
+    *   `object`: Object `{}` mapping attr names to `VizRepresentation`, or `repr()` string if introspection fails/is disabled.
+    *   Special types (`truncated`, `error`, `recursive_ref`): Descriptive string.
+*   `length`: (Integer | undefined) Item/attribute count for container types.
 *   `observable_tracked`: (Boolean | undefined) `true` if data originated from an `ObservableValue`.
 
 ## 7. Error Handling

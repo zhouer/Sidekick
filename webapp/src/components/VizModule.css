@@ -3,61 +3,71 @@
 .viz-module-container {
     font-family: Menlo, Monaco, Consolas, 'Courier New', monospace;
     font-size: 0.9em;
+    margin-bottom: 10px; /* Add some spacing below the module */
+}
+
+.viz-module-container h3 {
+    margin-top: 0;
+    margin-bottom: 8px;
+    font-size: 1.1em;
+    color: #333;
 }
 
 .viz-variable-list {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px; /* Spacing between variable items */
 }
 
 .viz-variable-item {
     padding: 8px;
     border: 1px solid #eee;
     border-radius: 4px;
-    background-color: #fdfdfd;
-}
-
-/* Highlighting styles */
-@keyframes viz-highlight-fade {
-    from { background-color: #f0e6ff; } /* Light purple */
-    to { background-color: transparent; }
-}
-
-.viz-highlight-node,
-.viz-highlight-item {
-    /* Apply animation */
-    animation: viz-highlight-fade 1.5s ease-out forwards;
+    background-color: #fdfdfd; /* Base background for the whole variable row */
+    line-height: 1.4;
 }
 
 .viz-variable-name {
     font-weight: bold;
-    color: #5a2de8;
+    color: #5a2de8; /* Variable name color */
     margin-right: 5px;
+    vertical-align: top; /* Align with the value container */
 }
 
 .viz-value-container {
-    display: inline-block;
+    display: inline-block; /* Keep value next to name */
     margin-left: 5px;
     position: relative;
-    padding-left: 5px;
-    border-left: 1px dotted #ccc;
-    vertical-align: top;
-}
-.viz-value-container:hover {
-    background-color: #f9f9f9;
+    padding-left: 5px; /* Indentation for nested structures */
+    border-left: 1px dotted #ccc; /* Visual guide for nesting */
+    vertical-align: top; /* Align with variable name */
+    border-radius: 3px; /* Apply rounding to value containers too */
 }
 
-/* Style for values explicitly tracked by ObservableValue */
-.observable-tracked > .viz-type-indicator { /* Style type indicator */
-    /* Example: font-weight: bold; */
+.viz-value-container:hover {
+    background-color: #f9f9f9; /* Subtle hover effect */
 }
-.observable-tracked { /* Style container */
+
+/* Resting style for values explicitly tracked by ObservableValue */
+.observable-tracked {
     border: 1px solid #7aa5e2; /* Blue border */
-    padding: 3px 5px;
-    border-radius: 3px;
+    /* Resting background color */
     background-color: #eef4ff; /* Light blue background */
-    display: inline-block;
+    padding: 3px 5px; /* Padding inside the blue box */
+    /* display: inline-block; */ /* Let layout flow, might wrap */
+}
+
+/* Highlighting animation */
+@keyframes viz-highlight-fade {
+    from { background-color: #e0d4ff; } /* Slightly more saturated purple - Start */
+    to { background-color: transparent; } /* Fade to transparent (will reveal resting .observable-tracked background) */
+}
+
+/* Class applied temporarily to the specific viz-value-container that changed */
+.viz-highlight-node {
+    animation: viz-highlight-fade 1.5s ease-out; /* REMOVED 'forwards' */
+    /* Optional: slightly change border during highlight */
+    /* border-color: #b8a1f0; */
 }
 
 
@@ -71,51 +81,63 @@
     color: #888; font-style: italic; margin-right: 3px;
 }
 
-/* Primitive value styling */
+/* Styling for primitive values rendered directly */
+.viz-value-inline {
+    margin-left: 3px;
+}
 .viz-value-primitive {}
 .viz-value-string { color: #2a9d8f; }
 .viz-value-number { color: #e76f51; }
 .viz-value-boolean { color: #f4a261; font-weight: bold; }
 .viz-value-none { color: #aaa; font-style: italic; }
-.viz-type-truncated, .viz-type-error, .viz-type-recursive_ref { color: #e63946; font-style: italic; }
-.viz-type-object { color: #666; }
-.viz-type-unknown { color: #e63946; font-style: italic; }
+.viz-type-truncated, .viz-type-error, .viz-type-recursive_ref, .viz-type-unknown-primitive { color: #e63946; font-style: italic; }
+.viz-type-object { color: #666; } /* For object type indicator */
+.viz-type-repr { color: #666; } /* For repr type indicator */
 
 
-/* List/Dict/Set/Object rendering */
+/* List/Dict/Set/Object rendering (when expanded) */
 .viz-list, .viz-dict, .viz-set, .viz-object {
     margin-left: 15px; padding-left: 10px;
     border-left: 1px solid #eee;
     display: flex; flex-direction: column; gap: 3px;
+    margin-top: 3px; /* Add space below the type indicator when expanded */
 }
 
 .viz-list-item, .viz-dict-item, .viz-set-item, .viz-object-item {
     padding: 2px 0;
-    transition: background-color 0.5s ease-out;
 }
 
-/* Specific highlighting for list/dict/set items */
-.viz-list-item.viz-highlight-item,
-.viz-dict-item.viz-highlight-item,
-.viz-set-item.viz-highlight-item,
-.viz-object-item.viz-highlight-item {
-    animation: viz-highlight-fade 1.5s ease-out forwards;
-    border-radius: 3px;
+.viz-list-index {
+    color: #999;
+    margin-right: 5px;
+    display: inline-block;
+    min-width: 1.5em; /* Align indices nicely */
+    text-align: right;
 }
-
-.viz-list-index { color: #999; margin-right: 5px; display: inline-block; }
 
 /* Styling for Dictionary Keys */
-.viz-dict-key { margin-right: 5px; display: inline-block; vertical-align: top; }
-.viz-dict-key > .viz-value-container:after {
-    content: ":"; color: #555; margin-left: 2px; font-weight: bold;
+.viz-dict-key {
+    margin-right: 5px;
+    display: inline-block;
+    vertical-align: top;
+}
+/* Add colon *after* the key's value container */
+.viz-dict-item > .viz-dict-key::after {
+    content: ":";
+    color: #555;
+    margin-left: 2px;
+    font-weight: bold;
 }
 
 /* Styling for Object Attributes */
 .viz-attr-name { color: #4a5568; font-style: italic; }
-.viz-object-item > .viz-attr-name:after {
-    content: ":"; color: #555; margin-left: 2px;
-    font-weight: normal; font-style: normal;
+/* Add colon *after* the attribute name span */
+.viz-object-item > .viz-dict-key.viz-attr-name::after {
+    content: ":";
+    color: #555;
+    margin-left: 2px;
+    font-weight: normal; /* Reset potential bolding */
+    font-style: normal; /* Reset potential italics */
 }
 
 .viz-set-item {}
