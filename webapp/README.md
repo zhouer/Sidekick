@@ -69,8 +69,9 @@ webapp/
 *   The `moduleReducer` function in `App.tsx` processes incoming `HeroMessage` actions:
     *   **`spawn`:** Creates a new entry in the state map with the initial state for the specified module type.
     *   **`update`:** Finds the existing module instance by `target` ID.
-        *   For `Grid`, `Console`, `Canvas`: Updates state based on the specific payload.
-        *   For `Viz`: Handles complex updates based on the `payload` containing `variable_name`, `change_type`, `path`, `value_representation`, etc. It uses the `updateRepresentationAtPath` utility (`src/utils/stateUtils.ts`) to perform deep, immutable updates on the variable's representation structure. It also updates the `lastChanges` state for the variable to trigger highlighting. Variable removal is now handled via `change_type: "remove_variable"`.
+        *   For `Viz`, it handles detailed variable updates (based on `change_type`, `path`, `value_representation`, etc.) using immutable helpers (`updateRepresentationAtPath`) and updates `lastChanges` for highlighting. Variable removal is handled via `change_type: "remove_variable"`.
+        *   For `Canvas`, it **appends** new draw commands received in the payload to the `commandQueue` array within the module's state.
+        *   For other modules (`Grid`, `Console`), it updates their state based on the specific payload.
     *   **`remove`:** Deletes the module instance entry from the map.
 *   State updates are immutable, ensuring React re-renders correctly. State flows down as props to the individual module components.
 
@@ -97,18 +98,18 @@ webapp/
 *   Displays variables stored in `state.variables`.
 *   Uses the recursive `RenderValue` component (`src/components/VizModule.tsx`) to display potentially complex/nested data structures defined by the `VizRepresentation` type.
 *   `RenderValue` recursively builds the display, passing down the `currentPath` (an array of keys/indices) representing its position within the variable's structure.
-*   **Highlighting:**
-    *   `App.tsx` stores `lastChanges` info (including the `path` of the last update) for each variable.
-    *   `VizModule` passes the relevant `lastChangeInfo` to the top-level `RenderValue` for each variable.
-    *   `RenderValue` compares its `currentPath` with the `lastChangeInfo.path`. If they match and the change is recent, it applies a temporary highlight animation (`viz-highlight-node` class) to its container.
-    *   A dynamic `key` prop (incorporating the change timestamp) is used on the highlighted element to force re-mounting and ensure the animation restarts on subsequent updates to the same path.
+*   **Highlighting:** Applies a temporary highlight animation to the specific data node whose path matches the `path` recorded in the `state.lastChanges` object for that variable, ensuring users see precisely what changed. Uses a dynamic `key` prop to re-trigger animations correctly.
 *   Provides expand/collapse controls for viewing nested structures.
 *   Applies specific styling based on data type (`viz-type-*`) and whether the value originated from an `ObservableValue` (`observable-tracked` class for the light blue background).
 
 ### 4.7. `CanvasModule`
 
 *   Renders an HTML5 `<canvas>` element based on `state.width` and `state.height`.
-*   Uses `useEffect` hooks to manage the 2D rendering context and execute drawing commands received via `state.lastCommand`. Supports commands like `clear`, `config`, `line`, `rect`, `circle`.
+*   Receives drawing instructions via the `state.commandQueue` array in its props.
+*   Uses `useEffect` hooks and internal logic (including tracking the ID of the **last processed command** with `useRef`) to manage the 2D rendering context (`ctx`).
+*   Processes the `commandQueue` **incrementally**, executing only commands that have arrived since the last processed one, ensuring they are drawn in the correct order.
+*   This queue and tracking mechanism ensures that even rapidly received commands are drawn accurately **without loss or duplication**.
+*   Supported commands include `clear`, `config`, `line`, `rect`, `circle`.
 
 ## 5. Setup & Development
 
@@ -141,6 +142,6 @@ webapp/
 
 *   **WebSocket Issues:** Check backend logs (e.g., VS Code Extension Output channel), browser console, and firewall settings. Ensure the connection URL (`ws://localhost:5163` by default) is correct.
 *   **UI Not Updating:** Verify messages in backend/browser consoles. Check `target` IDs match. Ensure the `moduleReducer` correctly processes the message and creates *new* state objects/arrays (immutability) for updates. Debug component props and rendering logic using React DevTools.
-*   **Viz Highlighting Issues:** Check the `path` being sent from Python and received in the reducer. Verify the `lastChanges` state in React DevTools. Ensure the `pathsAreEqual` comparison in `RenderValue` works as expected. Confirm the CSS animation (`viz-highlight-node`) is correctly defined and applied. Note that highlighting granularity depends heavily on the detail provided by the backend `path`.
+*   **Viz Highlighting Issues:** Check the `path` being sent from Python and received in the reducer. Verify the `lastChanges` state in React DevTools. Ensure the `pathsAreEqual` comparison in `RenderValue` works as expected. Confirm the CSS animation (`viz-highlight-node`) is correctly defined and applied.
+*   **Canvas Drawing Issues:** Ensure `commandId`s are unique. Check the browser console for drawing errors. Verify the `lastProcessedCommandId` logic in `CanvasModule.tsx` is correctly identifying new commands. Ensure the reducer is correctly appending to the `commandQueue`.
 *   **Build Errors:** Address TypeScript errors reported by `npm run build`. Check type definitions (`src/types/index.ts`) and ensure imports are correct.
-*   **Canvas Issues:** Ensure valid commands/options are sent from the Hero. Check the browser console for HTML5 Canvas API errors (e.g., invalid coordinates, colors).
