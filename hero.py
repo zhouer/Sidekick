@@ -61,7 +61,7 @@ if __name__ == "__main__":
         # grid = Grid(20, 20, instance_id="main-grid", on_message=handle_grid_click)
         console = Console(instance_id="main-console", on_message=handle_console_input)
         viz = Viz(instance_id="main-viz")
-        canvas = Canvas(width=400, height=250, bg_color="#FFFFE0", instance_id="main-canvas")
+        canvas = Canvas(width=400, height=250, instance_id="main-canvas")
 
         console.print("--- Sidekick Hero Initialized ---")
         console.log("Modules ready. Try console input or grid clicks.")

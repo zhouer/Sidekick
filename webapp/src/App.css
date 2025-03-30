@@ -7,30 +7,41 @@ body {
   sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f4f7f9; /* Lighter background for the page */
-  color: #333;
+  /* Use the light background color defined in index.css's :root or media query */
+  /* background-color: #f4f7f9; */ /* Can be removed if index.css handles it */
+  /* Use the dark text color defined in index.css's :root or media query */
+  /* color: #333; */ /* Can be removed if index.css handles it */
 }
 
 .App {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  width: 100%;
 }
 
+/* --- Header Styling --- */
 .App-header {
-  background-color: #282c34; /* Dark header */
-  padding: 15px 20px;
-  color: white;
+  /* Light background - choose one */
+  background-color: #ffffff; /* White */
+  /* background-color: #f8f9fa; */ /* Very light gray */
+
+  padding: 12px 20px; /* Slightly adjusted padding */
+  color: #333; /* Dark text color */
+  border-bottom: 1px solid #e0e0e0; /* Separator line */
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap; /* Allow wrapping on smaller screens */
-  gap: 10px; /* Spacing between items */
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%; /* Ensure it spans full width */
+  box-sizing: border-box; /* Include padding/border in width */
 }
 
 .App-header h1 {
   margin: 0;
-  font-size: 1.5em;
+  font-size: 1.4em; /* Slightly smaller H1 */
+  color: #213547; /* Match dark text color */
 }
 
 .App-header p {
@@ -40,54 +51,66 @@ body {
   border-radius: 4px;
 }
 
-.App-header p:first-of-type[children*='Connected'] { /* Basic status styling */
-  background-color: #4CAF50; /* Green for connected */
-  color: white;
+/* Status badge styling (keep as is) */
+.App-header p:first-of-type[children*='Connected'] {
+  background-color: #4CAF50; /* Green */
 }
-.App-header p:first-of-type[children*='Disconnected'] { /* Basic status styling */
-  background-color: #f44336; /* Red for disconnected */
-  color: white;
+.App-header p:first-of-type[children*='Disconnected'] {
+  background-color: #f44336; /* Red */
 }
 
 
+/* Header Button Styling */
 .App-header button {
-  padding: 8px 15px;
+  padding: 7px 14px; /* Slightly adjusted padding */
   font-size: 0.9em;
-  background-color: #61dafb; /* React blue */
+  background-color: #007bff; /* Primary blue */
+  color: white;
   border: none;
   border-radius: 4px;
-  color: #282c34;
   cursor: pointer;
   transition: background-color 0.2s ease;
 }
 
 .App-header button:hover {
-  background-color: #4fa8c5;
+  background-color: #0056b3; /* Darker blue */
 }
 
+/* --- Main Content Area Styling --- */
 .App-main {
   flex-grow: 1; /* Takes remaining vertical space */
-  padding: 20px;
+  padding: 30px 20px; /* Increase top/bottom padding */
   display: flex;
   flex-direction: column; /* Stack modules vertically */
-  gap: 20px; /* Space between modules */
+  gap: 25px; /* Increase space between modules */
+
+  /* --- Centering --- */
+  width: 100%; /* Take full width up to max-width */
+  max-width: 1000px; /* Adjust maximum width as desired */
+  margin-left: auto; /* Center horizontally */
+  margin-right: auto; /* Center horizontally */
+  box-sizing: border-box;
 }
 
-/* Style for module containers to give them a card-like look */
+/* Card styling for module containers (keep as is) */
 .grid-module-container,
-.console-module-container {
+.console-module-container,
+.viz-module-container, /* Add other modules if needed */
+.canvas-module-container {
   background-color: #ffffff;
   border: 1px solid #e0e0e0;
   border-radius: 8px;
-  padding: 15px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  padding: 15px 20px; /* Adjusted padding */
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.06); /* Slightly softer shadow */
 }
 
+/* Module Heading styling (keep as is) */
 h3 {
   margin-top: 0;
   margin-bottom: 15px;
-  color: #555;
+  color: #495057; /* Slightly softer color */
   font-size: 1.1em;
+  font-weight: 600; /* Slightly bolder */
   border-bottom: 1px solid #eee;
   padding-bottom: 10px;
 }
