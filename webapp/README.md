@@ -23,7 +23,7 @@ This web application is typically embedded within a VS Code Webview (managed by 
 
 ## 3. Project Structure
 
-'''
+```
 webapp/
 ├── public/             # Static assets served directly by Vite/server
 ├── src/                # Main source code directory
@@ -50,7 +50,7 @@ webapp/
 ├── tsconfig.json       # TypeScript configuration
 ├── tsconfig.node.json  # TypeScript config for Vite config file
 └── vite.config.ts      # Vite build and dev server configuration
-'''
+```
 
 ## 4. Core Concepts
 
