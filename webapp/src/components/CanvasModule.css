@@ -1,0 +1,13 @@
+/* Sidekick/webapp/src/components/CanvasModule.css */
+
+.canvas-module-container {
+    /* Inherits card style from App.css */
+}
+
+.canvas-element {
+    border: 1px solid #ccc;
+    display: block; /* Prevent extra space below canvas */
+    margin: 0 auto; /* Center canvas if container is wider */
+    background-color: #fff; /* Default background if not set by bgColor */
+    max-width: 100%; /* Ensure canvas scales down if container is too narrow */
+}

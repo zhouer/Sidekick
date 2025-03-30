@@ -1,0 +1,123 @@
+/* Sidekick/webapp/src/components/VizModule.css */
+
+.viz-module-container {
+    font-family: Menlo, Monaco, Consolas, 'Courier New', monospace;
+    font-size: 0.9em;
+}
+
+.viz-variable-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.viz-variable-item {
+    padding: 8px;
+    border: 1px solid #eee;
+    border-radius: 4px;
+    background-color: #fdfdfd;
+}
+
+/* Highlighting styles */
+@keyframes viz-highlight-fade {
+    from { background-color: #f0e6ff; } /* Light purple */
+    to { background-color: transparent; }
+}
+
+.viz-highlight-node,
+.viz-highlight-item {
+    /* Apply animation */
+    animation: viz-highlight-fade 1.5s ease-out forwards;
+}
+
+.viz-variable-name {
+    font-weight: bold;
+    color: #5a2de8;
+    margin-right: 5px;
+}
+
+.viz-value-container {
+    display: inline-block;
+    margin-left: 5px;
+    position: relative;
+    padding-left: 5px;
+    border-left: 1px dotted #ccc;
+    vertical-align: top;
+}
+.viz-value-container:hover {
+    background-color: #f9f9f9;
+}
+
+/* Style for values explicitly tracked by ObservableValue */
+.observable-tracked > .viz-type-indicator { /* Style type indicator */
+    /* Example: font-weight: bold; */
+}
+.observable-tracked { /* Style container */
+    border: 1px solid #7aa5e2; /* Blue border */
+    padding: 3px 5px;
+    border-radius: 3px;
+    background-color: #eef4ff; /* Light blue background */
+    display: inline-block;
+}
+
+
+.viz-expand-button {
+    background: none; border: none; cursor: pointer;
+    padding: 0 5px 0 0; font-size: 0.8em; color: #666;
+    margin-right: 3px; vertical-align: middle;
+}
+
+.viz-type-indicator {
+    color: #888; font-style: italic; margin-right: 3px;
+}
+
+/* Primitive value styling */
+.viz-value-primitive {}
+.viz-value-string { color: #2a9d8f; }
+.viz-value-number { color: #e76f51; }
+.viz-value-boolean { color: #f4a261; font-weight: bold; }
+.viz-value-none { color: #aaa; font-style: italic; }
+.viz-type-truncated, .viz-type-error, .viz-type-recursive_ref { color: #e63946; font-style: italic; }
+.viz-type-object { color: #666; }
+.viz-type-unknown { color: #e63946; font-style: italic; }
+
+
+/* List/Dict/Set/Object rendering */
+.viz-list, .viz-dict, .viz-set, .viz-object {
+    margin-left: 15px; padding-left: 10px;
+    border-left: 1px solid #eee;
+    display: flex; flex-direction: column; gap: 3px;
+}
+
+.viz-list-item, .viz-dict-item, .viz-set-item, .viz-object-item {
+    padding: 2px 0;
+    transition: background-color 0.5s ease-out;
+}
+
+/* Specific highlighting for list/dict/set items */
+.viz-list-item.viz-highlight-item,
+.viz-dict-item.viz-highlight-item,
+.viz-set-item.viz-highlight-item,
+.viz-object-item.viz-highlight-item {
+    animation: viz-highlight-fade 1.5s ease-out forwards;
+    border-radius: 3px;
+}
+
+.viz-list-index { color: #999; margin-right: 5px; display: inline-block; }
+
+/* Styling for Dictionary Keys */
+.viz-dict-key { margin-right: 5px; display: inline-block; vertical-align: top; }
+.viz-dict-key > .viz-value-container:after {
+    content: ":"; color: #555; margin-left: 2px; font-weight: bold;
+}
+
+/* Styling for Object Attributes */
+.viz-attr-name { color: #4a5568; font-style: italic; }
+.viz-object-item > .viz-attr-name:after {
+    content: ":"; color: #555; margin-left: 2px;
+    font-weight: normal; font-style: normal;
+}
+
+.viz-set-item {}
+.viz-error { color: red; font-style: italic; }
+.viz-empty-message { color: #888; font-style: italic; padding: 10px; }

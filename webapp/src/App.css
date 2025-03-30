@@ -1,0 +1,93 @@
+/* Sidekick/webapp/src/App.css */
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+  'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+  sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f4f7f9; /* Lighter background for the page */
+  color: #333;
+}
+
+.App {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.App-header {
+  background-color: #282c34; /* Dark header */
+  padding: 15px 20px;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap; /* Allow wrapping on smaller screens */
+  gap: 10px; /* Spacing between items */
+}
+
+.App-header h1 {
+  margin: 0;
+  font-size: 1.5em;
+}
+
+.App-header p {
+  margin: 0;
+  font-size: 0.9em;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.App-header p:first-of-type[children*='Connected'] { /* Basic status styling */
+  background-color: #4CAF50; /* Green for connected */
+  color: white;
+}
+.App-header p:first-of-type[children*='Disconnected'] { /* Basic status styling */
+  background-color: #f44336; /* Red for disconnected */
+  color: white;
+}
+
+
+.App-header button {
+  padding: 8px 15px;
+  font-size: 0.9em;
+  background-color: #61dafb; /* React blue */
+  border: none;
+  border-radius: 4px;
+  color: #282c34;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.App-header button:hover {
+  background-color: #4fa8c5;
+}
+
+.App-main {
+  flex-grow: 1; /* Takes remaining vertical space */
+  padding: 20px;
+  display: flex;
+  flex-direction: column; /* Stack modules vertically */
+  gap: 20px; /* Space between modules */
+}
+
+/* Style for module containers to give them a card-like look */
+.grid-module-container,
+.console-module-container {
+  background-color: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 15px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: #555;
+  font-size: 1.1em;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
+}

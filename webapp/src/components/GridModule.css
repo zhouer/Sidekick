@@ -1,0 +1,47 @@
+/* Sidekick/webapp/src/components/GridModule.css */
+
+.grid-module-container {
+    /* Styles inherited from App.css */
+}
+
+.grid-canvas {
+    display: grid;
+    /* grid-template-columns/rows will be set dynamically or based on defaults if needed */
+    /* Example: grid-template-columns: repeat(10, 25px); */
+    /* Example: grid-template-rows: repeat(10, 25px); */
+    border: 1px solid #ccc;
+    width: fit-content; /* Adjust width to content */
+    margin: 0 auto; /* Center the grid canvas */
+    background-color: #fff; /* Ensure background for cells without color */
+}
+
+.grid-row {
+    display: flex; /* Keep if using row divs, remove if cells are direct children of grid-canvas */
+}
+
+.grid-cell {
+    width: 25px;   /* Cell width */
+    height: 25px;  /* Cell height */
+    border: 1px solid #eee; /* Light border for cells */
+    box-sizing: border-box; /* Include border in size */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px; /* Small font size for text inside cells */
+    color: #333; /* Default text color */
+    cursor: pointer;
+    transition: background-color 0.1s ease, transform 0.1s ease; /* Smooth transitions */
+    background-color: white; /* Default cell background */
+}
+
+.grid-cell:hover {
+    /* Optional: subtle hover effect */
+    /* background-color: #f0f0f0; */
+    transform: scale(1.05);
+    z-index: 1; /* Bring to front on hover */
+}
+
+/* Text inside cell - potential style */
+.grid-cell span {
+    /* Add styles if needed */
+}

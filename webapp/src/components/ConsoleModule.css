@@ -1,0 +1,98 @@
+/* Sidekick/webapp/src/components/ConsoleModule.css */
+
+.console-module-container {
+    /* Styles inherited from App.css */
+    display: flex; /* Use flexbox for layout */
+    flex-direction: column; /* Stack output and input vertically */
+}
+
+.console-output {
+    background-color: #f8f8f8; /* Light grey background - Keep consistent */
+    border: 1px solid #e0e0e0; /* Keep consistent border */
+    padding: 10px;
+    /* --- Fixed Height --- */
+    height: 250px;     /* Example fixed height for output, adjust as needed */
+    /* ------------------- */
+    overflow-y: auto;  /* Enable vertical scrollbar */
+    box-sizing: border-box; /* Include padding and border in the height */
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace; /* Monospace font */
+    font-size: 0.9em;
+    line-height: 1.4;
+    color: #333;
+    border-bottom: none; /* Remove bottom border if input area is directly below */
+    border-radius: 4px 4px 0 0; /* Round top corners */
+    flex-grow: 1; /* Allow output to grow if container is larger */
+}
+
+.console-line {
+    margin-bottom: 3px;
+    white-space: pre-wrap; /* Preserve whitespace and wrap lines */
+    word-break: break-word; /* Break long words to prevent overflow */
+}
+
+/* Empty div at the end for scrolling */
+.console-output div:last-child {
+    height: 1px; /* Ensure the scroll target is present */
+}
+
+/* --- Input Area Styles (Revised Colors) --- */
+.console-input-area {
+    display: flex;
+    /* Match border color with output area */
+    border-left: 1px solid #e0e0e0;
+    border-right: 1px solid #e0e0e0;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 8px 10px; /* Slightly more padding */
+    /* Match background with output area for seamless look */
+    background-color: #f8f8f8;
+    border-radius: 0 0 4px 4px; /* Round bottom corners */
+}
+
+.console-input {
+    flex-grow: 1; /* Input takes most space */
+    padding: 8px 10px; /* Slightly larger padding */
+    /* Use a slightly darker, less prominent border */
+    border: 1px solid #ccc;
+    border-radius: 4px; /* Consistent rounding */
+    font-family: inherit; /* Use same font as console output */
+    font-size: 0.9em;
+    margin-right: 8px; /* More space before button */
+    transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out; /* Smooth focus transition */
+}
+
+/* Input focus style */
+.console-input:focus {
+    /* Use a theme color (e.g., React blue or a custom Sidekick blue/purple) */
+    border-color: #61dafb;
+    outline: none; /* Remove default outline */
+    /* Add a subtle glow effect */
+    box-shadow: 0 0 0 3px rgba(97, 218, 251, 0.3);
+}
+
+
+.console-send-button {
+    padding: 8px 15px; /* Match input padding */
+    /* Use a distinct action color */
+    background-color: #007bff; /* Standard primary blue */
+    color: white; /* White text for contrast */
+    border: none; /* Remove default border */
+    border-radius: 4px; /* Consistent rounding */
+    cursor: pointer;
+    font-size: 0.9em;
+    font-weight: 500; /* Slightly bolder */
+    transition: background-color 0.2s ease-in-out; /* Smooth hover transition */
+}
+
+.console-send-button:hover {
+    background-color: #0056b3; /* Darker blue on hover */
+}
+
+.console-send-button:active {
+    background-color: #004085; /* Even darker blue when clicked */
+}
+
+/* Optional: Style for disabled button if needed */
+.console-send-button:disabled {
+    background-color: #a0c7e4; /* Lighter, muted blue */
+    cursor: not-allowed;
+}
