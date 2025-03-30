@@ -296,20 +296,10 @@ if __name__ == "__main__":
 
     logger.info("Starting Sidekick Hero Test Script...")
     try:
-        # 1. Set URL (optional, if not default)
         # set_url(SIDEKICK_URL)
-
-        # 2. Activate connection (needed before first module)
-        # activate_connection() # Important!
-
-        # 3. Setup modules (which will trigger connection)
         setup_sidekick_modules()
-
-        # 4. Run the main test loop
         run_tests(TEST_DURATION_SECONDS)
-
         logger.info("Test script completed normally.")
-
     except Exception as e:
         logger.exception("An unhandled exception occurred in the main script!")
     finally:
