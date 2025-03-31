@@ -1,4 +1,4 @@
-// vite-plugin-ws-server.ts
+// webapp/vite-plugin-ws-server.ts
 import type { Plugin } from 'vite'
 import { WebSocketServer, WebSocket } from 'ws'
 
