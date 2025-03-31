@@ -1,0 +1,85 @@
+/* Sidekick/webapp/src/components/ControlModule.css */
+
+.control-module-container {
+    /* Inherits card style from App.css */
+}
+
+.controls-wrapper {
+    display: flex;
+    flex-wrap: wrap; /* Allow controls to wrap */
+    gap: 15px;      /* Spacing between controls */
+}
+
+.control-item {
+    display: flex; /* Align items within the control group if needed */
+    align-items: center;
+}
+
+.no-controls-message {
+    color: #888;
+    font-style: italic;
+    width: 100%; /* Take full width */
+}
+
+/* Styling for Buttons */
+.control-button {
+    padding: 8px 16px;
+    font-size: 0.95em;
+    background-color: #6c757d; /* Secondary gray */
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.control-button:hover {
+    background-color: #5a6268;
+}
+
+.control-button:active {
+    background-color: #4e555b;
+}
+
+/* Styling for Text Input Groups */
+.control-text-input-group {
+    display: flex;
+    align-items: center;
+    gap: 8px; /* Space between input and button */
+}
+
+.control-text-input {
+    padding: 8px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 0.9em;
+    min-width: 150px; /* Give input some base width */
+    flex-grow: 1; /* Allow input to grow */
+    background-color: #fff; /* Ensure light background */
+    color: #333; /* Ensure dark text */
+}
+
+.control-text-input:focus {
+    border-color: #61dafb;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(97, 218, 251, 0.3);
+}
+
+.control-text-submit-button {
+    padding: 8px 12px;
+    font-size: 0.9em;
+    background-color: #28a745; /* Green for submit */
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.control-text-submit-button:hover {
+    background-color: #218838;
+}
+
+.control-text-submit-button:active {
+    background-color: #1e7e34;
+}

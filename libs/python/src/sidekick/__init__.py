@@ -17,6 +17,7 @@ from .grid import Grid
 from .console import Console
 from .viz import Viz
 from .canvas import Canvas
+from .control import Control
 
 # Explicitly define __all__ for clarity
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     'ObservableValue',
     'Grid',
     'Console',
+    'Control',
     'Viz',
     'Canvas',
 ]
