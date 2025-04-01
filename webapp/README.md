@@ -94,7 +94,7 @@ webapp/
 
 ### 4.4. Module Structure (`src/modules/{moduleName}/`)
 
-*   **Co-location:** Each module now resides in its own directory (e.g., `src/modules/grid/`).
+*   **Co-location:** Each module resides in its own directory (e.g., `src/modules/grid/`).
 *   **Contents:** Typically contains:
     *   `{ModuleName}Module.tsx`: The React component for UI rendering and handling local UI state/interactions.
     *   `{moduleName}Logic.ts`: Contains the module's `getInitialState` and `updateState` logic (pure functions). May include internal helper functions (like `vizLogic.ts` containing `updateRepresentationAtPath`).
@@ -135,7 +135,7 @@ webapp/
 *   Global base styles in `src/index.css` and `src/App.css`.
 *   Module-specific styles are now co-located with their components (e.g., `src/modules/grid/GridModule.css`). Standard CSS conventions are used. Consider CSS Modules or CSS-in-JS for larger-scale projects if needed.
 
-## 8. Adding a New Visual Module (Workflow - Revised)
+## 8. Adding a New Visual Module (Workflow)
 
 1.  **Create Directory:** Create a new folder under `src/modules/` (e.g., `src/modules/myNewModule/`).
 2.  **Define Types (`types.ts`):** Inside the new directory, create `types.ts`. Define interfaces for the module's state (`MyNewModuleState`) and any specific spawn/update/notify payloads it uses.

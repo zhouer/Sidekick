@@ -10,8 +10,8 @@ from typing import List, Tuple, Optional, Dict, Any
 from sidekick import Grid, Console, Control, connection
 
 # --- Configuration ---
-GRID_WIDTH = 50
-GRID_HEIGHT = 50
+GRID_WIDTH = 30
+GRID_HEIGHT = 30
 SIM_DELAY = 0.1  # Delay between simulation steps in seconds
 
 # --- Simulation Parameters ---

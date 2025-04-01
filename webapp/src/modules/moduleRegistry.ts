@@ -62,14 +62,5 @@ registry.set('control', {
 // Export the registry for use in the main application
 export const moduleRegistry = registry;
 
-/**
- * Helper function to retrieve a module definition from the registry.
- * @param type - The string identifier of the module type.
- * @returns The ModuleDefinition if found, otherwise undefined.
- */
-export function getModuleDefinition(type: string): ModuleDefinition | undefined {
-    return moduleRegistry.get(type);
-}
-
 // Log registered modules on initialization (useful for debugging)
 console.log('Module Registry initialized with types:', Array.from(moduleRegistry.keys()));
