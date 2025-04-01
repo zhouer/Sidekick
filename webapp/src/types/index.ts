@@ -1,77 +1,78 @@
 // Sidekick/webapp/src/types/index.ts
+import React from 'react';
 
-// --- Communication Message Types ---
-interface BaseMessage { id: number; module: string; method: string; }
-export interface HeroMessage extends BaseMessage { method: 'spawn' | 'update' | 'remove'; target: string; payload?: any; }
-export interface SidekickMessage extends BaseMessage { method: 'notify' | 'error'; src: string; payload?: any; }
+// --- Shared Communication Message Types ---
 
-// --- Module State Types ---
-export interface VizRepresentation { type: string; value: any; length?: number; observableTracked?: boolean; id: string; }
-export interface VizDictKeyValuePair { key: VizRepresentation; value: VizRepresentation; }
-export type Path = (string | number)[];
-
-// FIX: Remove changeType, keep only action to align with VizUpdatePayload
-export interface VizChangeInfo {
-    action: string; // Type of change action (e.g., "setitem", "append")
-    path: Path;
-    timestamp: number;
-}
-export interface VizState { variables: { [name: string]: VizRepresentation }; lastChanges: { [name: string]: VizChangeInfo }; }
-export interface GridState { size: [number, number]; cells: { [key: string]: { color?: string | null; text?: string | null } }; }
-export interface ConsoleState { lines: string[]; }
-// CanvasUpdatePayload definition moved below
-export interface CanvasState { width: number; height: number; bgColor: string; commandQueue: CanvasUpdatePayload[]; } // Queue holds full update payloads
-export type ControlType = "button" | "text_input";
-export interface ControlDefinition { id: string; type: ControlType; config: { text?: string; placeholder?: string; initialValue?: string; buttonText?: string; }; }
-export interface ControlState { controls: Map<string, ControlDefinition>; }
-
-// --- Module Instance Type ---
-// ... (ModuleType, BaseModuleInstance, specific instances remain the same) ...
-type ModuleType = 'grid' | 'console' | 'viz' | 'canvas' | 'control';
-interface BaseModuleInstance { id: string; type: ModuleType; }
-export interface GridModuleInstance extends BaseModuleInstance { type: 'grid'; state: GridState; }
-export interface ConsoleModuleInstance extends BaseModuleInstance { type: 'console'; state: ConsoleState; }
-export interface VizModuleInstance extends BaseModuleInstance { type: 'viz'; state: VizState; }
-export interface CanvasModuleInstance extends BaseModuleInstance { type: 'canvas'; state: CanvasState; }
-export interface ControlModuleInstance extends BaseModuleInstance { type: 'control'; state: ControlState; }
-export type ModuleInstance = GridModuleInstance | ConsoleModuleInstance | VizModuleInstance | CanvasModuleInstance | ControlModuleInstance;
-
-
-// --- Specific Message Payloads (REVISED based on new protocol) ---
-
-// == Grid ==
-export interface GridSpawnPayload { size: [number, number]; }
-export interface GridUpdatePayload { action: "setCell" | "clear"; options?: { x?: number; y?: number; color?: string | null; text?: string | null; }; }
-export interface GridNotifyPayload { event: 'click'; x: number; y: number; }
-
-// == Console ==
-export interface ConsoleSpawnPayload { text?: string; }
-export interface ConsoleUpdatePayload { action: "append" | "clear"; options?: { text?: string; }; }
-export interface ConsoleNotifyPayload { event: 'submit'; value: string; }
-
-// == Viz ==
-export interface VizSpawnPayload {}
-export interface VizUpdatePayload {
-    action: string;
-    variableName: string;
-    options: { // Parameters grouped under options
-        path?: Path;
-        valueRepresentation?: VizRepresentation | null;
-        keyRepresentation?: VizRepresentation | null;
-        length?: number | null;
-    };
+interface BaseMessage {
+    id: number; // Reserved, often 0
+    module: string; // Module type identifier string
+    method: string; // Action/Notification type
 }
 
-// == Canvas ==
-export interface CanvasSpawnPayload { width: number; height: number; bgColor?: string; }
-export interface CanvasUpdatePayload { // This IS the item in the queue now
-    action: string;
-    options: any;
-    commandId: string | number; // REQUIRED unique ID
+/** Message from Hero (Python backend) to Sidekick (Frontend) */
+export interface HeroMessage extends BaseMessage {
+    method: 'spawn' | 'update' | 'remove'; // Actions Hero can perform
+    target: string; // The unique ID of the target module instance
+    payload?: any; // Data specific to the method and module type (defined per module)
 }
 
-// == Control ==
-export interface ControlSpawnPayload {}
-export interface ControlUpdatePayload { action: "add" | "remove"; controlId: string; options?: { controlType?: ControlType; config?: ControlDefinition['config']; }; }
-export interface ControlNotifyPayload { event: "click" | "submit"; controlId: string; value?: string; }
-// --- End Specific Message Payloads ---
+/** Message from Sidekick (Frontend) to Hero (Python backend) */
+export interface SidekickMessage extends BaseMessage {
+    method: 'notify' | 'error'; // Types of messages Sidekick can send
+    src: string;    // The unique ID of the source module instance
+    payload?: any; // Data specific to the notification/error (defined per module)
+}
+
+
+// --- Generic Module Types ---
+
+/**
+ * Represents a generic module instance stored in the application state.
+ * Specific state details are handled by module-specific logic.
+ */
+export interface ModuleInstance {
+    id: string;     // Unique instance identifier
+    type: string;   // Module type identifier string
+    state: any;     // The state specific to this module instance (kept generic here)
+}
+
+// --- Module Definition for Registry ---
+/**
+ * Defines the structure for registering a module type.
+ * Uses generics to allow specific module logic/components to be strongly typed internally,
+ * while the definition itself remains generic here.
+ * @template S The type of the module's state (defaults to any).
+ * @template P_Spawn The type of the payload for the 'spawn' message (defaults to any).
+ * @template P_Update The type of the payload for the 'update' message (defaults to any).
+ */
+export interface ModuleDefinition<S = any, P_Spawn = any, P_Update = any> {
+    /** The unique identifier string for the module type. */
+    type: string;
+
+    /** The React component responsible for rendering this module type. */
+    component: React.FC<any>; // Component props are expected to handle specific state type internally
+
+    /**
+     * Creates the initial state for a new module instance.
+     * @param instanceId The unique ID assigned to this instance.
+     * @param payload The payload received from the 'spawn' message.
+     * @returns The initial state object for this module type.
+     */
+    getInitialState: (instanceId: string, payload: P_Spawn) => S;
+
+    /**
+     * Updates the state of a module instance based on an 'update' message payload.
+     * This function MUST be pure and return a new state object if changes occurred.
+     * @param currentState The current state of the module instance.
+     * @param payload The payload received from the 'update' message.
+     * @returns The updated state object. If no change occurred, it should return the original state object reference.
+     */
+    updateState: (currentState: S, payload: P_Update) => S;
+
+    /**
+     * Optional flag indicating if this module type requires the 'onInteraction'
+     * callback prop to send messages back to the Hero backend.
+     * Defaults to false if omitted.
+     */
+    isInteractive?: boolean;
+}

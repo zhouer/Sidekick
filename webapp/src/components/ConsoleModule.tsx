@@ -1,6 +1,7 @@
 // Sidekick/webapp/src/components/ConsoleModule.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ConsoleState, SidekickMessage, ConsoleNotifyPayload } from '../types';
+import { ConsoleState, ConsoleNotifyPayload } from '../modules/console/types';
+import { SidekickMessage } from '../types';
 import './ConsoleModule.css';
 
 interface ConsoleModuleProps {

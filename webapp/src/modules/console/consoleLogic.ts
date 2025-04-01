@@ -1,0 +1,52 @@
+// Sidekick/webapp/src/modules/console/consoleLogic.ts
+import { ConsoleState, ConsoleSpawnPayload, ConsoleUpdatePayload } from './types';
+
+/**
+ * Creates the initial state for a Console module.
+ * @param instanceId - The ID of the console instance.
+ * @param payload - The spawn payload, optionally containing initial text.
+ * @returns The initial ConsoleState.
+ */
+export function getInitialState(instanceId: string, payload: ConsoleSpawnPayload): ConsoleState {
+    console.log(`ConsoleLogic ${instanceId}: Initializing state with payload:`, payload);
+    return {
+        // Initialize lines as an array containing the initial text, or an empty array
+        lines: payload?.text ? [payload.text] : [],
+    };
+}
+
+/**
+ * Updates the state of a Console module based on an update payload.
+ * Returns a new state object if changes were made.
+ * @param currentState - The current state of the console.
+ * @param payload - The update payload containing action and options.
+ * @returns The updated ConsoleState.
+ */
+export function updateState(currentState: ConsoleState, payload: ConsoleUpdatePayload): ConsoleState {
+    const { action, options } = payload;
+
+    if (action === 'append') {
+        // Validate options for append
+        if (!options || options.text === undefined) {
+            console.warn(`ConsoleLogic: Invalid 'append' options for state update.`, options);
+            return currentState; // Return unchanged state
+        }
+        // Create a new lines array with the appended text (immutability)
+        const updatedLines = [...currentState.lines, options.text];
+        // Return the new state object
+        return { lines: updatedLines };
+    } else if (action === 'clear') {
+        // Only update if there are lines to clear
+        if (currentState.lines.length > 0) {
+            console.log(`ConsoleLogic: Clearing console.`);
+            // Return a new state object with an empty lines array
+            return { lines: [] };
+        } else {
+            // Console is already empty, no state change
+            return currentState;
+        }
+    } else {
+        console.warn(`ConsoleLogic: Unknown action "${action}" received.`);
+        return currentState;
+    }
+}

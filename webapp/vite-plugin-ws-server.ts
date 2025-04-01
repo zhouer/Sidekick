@@ -21,7 +21,7 @@ export default function websocketServerPlugin(): Plugin {
                     let msg
                     try {
                         msg = JSON.parse(data.toString())
-                        console.log('Received:', msg)
+                        console.log('Received:', data.toString())
                     } catch (e) {
                         console.error('Invalid JSON:', e)
                         return

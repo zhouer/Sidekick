@@ -1,8 +1,7 @@
 // Sidekick/webapp/src/components/VizModule.tsx
 import React, { useState, useMemo } from 'react';
 import './VizModule.css';
-// Import types needed
-import { VizRepresentation, VizDictKeyValuePair, Path, VizChangeInfo, VizState } from '../types';
+import { VizRepresentation, VizDictKeyValuePair, Path, VizChangeInfo, VizState } from '../modules/viz/types';
 
 // --- Constants ---
 const HIGHLIGHT_DURATION = 1500; // ms, Duration for the highlight animation

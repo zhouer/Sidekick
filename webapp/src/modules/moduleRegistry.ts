@@ -1,0 +1,75 @@
+// Sidekick/webapp/src/modules/moduleRegistry.ts
+import { ModuleDefinition } from '../types'; // Import shared types
+
+// Import Module Components
+import GridModule from '../components/GridModule';
+import ConsoleModule from '../components/ConsoleModule';
+import VizModule from '../components/VizModule';
+import CanvasModule from '../components/CanvasModule';
+import ControlModule from '../components/ControlModule';
+
+// Import Module Logic functions
+import * as gridLogic from './grid/gridLogic';
+import * as consoleLogic from './console/consoleLogic';
+import * as vizLogic from './viz/vizLogic';
+import * as canvasLogic from './canvas/canvasLogic';
+import * as controlLogic from './control/controlLogic';
+
+// Define the registry map, mapping module type strings to their definitions
+const registry = new Map<string, ModuleDefinition>();
+
+// Register each built-in module
+registry.set('grid', {
+    type: 'grid', // Module identifier string
+    component: GridModule,
+    getInitialState: gridLogic.getInitialState,
+    updateState: gridLogic.updateState,
+    isInteractive: true,
+});
+
+registry.set('console', {
+    type: 'console',
+    component: ConsoleModule,
+    getInitialState: consoleLogic.getInitialState,
+    updateState: consoleLogic.updateState,
+    isInteractive: true,
+});
+
+registry.set('viz', {
+    type: 'viz',
+    component: VizModule,
+    getInitialState: vizLogic.getInitialState,
+    updateState: vizLogic.updateState,
+    isInteractive: false,
+});
+
+registry.set('canvas', {
+    type: 'canvas',
+    component: CanvasModule,
+    getInitialState: canvasLogic.getInitialState,
+    updateState: canvasLogic.updateState,
+    isInteractive: false,
+});
+
+registry.set('control', {
+    type: 'control',
+    component: ControlModule,
+    getInitialState: controlLogic.getInitialState,
+    updateState: controlLogic.updateState,
+    isInteractive: true,
+});
+
+// Export the registry for use in the main application
+export const moduleRegistry = registry;
+
+/**
+ * Helper function to retrieve a module definition from the registry.
+ * @param type - The string identifier of the module type.
+ * @returns The ModuleDefinition if found, otherwise undefined.
+ */
+export function getModuleDefinition(type: string): ModuleDefinition | undefined {
+    return moduleRegistry.get(type);
+}
+
+// Log registered modules on initialization (useful for debugging)
+console.log('Module Registry initialized with types:', Array.from(moduleRegistry.keys()));
