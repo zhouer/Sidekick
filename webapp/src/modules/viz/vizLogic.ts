@@ -304,6 +304,23 @@ function applyUpdateToParent(
             }
             break;
 
+        case 'clear':
+            // Handle clearing based on the type of the container
+            if (parentNode.type === 'list' || parentNode.type === 'dict' || parentNode.type === 'set') {
+                // Clear list, dict (array of pairs), or set (array of items)
+                parentNode.value = []; // Set value to an empty array
+                parentNode.length = 0; // Set length to 0
+            } else if (parentNode.type?.startsWith('object') && typeof parentNode.value === 'object') {
+                // Clear object attributes by setting value to an empty object
+                parentNode.value = {}; // Set value to an empty object
+                // Optionally reset length if object representation uses it
+                parentNode.length = 0;
+            } else {
+                // Log a warning if 'clear' is attempted on an unsupported type
+                console.warn(`VizLogic: 'clear' action not applicable to type '${parentNode.type}'.`);
+            }
+            break;
+
         default:
             // Handle unknown change types
             throw new Error(`Unhandled change action type "${changeAction}" during update application.`);
