@@ -1,7 +1,7 @@
 // Sidekick/webapp/src/components/GridModule.tsx
 import React from 'react';
-import { GridState } from '../modules/grid/types';
-import { SidekickMessage } from '../types';
+import { GridState } from './types';
+import { SidekickMessage } from '../../types';
 import './GridModule.css'; // 建立對應的 CSS
 
 interface GridModuleProps {

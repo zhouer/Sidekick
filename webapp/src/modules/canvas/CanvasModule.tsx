@@ -1,6 +1,6 @@
 // Sidekick/webapp/src/components/CanvasModule.tsx
 import React, { useRef, useEffect, useState } from 'react';
-import { CanvasState } from '../modules/canvas/types';
+import { CanvasState } from './types';
 import './CanvasModule.css';
 
 interface CanvasModuleProps {

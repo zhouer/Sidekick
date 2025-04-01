@@ -2,11 +2,11 @@
 import { ModuleDefinition } from '../types'; // Import shared types
 
 // Import Module Components
-import GridModule from '../components/GridModule';
-import ConsoleModule from '../components/ConsoleModule';
-import VizModule from '../components/VizModule';
-import CanvasModule from '../components/CanvasModule';
-import ControlModule from '../components/ControlModule';
+import GridModule from './grid/GridModule';
+import ConsoleModule from './console/ConsoleModule';
+import VizModule from './viz/VizModule';
+import CanvasModule from './canvas/CanvasModule';
+import ControlModule from './control/ControlModule';
 
 // Import Module Logic functions
 import * as gridLogic from './grid/gridLogic';

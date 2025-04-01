@@ -1,7 +1,7 @@
 // Sidekick/webapp/src/components/ControlModule.tsx
 import React, { useState, useCallback, useEffect } from 'react'; // Import useEffect
-import { ControlState, ControlNotifyPayload } from '../modules/control/types';
-import { SidekickMessage } from '../types';
+import { ControlState, ControlNotifyPayload } from './types';
+import { SidekickMessage } from '../../types';
 import './ControlModule.css';
 
 interface ControlModuleProps {
