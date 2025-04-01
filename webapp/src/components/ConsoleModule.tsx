@@ -59,8 +59,6 @@ const ConsoleModule: React.FC<ConsoleModuleProps> = ({ id, state, onInteraction 
                         ))}
                     </div>
                 ))}
-                {/* --- REMOVED: Empty div for end ref is not needed --- */}
-                {/* <div ref={consoleEndRef} /> */}
             </div>
             {/* Input Area (no changes needed here) */}
             <div className="console-input-area">

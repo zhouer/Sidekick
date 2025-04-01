@@ -6,7 +6,10 @@ from . import connection
 class Control(BaseModule):
     """
     Represents a Control module instance in Sidekick.
-    Allows adding interactive elements like buttons and text inputs dynamically.
+
+    Allows dynamically adding interactive elements (buttons, text inputs)
+    and receiving user interaction events via a callback.
+    Uses a consistent action/options payload structure for updates.
     """
 
     def __init__(
@@ -14,39 +17,32 @@ class Control(BaseModule):
         instance_id: Optional[str] = None,
         on_message: Optional[Callable[[Dict[str, Any]], None]] = None
     ):
-        """
-        Creates a new Control module instance.
-
-        Args:
-            instance_id: A unique ID for this control module. Auto-generated if None.
-            on_message: Callback function to handle notifications from controls
-                        (button clicks, text input submissions). The callback receives
-                        a dictionary matching the SidekickMessage format.
-        """
+        """Creates a new, initially empty, Control module instance."""
         super().__init__("control", instance_id, payload={}, on_message=on_message)
-        if on_message:
-            connection.register_message_handler(self.target_id, on_message)
         connection.logger.info(f"Control module '{self.target_id}' created.")
 
     def add_button(self, control_id: str, text: str):
         """
-        Adds a button to the Control module.
+        Adds a clickable button to the Control module UI.
 
         Args:
-            control_id: A unique identifier for this button within the module.
+            control_id: A unique identifier for this button within this module.
             text: The text label displayed on the button.
         """
         if not isinstance(control_id, str) or not control_id:
-            connection.logger.error("Control ID must be a non-empty string.")
+            connection.logger.error("Control ID for add_button must be a non-empty string.")
             return
+        # Construct payload using the revised action/options structure
         payload = {
-            "operation": "add",
-            "control_id": control_id,
-            "control_type": "button",
-            "config": {"text": text}
+            "action": "add",
+            "controlId": control_id,
+            "options": {
+                "controlType": "button",
+                "config": {"text": text}
+            }
         }
-        self._send_command("update", payload)
-        connection.logger.debug(f"Control '{self.target_id}': Added button '{control_id}'.")
+        self._send_update(payload)
+        connection.logger.debug(f"Control '{self.target_id}': Sent add command for button '{control_id}'.")
 
     def add_text_input(
         self,
@@ -56,52 +52,50 @@ class Control(BaseModule):
         button_text: str = "Submit"
     ):
         """
-        Adds a text input field with an associated submit button to the Control module.
+        Adds a text input field with an associated submit button.
 
         Args:
-            control_id: A unique identifier for this text input within the module.
-            placeholder: Placeholder text shown in the input field.
-            initial_value: The initial value displayed in the input field.
-            button_text: The text for the submit button next to the input.
+            control_id: A unique identifier for this text input group.
+            placeholder: Placeholder text for the input field. Defaults to "".
+            initial_value: Initial text in the input field. Defaults to "".
+            button_text: Text for the submit button. Defaults to "Submit".
         """
         if not isinstance(control_id, str) or not control_id:
-            connection.logger.error("Control ID must be a non-empty string.")
+            connection.logger.error("Control ID for add_text_input must be a non-empty string.")
             return
+        # Construct payload using the revised action/options structure
         payload = {
-            "operation": "add",
-            "control_id": control_id,
-            "control_type": "text_input",
-            "config": {
-                "placeholder": placeholder,
-                "initial_value": initial_value,
-                "button_text": button_text
+            "action": "add",
+            "controlId": control_id,
+            "options": {
+                "controlType": "text_input",
+                "config": {
+                    "placeholder": placeholder,
+                    "initialValue": initial_value,
+                    "buttonText": button_text
+                }
             }
         }
-        self._send_command("update", payload)
-        connection.logger.debug(f"Control '{self.target_id}': Added text input '{control_id}'.")
+        self._send_update(payload)
+        connection.logger.debug(f"Control '{self.target_id}': Sent add command for text input '{control_id}'.")
 
     def remove_control(self, control_id: str):
         """
-        Removes a specific control (button or text input) from the module.
+        Removes a specific control (button or text input) from this module.
 
         Args:
             control_id: The unique identifier of the control to remove.
         """
         if not isinstance(control_id, str) or not control_id:
-            connection.logger.error("Control ID must be a non-empty string.")
+            connection.logger.error("Control ID for remove_control must be a non-empty string.")
             return
+        # Construct payload using the revised action/options structure
+        # No options are needed for remove
         payload = {
-            "operation": "remove",
-            "control_id": control_id
-            # No type/config needed for removal
+            "action": "remove",
+            "controlId": control_id
         }
-        self._send_command("update", payload)
-        connection.logger.debug(f"Control '{self.target_id}': Removed control '{control_id}'.")
+        self._send_update(payload)
+        connection.logger.debug(f"Control '{self.target_id}': Sent remove command for control '{control_id}'.")
 
-    def remove(self):
-        """Removes the entire Control module instance and unregisters handlers."""
-        connection.logger.info(f"Removing Control module '{self.target_id}'.")
-        # Unregister the message handler associated with this specific module instance
-        connection.unregister_message_handler(self.target_id)
-        # Send the base 'remove' command to the frontend
-        super().remove()
+    # remove() method is inherited from BaseModule

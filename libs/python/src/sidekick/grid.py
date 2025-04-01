@@ -1,81 +1,87 @@
 # Sidekick/libs/python/src/sidekick/grid.py
 from . import connection
-from .base_module import BaseModule # Assuming BaseModule is extracted or defined
+from .base_module import BaseModule
 from typing import Optional, Callable, Dict, Any
 
 class Grid(BaseModule):
-    """Represents a Grid module instance in Sidekick."""
+    """
+    Represents an interactive Grid module instance in Sidekick.
+
+    Allows setting cell colors and text, clearing the grid, and receiving
+    click notifications.
+    """
     def __init__(self, width: int, height: int, instance_id: Optional[str] = None,
                  on_message: Optional[Callable[[Dict[str, Any]], None]] = None):
         """
-        Creates a new Grid visualization.
+        Creates a new Grid visualization in the Sidekick UI.
 
         Args:
-            width: The number of columns in the grid.
-            height: The number of rows in the grid.
-            instance_id: Optional specific ID for this grid instance.
-            on_message: Optional callback function to handle messages from this grid (e.g., clicks).
-                        The callback will receive the full message dictionary.
+            width: The number of columns (must be positive).
+            height: The number of rows (must be positive).
+            instance_id: Optional unique identifier. Auto-generated if None.
+            on_message: Optional callback for messages from this grid (e.g., clicks).
+                        Receives the full message dictionary.
         """
         if not (isinstance(width, int) and width > 0 and isinstance(height, int) and height > 0):
              raise ValueError("Grid width and height must be positive integers.")
         payload = {"size": [width, height]}
-        super().__init__("grid", instance_id, payload, on_message) # Pass callback to BaseModule
+        super().__init__("grid", instance_id, payload, on_message)
         self.width = width
         self.height = height
         connection.logger.info(f"Grid '{self.target_id}' created ({width}x{height}).")
 
+    def _set_cell(self, x: int, y: int, color: Optional[str] = None, text: Optional[str] = None):
+        """Internal helper to send a setCell update."""
+        if not (0 <= x < self.width and 0 <= y < self.height):
+             connection.logger.warning(f"_set_cell: Coordinates ({x},{y}) out of bounds for grid '{self.target_id}' ({self.width}x{self.height}).")
+             return
 
-    def set_color(self, x: int, y: int, color: str):
+        options: Dict[str, Any] = {"x": x, "y": y}
+        # Include color/text in options only if explicitly provided
+        if color is not None:
+            options["color"] = color
+        if text is not None:
+            options["text"] = str(text) # Ensure text is string
+
+        # Only send update if there's something to change
+        if "color" in options or "text" in options:
+            payload = {
+                "action": "setCell",
+                "options": options
+            }
+            self._send_update(payload)
+        else:
+             connection.logger.debug(f"Grid '{self.target_id}': _set_cell called for ({x},{y}) with no changes specified.")
+
+
+    def set_color(self, x: int, y: int, color: Optional[str]):
         """
         Sets the background color of a specific cell.
 
         Args:
             x: The column index (0-based).
             y: The row index (0-based).
-            color: The color string (e.g., 'red', '#FF0000', 'rgb(255,0,0)').
+            color: The color string (e.g., 'red', '#FF0000').
+                   Set to `None` to clear the color (revert to default).
         """
-        if not (0 <= x < self.width and 0 <= y < self.height):
-             connection.logger.warning(f"set_color: Coordinates ({x},{y}) out of bounds for grid '{self.target_id}' ({self.width}x{self.height}).")
-             return
-        payload = {"x": x, "y": y, "color": color}
-        self._send_command("update", payload)
+        self._set_cell(x=x, y=y, color=color)
 
-    def set_text(self, x: int, y: int, text: str):
+    def set_text(self, x: int, y: int, text: Optional[str]):
         """
-        Sets the text content of a specific cell.
+        Sets the text content displayed within a specific cell.
 
         Args:
             x: The column index (0-based).
             y: The row index (0-based).
-            text: The text to display in the cell.
+            text: The text to display. Set to `None` or empty string "" to clear text.
         """
-        if not (0 <= x < self.width and 0 <= y < self.height):
-             connection.logger.warning(f"set_text: Coordinates ({x},{y}) out of bounds for grid '{self.target_id}' ({self.width}x{self.height}).")
-             return
-        payload = {"x": x, "y": y, "text": str(text)} # Ensure text is string
-        self._send_command("update", payload)
+        self._set_cell(x=x, y=y, text=text)
 
-    def clear_cell(self, x: int, y: int):
+    def clear(self):
         """
-        Clears the color and text of a specific cell, reverting to default.
-
-        Args:
-            x: The column index (0-based).
-            y: The row index (0-based).
+        Clears the entire grid, reverting all cells to their default state
+        (typically white background, no text).
         """
-        if not (0 <= x < self.width and 0 <= y < self.height):
-             connection.logger.warning(f"clear_cell: Coordinates ({x},{y}) out of bounds for grid '{self.target_id}' ({self.width}x{self.height}).")
-             return
-        # Send None or empty string based on frontend expectation for clearing
-        payload = {"x": x, "y": y, "color": None, "text": ""} # Assume None clears color, "" clears text
-        self._send_command("update", payload)
-
-    def fill(self, color: str):
-         """Fills the entire grid with a specific color."""
-         # Optimize later: Add a batch fill command if supported by frontend
-         connection.logger.info(f"Filling grid '{self.target_id}' with color '{color}'.")
-         # For now, fallback to individual cell updates
-         for y in range(self.height):
-             for x in range(self.width):
-                 self.set_color(x, y, color) # Current implementation
+        connection.logger.info(f"Clearing grid '{self.target_id}'.")
+        payload = {"action": "clear"}
+        self._send_update(payload)
