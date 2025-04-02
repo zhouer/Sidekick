@@ -1,483 +1,424 @@
 // Sidekick/webapp/src/modules/viz/vizLogic.ts
-
+import { produce } from "immer";
 import {
-    VizState,
-    VizSpawnPayload,
-    VizUpdatePayload,
-    VizRepresentation,
     Path,
-    VizDictKeyValuePair
+    VizChangeInfo,
+    VizDictKeyValuePair,
+    VizRepresentation,
+    VizSpawnPayload,
+    VizState,
+    VizUpdatePayload
 } from './types';
 
-// --- Helper Functions ---
-
+// --- Helper function to find a node within the Immer draft state ---
 /**
- * Deeply clones a value, intended primarily for VizRepresentation structures.
- * Ensures immutability when updating nested state.
+ * Navigates through the draft state to find the node at the specified path.
+ * @param draftState The Immer draft state.
+ * @param variableName The name of the variable to start navigation from.
+ * @param path The path segments to navigate.
+ * @returns The node found at the path, or undefined if navigation fails.
  */
-function cloneRepresentation<T>(value: T): T {
-    // Handle primitives and null
-    if (value === null || typeof value !== 'object') {
-        return value;
-    }
-
-    // Handle arrays by recursively cloning each item
-    if (Array.isArray(value)) {
-        // Use 'as any' temporarily as TS struggles with mapping complex types here
-        return value.map(item => cloneRepresentation(item)) as any;
-    }
-
-    // Handle generic objects (plain objects, likely part of VizRepresentation structure)
-    if (typeof value === 'object') {
-        const clonedObj: { [key: string]: any } = {};
-        for (const key in value) {
-            // Ensure we only copy own properties
-            if (Object.prototype.hasOwnProperty.call(value, key)) {
-                clonedObj[key] = cloneRepresentation((value as any)[key]);
-            }
-        }
-        return clonedObj as T;
-    }
-
-    // Fallback for unexpected types (should ideally not be reached with VizRepresentations)
-    return value;
-}
-
-/**
- * Navigates through a cloned VizRepresentation structure based on a path
- * to find the *parent* node of the target segment.
- * Used to apply updates immutably within the nested structure.
- * @param clonedRootRep The root of the cloned representation to navigate.
- * @param path The path segments leading to the target node.
- * @returns The parent node representation.
- * @throws If the path is invalid or navigation fails.
- */
-function findParentNode(clonedRootRep: VizRepresentation, path: Path): any {
-    // Cannot find parent for root level changes or empty path
+function findNodeInDraft(draftState: VizState, variableName: string, path: Path): any {
+    // If path is empty, return the root representation of the variable
     if (!path || path.length === 0) {
-        throw new Error("Cannot find parent for empty or root path. Use applyUpdateToParent directly on root.");
-    }
-    // If path has only one segment, the root is the parent
-    if (path.length === 1) {
-        return clonedRootRep;
+        return draftState.variables[variableName];
     }
 
-    // Get the path excluding the final target segment
-    const parentPath = path.slice(0, -1);
-    let currentNode: any = clonedRootRep; // Start navigation from the root
+    // Start navigation from the variable's root representation
+    let currentNode: any = draftState.variables[variableName];
+    if (!currentNode) {
+        console.warn(`VizLogic: Variable "${variableName}" not found during navigation.`);
+        return undefined; // Variable doesn't exist
+    }
 
-    // Iterate through the parent path segments
-    for (let i = 0; i < parentPath.length; i++) {
-        const segment = parentPath[i];
+    // Iterate through each segment in the path
+    for (let i = 0; i < path.length; i++) {
+        const segment = path[i];
 
-        // Ensure the current node is navigable (an object or potentially array)
-        if (currentNode === null || typeof currentNode !== 'object') {
-            throw new Error(`Path navigation failed at segment ${i} ('${segment}'): Current node is not an object or array.`);
+        // Check if the current node is navigable (must be an object/representation)
+        if (currentNode === null || typeof currentNode !== 'object' || !('type' in currentNode)) {
+            console.error(`VizLogic: Path navigation failed at segment ${i} ('${segment}'). Current node is not a valid representation:`, currentNode);
+            return undefined; // Cannot navigate further
         }
 
         // Navigate based on the current node's type
         switch (currentNode.type) {
             case 'list':
-                // Ensure segment is a valid index for the list's value array
+            case 'set': // Sets are represented as arrays internally
+                // Navigate list/set by numeric index
                 if (typeof segment !== 'number' || !Array.isArray(currentNode.value) || segment < 0 || segment >= currentNode.value.length) {
-                    throw new Error(`Path navigation failed at segment ${i}: Invalid list index '${segment}'.`);
+                    // Allow path to point just past the end for potential 'insert'/'setitem' append
+                    if (i === path.length - 1 && segment === currentNode.value.length) {
+                        break; // Let applyModification handle potential append/insert
+                    }
+                    console.error(`VizLogic: Path navigation failed at segment ${i}. Invalid list/set index '${segment}' for node:`, currentNode);
+                    return undefined;
                 }
-                currentNode = currentNode.value[segment]; // Move to the list item
+                currentNode = currentNode.value[segment];
                 break;
             case 'dict':
-                // Ensure the dictionary value is the expected array of pairs
+                // Navigate dictionary by key (matching value or ID)
                 if (!Array.isArray(currentNode.value)) {
-                    throw new Error(`Path navigation failed at segment ${i}: Invalid dict value (expected array of pairs).`);
+                    console.error(`VizLogic: Path navigation failed at segment ${i}. Invalid dict value (expected array of pairs) for node:`, currentNode);
+                    return undefined;
                 }
-                // Find the key-value pair matching the segment (either by primitive value or ID)
+                // Find the key-value pair
                 const pair: VizDictKeyValuePair | undefined = currentNode.value.find(
-                    (p: VizDictKeyValuePair) => p?.key?.value === segment || p?.key?.id === segment
+                    (p: VizDictKeyValuePair) => p?.key?.value === segment || p?.key?.id === String(segment)
                 );
+
+                // Special check: Is the path targeting the key itself? (e.g., for highlighting the key)
+                if (!pair && path[i+1] === '(key)') {
+                    const keyNode = currentNode.value.find((p: VizDictKeyValuePair) => (p?.key?.value === segment || p?.key?.id === String(segment)));
+                    if (keyNode) {
+                        currentNode = keyNode.key;
+                        i++; // Important: Skip the next '(key)' segment in the path
+                        break; // Continue to next segment after the key
+                    }
+                }
+
                 if (!pair) {
-                    throw new Error(`Path navigation failed at segment ${i}: Dict key "${segment}" not found.`);
+                    // Allow path to point to a non-existent key if it's the last segment (for adding items)
+                    if (i === path.length - 1) {
+                        break; // Let applyModification handle adding the new key-value pair
+                    }
+                    console.error(`VizLogic: Path navigation failed at segment ${i}. Dict key "${segment}" not found in node:`, currentNode);
+                    return undefined;
                 }
-                currentNode = pair.value; // Move to the value part of the pair
+                // Navigate into the value part of the pair
+                currentNode = pair.value;
                 break;
-            case 'object': // Handle standard object attribute access
-            case 'repr':   // Assume 'repr' might be object-like if navigating with string key
-                // Ensure segment is a string and value is a non-null object
+            case 'object':
+            case 'repr': // Assume repr might contain navigable attributes
+                // Navigate object by attribute name (string segment)
                 if (typeof segment !== 'string' || typeof currentNode.value !== 'object' || currentNode.value === null) {
-                    throw new Error(`Path navigation failed at segment ${i}: Invalid object/repr navigation for segment '${segment}'.`);
+                    console.error(`VizLogic: Path navigation failed at segment ${i}. Invalid object/repr navigation for segment '${segment}' in node:`, currentNode);
+                    return undefined;
                 }
-                // Check if the attribute exists on the object's value
                 if (!(segment in currentNode.value)) {
-                    throw new Error(`Path navigation failed at segment ${i}: Object/repr attribute "${segment}" not found.`);
+                    // Allow path to point to a non-existent attribute if it's the last segment (for adding)
+                    if (i === path.length - 1) {
+                        break; // Let applyModification handle adding the new attribute
+                    }
+                    console.error(`VizLogic: Path navigation failed at segment ${i}. Object/repr attribute "${segment}" not found in node:`, currentNode);
+                    return undefined;
                 }
-                currentNode = currentNode.value[segment]; // Move to the attribute value
+                currentNode = currentNode.value[segment];
                 break;
             default:
-                // Handle cases where navigation is attempted on an unsupported type
-                throw new Error(`Path navigation failed at segment ${i}: Segment '${segment}' incompatible with node type '${currentNode.type}'.`);
+                // Handle navigation attempt on unsupported types
+                console.error(`VizLogic: Path navigation failed at segment ${i}. Segment '${segment}' incompatible with node type '${currentNode.type}' in node:`, currentNode);
+                return undefined;
+        }
+
+        // Check if navigation resulted in undefined unexpectedly (unless it's the last step)
+        if (currentNode === undefined && i < path.length - 1) {
+            console.error(`VizLogic: Path navigation yielded undefined before reaching the end of the path at segment ${i} ('${segment}').`);
+            return undefined;
         }
     }
-    // After iterating through the parent path, currentNode is the direct parent
+    // Return the node found at the end of the path (or potentially undefined if path points to a non-existent final element)
     return currentNode;
 }
 
 
+// --- Helper function to apply modifications directly to the Immer draft ---
 /**
- * Applies a specific update operation (like setitem, append, pop)
- * directly onto the provided parent node representation (which should be a clone).
- * This function mutates the *cloned* parent node.
- * @param parentNode The cloned parent node representation to modify.
- * @param changeAction The specific action ('setitem', 'append', etc.).
- * @param targetSegment The final segment of the path (e.g., index for list, key for dict).
- * @param options The options payload from the VizUpdatePayload, containing necessary data like value/key representations and length.
- * @throws If the operation is invalid for the parent node type or options are missing.
+ * Applies the specified modification (action) to the draft state at the given path.
+ * Modifies the draft state directly.
+ * @param draftState The Immer draft state.
+ * @param variableName The name of the variable being modified.
+ * @param action The update action (e.g., 'setitem', 'append').
+ * @param path The path to the node *relative to the variable root*.
+ * @param options The payload options containing value/key representations and length.
+ * @returns True if the modification was applied successfully, false otherwise.
  */
-function applyUpdateToParent(
-    parentNode: any, // Should be a mutable clone
-    changeAction: string,
-    targetSegment: string | number,
+function applyModification(
+    draftState: VizState,
+    variableName: string,
+    action: string,
+    path: Path,
     options: VizUpdatePayload['options']
-) {
-    // Destructure required data from the options payload
+): boolean {
+    // Destructure necessary data from options
     const { valueRepresentation, keyRepresentation, length } = options;
-    const newLength = (length !== undefined && length !== null) ? length : undefined; // Standardize new length handling
+    // Standardize handling of the new length value
+    const newLength = (length !== undefined && length !== null) ? length : undefined;
 
-    switch (changeAction) {
-        case 'set': // Assuming 'set' applies directly to the parent node's value when path is root
-            if (valueRepresentation === null || valueRepresentation === undefined) {
-                throw new Error("Missing 'valueRepresentation' in options for 'set'");
-            }
-            // Directly update the value property of the parentNode (which is the rootRep clone in this case)
-            parentNode.value = cloneRepresentation(valueRepresentation.value); // <-- Key change: Apply primitive value?
-            parentNode.type = valueRepresentation.type; // <-- Also update type?
-            parentNode.observableTracked = valueRepresentation.observableTracked; // <-- Update tracked status?
-            if (newLength !== undefined) parentNode.length = newLength;
-            break;
+    // Find the parent node within the draft. If path is empty, the variable root is the parent.
+    let parentNode: any = draftState.variables[variableName];
+    let targetSegment: string | number | undefined = undefined;
 
-        case 'setitem':
-            // Need value representation for setting an item
-            if (valueRepresentation === null || valueRepresentation === undefined) {
-                throw new Error("Missing 'valueRepresentation' in options for 'setitem'");
-            }
-            const clonedValueRep = cloneRepresentation(valueRepresentation); // Clone value before assigning
+    if (path.length > 0) {
+        const parentPath = path.slice(0, -1);
+        parentNode = findNodeInDraft(draftState, variableName, parentPath); // Find parent in draft
+        targetSegment = path[path.length - 1]; // Get the final key/index
+    } // If path is empty, parentNode remains the root, targetSegment is undefined
 
-            if (parentNode.type === 'list' && typeof targetSegment === 'number' && Array.isArray(parentNode.value)) {
-                // List item update by index
-                if (targetSegment < 0 || targetSegment >= parentNode.value.length) {
-                    throw new Error(`'setitem' index ${targetSegment} out of bounds for list of length ${parentNode.value.length}`);
-                }
-                parentNode.value[targetSegment] = clonedValueRep;
-                // Length typically doesn't change on list setitem unless explicitly provided
-                if (newLength !== undefined) parentNode.length = newLength;
-
-            } else if (parentNode.type === 'dict' && Array.isArray(parentNode.value)) {
-                // Dictionary item update/add by key
-                const keyToUpdate = targetSegment;
-                const pairIndex = parentNode.value.findIndex(
-                    (p: VizDictKeyValuePair) => p?.key?.value === keyToUpdate || p?.key?.id === keyToUpdate
-                );
-                if (pairIndex !== -1) {
-                    // Update existing value
-                    parentNode.value[pairIndex].value = clonedValueRep;
-                } else {
-                    // Add new key-value pair
-                    if (!keyRepresentation) {
-                        throw new Error("Missing 'keyRepresentation' in options for adding new dict item");
-                    }
-                    parentNode.value.push({ key: cloneRepresentation(keyRepresentation), value: clonedValueRep });
-                    // Update length if adding new item
-                    parentNode.length = newLength ?? (parentNode.length || 0) + 1;
-                }
-
-            } else if (parentNode.type?.startsWith('object') && typeof targetSegment === 'string' && typeof parentNode.value === 'object') {
-                // Object attribute update/add
-                parentNode.value[targetSegment] = clonedValueRep;
-                // Length might change if explicitly provided (e.g., for custom object representations)
-                if (newLength !== undefined) parentNode.length = newLength;
-
-            } else {
-                throw new Error(`'setitem' target type '${parentNode.type}' or segment type mismatch.`);
-            }
-            break;
-
-        case 'append':
-            // Requires a list and a value representation
-            if (parentNode.type !== 'list' || !Array.isArray(parentNode.value)) {
-                throw new Error("'append' target must be a list representation");
-            }
-            if (valueRepresentation === null || valueRepresentation === undefined) {
-                throw new Error("Missing 'valueRepresentation' in options for 'append'");
-            }
-            parentNode.value.push(cloneRepresentation(valueRepresentation));
-            // Update length after append
-            parentNode.length = newLength ?? (parentNode.length || 0) + 1;
-            break;
-
-        case 'insert':
-            // Requires a list, index (targetSegment), and value representation
-            if (parentNode.type !== 'list' || !Array.isArray(parentNode.value)) {
-                throw new Error("'insert' target must be a list representation");
-            }
-            if (typeof targetSegment !== 'number') {
-                throw new Error("'insert' path segment must be a numeric index");
-            }
-            if (valueRepresentation === null || valueRepresentation === undefined) {
-                throw new Error("Missing 'valueRepresentation' in options for 'insert'");
-            }
-            // Insert at the specified index
-            parentNode.value.splice(targetSegment, 0, cloneRepresentation(valueRepresentation));
-            // Update length after insert
-            parentNode.length = newLength ?? (parentNode.length || 0) + 1;
-            break;
-
-        case 'pop':
-        case 'remove': // Treat 'remove' similarly to 'delitem' or 'pop'
-        case 'delitem':
-            // Handle deletion from list, dict, or object attribute
-            if (parentNode.type === 'list' && typeof targetSegment === 'number' && Array.isArray(parentNode.value)) {
-                // List item removal by index
-                if (targetSegment < 0 || targetSegment >= parentNode.value.length) {
-                    throw new Error(`'del/pop' index ${targetSegment} out of bounds for list of length ${parentNode.value.length}`);
-                }
-                parentNode.value.splice(targetSegment, 1);
-                // Update length after removal
-                parentNode.length = newLength ?? (parentNode.length || 1) - 1;
-
-            } else if (parentNode.type === 'dict' && Array.isArray(parentNode.value)) {
-                // Dictionary item removal by key
-                const keyToRemove = targetSegment;
-                const initialLength = parentNode.value.length;
-                // Filter out the pair matching the key
-                parentNode.value = parentNode.value.filter(
-                    (p: VizDictKeyValuePair) => !(p?.key?.value === keyToRemove || p?.key?.id === keyToRemove)
-                );
-                // Update length only if an item was actually removed
-                if (parentNode.value.length < initialLength) {
-                    parentNode.length = newLength ?? (parentNode.length || 1) - 1;
-                }
-
-            } else if (parentNode.type?.startsWith('object') && typeof targetSegment === 'string' && typeof parentNode.value === 'object') {
-                // Object attribute deletion
-                if (targetSegment in parentNode.value) {
-                    delete parentNode.value[targetSegment];
-                    // Update length if explicitly provided
-                    if (newLength !== undefined) parentNode.length = newLength;
-                }
-
-            } else {
-                throw new Error(`'del/pop/remove' target type '${parentNode.type}' or segment type mismatch.`);
-            }
-            break;
-
-        case 'add_set':
-            // Requires a set and a value representation
-            if (!parentNode.type?.endsWith('set') || !Array.isArray(parentNode.value)) {
-                throw new Error("'add_set' target must be a set representation (array value)");
-            }
-            if (valueRepresentation === null || valueRepresentation === undefined) {
-                throw new Error("Missing 'valueRepresentation' in options for 'add_set'");
-            }
-            const valRepAdd = valueRepresentation;
-            // Check if item (identified by ID) already exists
-            const exists = parentNode.value.some((item: any) => item?.id === valRepAdd?.id);
-            if (!exists) {
-                parentNode.value.push(cloneRepresentation(valRepAdd));
-                // Update length if item was added
-                parentNode.length = newLength ?? (parentNode.length || 0) + 1;
-            }
-            break;
-
-        case 'discard_set':
-            // Requires a set and a value representation (to identify the item to discard)
-            if (!parentNode.type?.endsWith('set') || !Array.isArray(parentNode.value)) {
-                throw new Error("'discard_set' target must be a set representation (array value)");
-            }
-            // Use valueRepresentation to identify the element to discard (typically by ID)
-            if (valueRepresentation === null || valueRepresentation === undefined) {
-                throw new Error("Missing 'valueRepresentation' (for ID) in options for 'discard_set'");
-            }
-            const valRepDiscard = valueRepresentation;
-            const initialSetLength = parentNode.value.length;
-            // Filter out the item matching the ID
-            parentNode.value = parentNode.value.filter((item: any) => item?.id !== valRepDiscard?.id);
-            // Update length only if an item was actually removed
-            if (parentNode.value.length < initialSetLength) {
-                parentNode.length = newLength ?? (parentNode.length || 1) - 1;
-            }
-            break;
-
-        case 'clear':
-            // Handle clearing based on the type of the container
-            if (parentNode.type === 'list' || parentNode.type === 'dict' || parentNode.type === 'set') {
-                // Clear list, dict (array of pairs), or set (array of items)
-                parentNode.value = []; // Set value to an empty array
-                parentNode.length = 0; // Set length to 0
-            } else if (parentNode.type?.startsWith('object') && typeof parentNode.value === 'object') {
-                // Clear object attributes by setting value to an empty object
-                parentNode.value = {}; // Set value to an empty object
-                // Optionally reset length if object representation uses it
-                parentNode.length = 0;
-            } else {
-                // Log a warning if 'clear' is attempted on an unsupported type
-                console.warn(`VizLogic: 'clear' action not applicable to type '${parentNode.type}'.`);
-            }
-            break;
-
-        default:
-            // Handle unknown change types
-            throw new Error(`Unhandled change action type "${changeAction}" during update application.`);
+    // Check if the parent node was successfully found
+    if (parentNode === undefined) {
+        console.error(`VizLogic Apply: Failed to find parent node for path [${path.join(', ')}]`);
+        return false; // Cannot apply modification if parent doesn't exist
     }
-}
-
-
-/**
- * Immutably updates a VizRepresentation structure at a given path based on a change payload.
- * This is the core function used by the Viz module's updateState logic.
- * @param currentRootRep The current root VizRepresentation for the variable (can be undefined if just created).
- * @param payload The VizUpdatePayload containing the action, variableName, and options (path, values, etc.).
- * @returns The new root VizRepresentation after applying the update.
- * @throws If the update cannot be applied (e.g., invalid path, missing data).
- */
-export function updateRepresentationAtPath(
-    currentRootRep: VizRepresentation | undefined,
-    payload: VizUpdatePayload
-): VizRepresentation {
-
-    const { action: changeAction, options } = payload;
-    const { path = [], valueRepresentation } = options || {}; // Default path to empty array
-
-    // Handle initial creation (action 'set' on root path with value)
-    if (!currentRootRep) {
-        if (changeAction === 'set' && path.length === 0 && valueRepresentation) {
-            // Create the initial representation by cloning the provided value
-            return cloneRepresentation(valueRepresentation);
-        } else {
-            // Cannot apply other actions or non-root set to a non-existent variable
-            throw new Error(`VizLogic: Cannot apply action "${changeAction}" to non-existent variable without root 'set' payload.`);
-        }
-    }
-
-    // Start by cloning the current root representation to ensure immutability
-    const newRootRep = cloneRepresentation(currentRootRep);
 
     try {
-        // Handle updates at the root level (empty path)
-        if (path.length === 0) {
-            // Apply update directly to the cloned root
-            applyUpdateToParent(newRootRep, changeAction, '', options || {}); // Pass empty segment and options
-        } else {
-            // For nested updates, find the parent node within the cloned structure
-            const parentNode = findParentNode(newRootRep, path);
-            // Ensure the parent node was found and is valid
-            if (parentNode === null || typeof parentNode !== 'object') {
-                throw new Error("Target parent node not found or invalid during path navigation.");
-            }
-            // Get the final segment of the path (the key/index within the parent)
-            const targetSegment = path[path.length - 1];
-            // Apply the update to the found parent node
-            applyUpdateToParent(parentNode, changeAction, targetSegment, options || {});
-        }
-    } catch (e: any) {
-        // Log detailed error information if the update fails
-        console.error(`VizLogic: Failed to apply update at path [${path?.join(', ')}] with action "${changeAction}":`, e.message || e, "\nPayload:", payload, "\nCurrent RootRep:", currentRootRep);
-        // Return the unmodified clone to prevent corrupted state
-        return newRootRep;
-    }
+        // Apply modification based on the action type
+        switch (action) {
+            case 'set':
+                // Handle setting the value at a specific path (root or nested)
+                if (path.length === 0) {
+                    // Setting the root variable's representation
+                    if (!valueRepresentation) throw new Error("Missing valueRepresentation for root 'set'");
+                    draftState.variables[variableName] = valueRepresentation; // Replace entire root
+                } else {
+                    // Setting a value at a nested path (behaves like setitem)
+                    if (targetSegment === undefined || !valueRepresentation) throw new Error("Invalid targetSegment or missing valueRepresentation for nested 'set'");
+                    if (parentNode.type === 'list' && typeof targetSegment === 'number') {
+                        parentNode.value[targetSegment] = valueRepresentation; // Update list item
+                    } else if (parentNode.type === 'dict' && Array.isArray(parentNode.value)) {
+                        // Update or add dictionary item
+                        const pairIndex = parentNode.value.findIndex((p: any) => p?.key?.value === targetSegment || p?.key?.id === String(targetSegment));
+                        if (pairIndex !== -1) {
+                            parentNode.value[pairIndex].value = valueRepresentation; // Update existing
+                        } else if (keyRepresentation) {
+                            parentNode.value.push({ key: keyRepresentation, value: valueRepresentation }); // Add new
+                            parentNode.length = newLength ?? (parentNode.length || 0) + 1; // Update length if new
+                        } else {
+                            throw new Error("Cannot add dict item without keyRepresentation");
+                        }
+                    } else if (parentNode.type?.startsWith('object') && typeof targetSegment === 'string' && parentNode.value) {
+                        parentNode.value[targetSegment] = valueRepresentation; // Update object attribute
+                    } else {
+                        throw new Error(`Nested 'set'/'setitem' failed for parent type ${parentNode.type} at segment ${targetSegment}`);
+                    }
+                    // Update length if provided by the backend
+                    if (newLength !== undefined) parentNode.length = newLength;
+                }
+                break;
 
-    // Return the potentially modified new root representation
-    return newRootRep;
+            case 'setitem':
+                // Handle setting an item in a list, dict, or object
+                if (targetSegment === undefined || !valueRepresentation) throw new Error("Invalid targetSegment or missing valueRepresentation for 'setitem'");
+                if (parentNode.type === 'list' && typeof targetSegment === 'number') {
+                    // List setitem
+                    if (targetSegment < 0) throw new Error(`Negative index ${targetSegment} invalid.`);
+                    // Allow setting at index equal to length (acts like append)
+                    if (targetSegment >= parentNode.value.length) {
+                        if(targetSegment === parentNode.value.length) {
+                            parentNode.value.push(valueRepresentation); // Append
+                            console.log(`VizLogic Apply: 'setitem' at index ${targetSegment} treated as append.`);
+                        } else {
+                            throw new Error(`Index ${targetSegment} out of bounds for list length ${parentNode.value.length}.`);
+                        }
+                    } else {
+                        parentNode.value[targetSegment] = valueRepresentation; // Overwrite existing
+                    }
+                    if (newLength !== undefined) parentNode.length = newLength; // Update length if provided
+                }
+                else if (parentNode.type === 'dict' && Array.isArray(parentNode.value)) {
+                    // Dict setitem (update or add)
+                    const pairIndex = parentNode.value.findIndex((p: any) => p?.key?.value === targetSegment || p?.key?.id === String(targetSegment));
+                    if (pairIndex !== -1) {
+                        parentNode.value[pairIndex].value = valueRepresentation; // Update existing value
+                    } else {
+                        if (!keyRepresentation) throw new Error("Missing keyRepresentation for adding new dict item via setitem");
+                        parentNode.value.push({ key: keyRepresentation, value: valueRepresentation }); // Add new pair
+                        parentNode.length = newLength ?? (parentNode.length || 0) + 1; // Update length
+                    }
+                }
+                else if (parentNode.type?.startsWith('object') && typeof targetSegment === 'string' && parentNode.value) {
+                    // Object attribute set (add or update)
+                    parentNode.value[targetSegment] = valueRepresentation;
+                    if (newLength !== undefined) parentNode.length = newLength; // Update length if provided
+                } else {
+                    throw new Error(`'setitem' cannot be applied to parent type ${parentNode.type} with segment ${targetSegment}`);
+                }
+                break;
+
+            case 'append':
+                // Append item to a list
+                if (parentNode.type !== 'list' || !Array.isArray(parentNode.value)) throw new Error("'append' target must be a list representation");
+                if (!valueRepresentation) throw new Error("Missing valueRepresentation for 'append'");
+                parentNode.value.push(valueRepresentation); // Append to the list's value array
+                parentNode.length = newLength ?? (parentNode.length || 0) + 1; // Update length
+                break;
+
+            case 'insert':
+                // Insert item into a list at a specific index
+                if (parentNode.type !== 'list' || !Array.isArray(parentNode.value)) throw new Error("'insert' target must be a list representation");
+                if (typeof targetSegment !== 'number') throw new Error("'insert' path segment must be a numeric index");
+                if (!valueRepresentation) throw new Error("Missing valueRepresentation for 'insert'");
+                parentNode.value.splice(targetSegment, 0, valueRepresentation); // Insert into array
+                parentNode.length = newLength ?? (parentNode.length || 0) + 1; // Update length
+                break;
+
+            case 'pop':
+            case 'remove': // Treat remove like delitem
+            case 'delitem':
+                // Remove item from list, dict, or object
+                if (targetSegment === undefined) throw new Error("Missing targetSegment for removal action");
+                if (parentNode.type === 'list' && typeof targetSegment === 'number') {
+                    // Remove list item by index
+                    if (targetSegment < 0 || targetSegment >= parentNode.value.length) throw new Error(`Removal index ${targetSegment} out of bounds`);
+                    parentNode.value.splice(targetSegment, 1); // Remove from array
+                    parentNode.length = newLength ?? (parentNode.length || 1) - 1; // Update length
+                }
+                else if (parentNode.type === 'dict' && Array.isArray(parentNode.value)) {
+                    // Remove dict item by key
+                    const initialLength = parentNode.value.length;
+                    parentNode.value = parentNode.value.filter(
+                        (p: any) => !(p?.key?.value === targetSegment || p?.key?.id === String(targetSegment))
+                    ); // Filter out the item
+                    // Update length only if an item was actually removed
+                    if (parentNode.value.length < initialLength) {
+                        parentNode.length = newLength ?? (parentNode.length || 1) - 1;
+                    }
+                }
+                else if (parentNode.type?.startsWith('object') && typeof targetSegment === 'string' && parentNode.value) {
+                    // Delete object attribute
+                    if (targetSegment in parentNode.value) {
+                        delete parentNode.value[targetSegment];
+                        if (newLength !== undefined) parentNode.length = newLength;
+                    } else {
+                        console.warn(`VizLogic Apply: Attribute "${targetSegment}" not found for deletion.`);
+                    }
+                } else {
+                    throw new Error(`Removal action cannot be applied to parent type ${parentNode.type} with segment ${targetSegment}`);
+                }
+                break;
+
+            case 'add_set':
+                // Add element to a set (represented as an array)
+                if (!parentNode.type?.endsWith('set') || !Array.isArray(parentNode.value)) throw new Error("'add_set' target must be a set representation");
+                if (!valueRepresentation) throw new Error("Missing valueRepresentation for 'add_set'");
+                // Check if item (by ID) already exists to maintain set uniqueness
+                const exists = parentNode.value.some((item: any) => item?.id === valueRepresentation?.id);
+                if (!exists) {
+                    parentNode.value.push(valueRepresentation); // Add if not present
+                    parentNode.length = newLength ?? (parentNode.length || 0) + 1; // Update length
+                }
+                break;
+
+            case 'discard_set':
+                // Remove element from a set
+                if (!parentNode.type?.endsWith('set') || !Array.isArray(parentNode.value)) throw new Error("'discard_set' target must be a set representation");
+                // Requires valueRepresentation (usually for its ID) to identify the element
+                if (!valueRepresentation?.id) throw new Error("Missing valueRepresentation.id for 'discard_set'");
+                const initialSetLength = parentNode.value.length;
+                // Filter out the item matching the ID
+                parentNode.value = parentNode.value.filter((item: any) => item?.id !== valueRepresentation?.id);
+                // Update length only if an item was removed
+                if (parentNode.value.length < initialSetLength) {
+                    parentNode.length = newLength ?? (parentNode.length || 1) - 1;
+                }
+                break;
+
+            case 'clear':
+                // Clear contents of a container (list, dict, set, object)
+                if (parentNode.type === 'list' || parentNode.type === 'dict' || parentNode.type === 'set') {
+                    parentNode.value = []; // Reset value to empty array
+                    parentNode.length = 0; // Reset length
+                } else if (parentNode.type?.startsWith('object') && parentNode.value) {
+                    parentNode.value = {}; // Reset value to empty object
+                    parentNode.length = 0; // Reset length
+                } else {
+                    console.warn(`VizLogic Apply: 'clear' action not applicable to type '${parentNode.type}'.`);
+                }
+                break;
+
+            default:
+                // Handle unknown actions
+                throw new Error(`Unhandled action type "${action}"`);
+        }
+        // If no error was thrown, modification is considered successful
+        return true;
+    } catch (e: any) {
+        // Log errors occurring during the modification attempt
+        console.error(`VizLogic Apply: Error applying action "${action}" at path [${path.join(', ')}]:`, e.message || e);
+        return false; // Modification failed
+    }
 }
 
 // --- Viz Module Logic ---
 
 /**
  * Creates the initial state for a Viz module.
- * @param instanceId - The ID of the viz instance.
- * @param payload - Spawn payload (unused for Viz).
- * @returns Initial VizState with empty variables and changes.
  */
 export function getInitialState(instanceId: string, payload: VizSpawnPayload): VizState {
     console.log(`VizLogic ${instanceId}: Initializing state.`);
+    // Return the initial state structure
     return {
-        variables: {},   // No variables initially shown
-        lastChanges: {}, // No changes recorded yet
+        variables: {},   // Start with no variables
+        lastChanges: {}, // Start with no recorded changes
     };
 }
 
 /**
- * Updates the state of a Viz module based on variable changes.
+ * Updates the state of a Viz module based on variable changes using Immer.
  * Handles adding, updating (granularly), or removing variables.
  * Returns a new state object if changes were made.
- * @param currentState - The current state of the Viz module.
- * @param payload - The update payload detailing the variable change.
- * @returns The updated VizState.
  */
 export function updateState(currentState: VizState, payload: VizUpdatePayload): VizState {
-    const { action: vizAction, variableName, options } = payload;
+    // Use Immer's produce function for safe and easy immutable updates
+    return produce(currentState, draftState => {
+        const { action, variableName, options } = payload;
+        // Default path to empty array if not provided in options
+        const path = options?.path || [];
 
-    // Validate essential parts of the payload
-    if (!vizAction || !variableName) { // Options might be empty for removeVariable
-        console.warn(`VizLogic: Invalid viz update structure. Missing action or variableName.`, payload);
-        return currentState;
-    }
-
-    // Use path from options, default to empty array if not present
-    const path = options?.path || [];
-
-    // Create copies of current state parts for potential modification
-    let newVariablesState = { ...currentState.variables };
-    let newLastChanges = { ...currentState.lastChanges };
-    let stateChanged = false; // Flag to track actual changes
-
-    if (vizAction === 'removeVariable') {
-        // Check if the variable exists before trying to remove
-        if (newVariablesState[variableName]) {
-            delete newVariablesState[variableName]; // Remove from variables map
-            delete newLastChanges[variableName];  // Remove associated change info
-            console.log(`VizLogic: Removed variable "${variableName}".`);
-            stateChanged = true;
-        } else {
-            // Variable not found, no change needed
-            return currentState;
+        // Basic validation of the incoming payload
+        if (!action || !variableName) {
+            console.warn(`VizLogic: Invalid viz update structure. Missing action or variableName.`, payload);
+            return; // Exit the produce recipe; Immer returns the original state
         }
-    } else {
-        // Handle 'set' or granular updates using updateRepresentationAtPath
-        const currentRepresentation = currentState.variables[variableName];
 
-        try {
-            // Calculate the new representation based on the current one and the update payload
-            const updatedRepresentation = updateRepresentationAtPath(currentRepresentation, payload);
-
-            // Check if the representation actually changed to avoid unnecessary state updates
-            // (updateRepresentationAtPath returns original clone on error or no-op)
-            if (updatedRepresentation !== currentRepresentation || !currentRepresentation) { // Also true if it was newly created
-                // Update the variables map with the new representation
-                newVariablesState[variableName] = updatedRepresentation;
-                // Record the change details (action, path, timestamp) for highlighting
-                newLastChanges[variableName] = {
-                    action: vizAction, // Store the action type
-                    path: path,        // Store the path of the change
-                    timestamp: Date.now(), // Record when the change occurred
-                };
-                stateChanged = true; // Mark state as changed
-                // Log if a variable was newly created
-                if (!currentRepresentation && vizAction === 'set') {
-                    console.log(`VizLogic: Created variable "${variableName}".`);
-                }
+        // --- Action: Remove a variable ---
+        if (action === 'removeVariable') {
+            if (draftState.variables[variableName]) {
+                // Directly delete the variable and its change info from the draft state
+                delete draftState.variables[variableName];
+                delete draftState.lastChanges[variableName];
+                console.log(`VizLogic: Removed variable "${variableName}".`);
             } else {
-                // Representation didn't change (e.g., setitem with same value, or update error)
-                return currentState;
+                // Log if trying to remove a non-existent variable
+                console.warn(`VizLogic: Variable "${variableName}" not found for removal.`);
             }
-        } catch (e) {
-            // Error during updateRepresentationAtPath (already logged there)
-            // Return current state to prevent potential corruption
-            return currentState;
+            return; // End the recipe for removeVariable
         }
-    }
 
-    // If the state was changed (variable added, updated, or removed), return the new state object
-    if (stateChanged) {
-        return { variables: newVariablesState, lastChanges: newLastChanges };
-    } else {
-        // Otherwise, return the original state object
-        return currentState;
-    }
+        // --- Action: Add a new variable (via 'set' on root path) ---
+        if (!draftState.variables[variableName]) {
+            // Only allow creation via a 'set' action at the root path with a value representation
+            if (action === 'set' && path.length === 0 && options?.valueRepresentation) {
+                console.log(`VizLogic: Creating variable "${variableName}".`);
+                // Directly assign the representation to the draft state
+                draftState.variables[variableName] = options.valueRepresentation;
+                // Record this initial 'set' action
+                draftState.lastChanges[variableName] = { action, path, timestamp: Date.now() };
+            } else {
+                // Log error if trying to modify a non-existent variable without a valid root 'set'
+                console.error(`VizLogic: Cannot apply action "${action}" to non-existent variable "${variableName}" without root 'set' payload.`);
+            }
+            return; // End the recipe after creation attempt or error
+        }
+
+        // --- Action: Update an existing variable ---
+        // Attempt to apply the modification directly to the draft state
+        const modificationSuccessful = applyModification(
+            draftState,
+            variableName,
+            action,
+            path,
+            options || {} // Pass options or empty object
+        );
+
+        // If the modification was applied successfully, update the last change info
+        if (modificationSuccessful) {
+            draftState.lastChanges[variableName] = { action, path, timestamp: Date.now() };
+        } else {
+            // If applyModification returned false, an error occurred (already logged).
+            // Immer will automatically discard the changes made to the draft in this recipe execution.
+            console.warn(`VizLogic: Update failed for variable "${variableName}" (action: ${action}), state remains unchanged for this update.`);
+        }
+
+    }); // End of Immer's produce function
 }
