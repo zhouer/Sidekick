@@ -186,7 +186,7 @@ const VizComponent: React.FC<VizComponentProps> = ({ id, state }) => {
     const sortedVarNames = useMemo(() => Object.keys(variables).sort(), [variables]);
 
     return (
-        <div className="viz-component-container">
+        <div className="module-card">
             <h3>Variable Visualizer: {id}</h3>
             <div className="viz-variable-list">
                 {/* Handle empty state */}

@@ -1,9 +1,5 @@
 /* Sidekick/webapp/src/modules/grid/GridComponent.css */
 
-.grid-component-container {
-    /* Styles inherited from App.css */
-}
-
 .grid-canvas {
     display: grid;
     /* grid-template-columns/rows will be set dynamically or based on defaults if needed */

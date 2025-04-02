@@ -93,7 +93,7 @@ const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onIntera
     };
 
     return (
-        <div className="control-component-container">
+        <div className="module-card">
             <h3>Controls: {id}</h3>
             <div className="controls-wrapper">
                 {controls.size === 0 ? (

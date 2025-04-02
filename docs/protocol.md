@@ -76,6 +76,7 @@ This section details the expected structure of the `payload` object for differen
 *   **`spawn` Payload:**
     ```json
     {
+      // size: [width (columns), height (rows)]
       "size": [width: number, height: number]
     }
     ```
@@ -85,8 +86,8 @@ This section details the expected structure of the `payload` object for differen
         {
           "action": "setCell",
           "options": {
-            "x": number,
-            "y": number,
+            "x": number, // Column index (0-based, horizontal)
+            "y": number, // Row index (0-based, vertical, top-down)
             "color"?: string | null,
             "text"?: string | null
           }
@@ -103,11 +104,10 @@ This section details the expected structure of the `payload` object for differen
     ```json
     {
       "event": "click",
-      "x": number,
-      "y": number
+      "x": number, // Column index clicked
+      "y": number  // Row index clicked
     }
     ```
-
 ### 5.2 Module: `console`
 
 *   **`spawn` Payload:**

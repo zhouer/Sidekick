@@ -1,18 +1,5 @@
 /* Sidekick/webapp/src/modules/viz/VizComponent.css */
 
-.viz-component-container {
-    font-family: Menlo, Monaco, Consolas, 'Courier New', monospace;
-    font-size: 0.9em;
-    margin-bottom: 10px; /* Add some spacing below the module */
-}
-
-.viz-component-container h3 {
-    margin-top: 0;
-    margin-bottom: 8px;
-    font-size: 1.1em;
-    color: #333;
-}
-
 .viz-variable-list {
     display: flex;
     flex-direction: column;

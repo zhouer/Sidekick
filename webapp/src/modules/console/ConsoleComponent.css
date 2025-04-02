@@ -1,11 +1,5 @@
 /* Sidekick/webapp/src/modules/console/ConsoleComponent.css */
 
-.console-component-container {
-    /* Styles inherited from App.css */
-    display: flex; /* Use flexbox for layout */
-    flex-direction: column; /* Stack output and input vertically */
-}
-
 .console-output {
     background-color: #f8f8f8; /* Light grey background - Keep consistent */
     border: 1px solid #e0e0e0; /* Keep consistent border */

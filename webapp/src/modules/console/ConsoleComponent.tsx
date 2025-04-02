@@ -46,7 +46,7 @@ const ConsoleComponent: React.FC<ConsoleComponentProps> = ({ id, state, onIntera
     };
 
     return (
-        <div className="console-component-container">
+        <div className="module-card">
             <h3>Console: {id}</h3>
             {/* Output Area - Add the ref here */}
             <div className="console-output" ref={outputRef}> {/* <-- Assign ref */}

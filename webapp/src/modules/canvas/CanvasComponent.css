@@ -1,9 +1,5 @@
 /* Sidekick/webapp/src/modules/canvas/CanvasComponent.css */
 
-.canvas-component-container {
-    /* Inherits card style from App.css */
-}
-
 .canvas-element {
     border: 1px solid #ccc;
     display: block; /* Prevent extra space below canvas */

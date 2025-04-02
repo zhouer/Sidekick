@@ -33,7 +33,6 @@ This links the installed package to your source code, so changes are immediately
 ```bash
 pip install sidekick-py
 ```
-*(Note: PyPI package name might need confirmation)*
 
 ## 4. Core Concepts
 
@@ -109,9 +108,14 @@ pip install sidekick-py
 
 ### 5.3. `sidekick.Grid`
 
-*   `Grid(width: int, height: int, instance_id: Optional[str] = None, on_message: Optional[Callable] = None)`: Creates a grid. `on_message` handles click notifications (`{'event': 'click', 'x': ..., 'y': ...}`).
-*   `.set_color(x: int, y: int, color: Optional[str])`: Sets cell background color. Sends `action: "setCell"`. `None` clears color.
-*   `.set_text(x: int, y: int, text: Optional[str])`: Sets cell text. Sends `action: "setCell"`. `None` or `""` clears text.
+*   `Grid(width: int, height: int, instance_id: Optional[str] = None, on_message: Optional[Callable] = None)`: Creates a grid.
+    *   `width`: Number of **columns**.
+    *   `height`: Number of **rows**.
+    *   `on_message`: Handles click notifications. The received payload for a click is `{'event': 'click', 'x': column_index, 'y': row_index}`.
+    *   **Important Coordinate System:** Methods like `set_color` and `set_text` use `(x, y)` coordinates where `x` is the **column index** (horizontal, 0-based from left) and `y` is the **row index** (vertical, 0-based from top, Y-axis down). Think `grid.set_color(column, row, ...)`.
+
+*   `.set_color(x: int, y: int, color: Optional[str])`: Sets cell background color. `x` is column, `y` is row. Sends `action: "setCell"`. `None` clears color.
+*   `.set_text(x: int, y: int, text: Optional[str])`: Sets cell text. `x` is column, `y` is row. Sends `action: "setCell"`. `None` or `""` clears text.
 *   `.clear()`: Clears the entire grid (all cells to default). Sends `action: "clear"`.
 *   `.remove()`: Removes the grid module.
 
