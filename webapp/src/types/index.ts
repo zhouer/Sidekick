@@ -49,6 +49,9 @@ export interface ModuleDefinition<S = any, P_Spawn = any, P_Update = any> {
     /** The unique identifier string for the module type. */
     type: string;
 
+    /** The display name for the module type, used in the UI. */
+    displayName: string;
+
     /** The React component responsible for rendering this module type. */
     component: React.FC<any>; // Component props are expected to handle specific state type internally
 

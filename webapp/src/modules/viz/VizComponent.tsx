@@ -185,30 +185,27 @@ const VizComponent: React.FC<VizComponentProps> = ({ id, state }) => {
     const sortedVarNames = useMemo(() => Object.keys(variables).sort(), [variables]);
 
     return (
-        <div className="module-card">
-            <h3>Variable Visualizer: {id}</h3>
-            <div className="viz-variable-list">
-                {/* Handle empty state */}
-                {sortedVarNames.length === 0 && (
-                    <p className="viz-empty-message">No variables shown yet.</p>
-                )}
-                {/* Render each variable */}
-                {sortedVarNames.map(varName => {
-                    const representation = variables[varName];
-                    // Basic validation for representation structure
-                    if (!representation || typeof representation !== 'object' || representation === null || !('id' in representation)) {
-                        return (<div key={varName} className="viz-variable-item viz-error">Error displaying variable '{varName}'</div>);
-                    }
-                    const changeInfo = lastChanges[varName];
-                    return (
-                        <div key={varName} className={`viz-variable-item`}>
-                            <span className="viz-variable-name">{varName} =</span>
-                            {/* Render the top-level value representation */}
-                            <RenderValue data={representation} currentPath={[]} lastChangeInfo={changeInfo} depth={0} parentRepId={id} />
-                        </div>
-                    );
-                })}
-            </div>
+        <div className="viz-variable-list">
+            {/* Handle empty state */}
+            {sortedVarNames.length === 0 && (
+                <p className="viz-empty-message">No variables shown yet.</p>
+            )}
+            {/* Render each variable */}
+            {sortedVarNames.map(varName => {
+                const representation = variables[varName];
+                // Basic validation for representation structure
+                if (!representation || typeof representation !== 'object' || representation === null || !('id' in representation)) {
+                    return (<div key={varName} className="viz-variable-item viz-error">Error displaying variable '{varName}'</div>);
+                }
+                const changeInfo = lastChanges[varName];
+                return (
+                    <div key={varName} className={`viz-variable-item`}>
+                        <span className="viz-variable-name">{varName} =</span>
+                        {/* Render the top-level value representation */}
+                        <RenderValue data={representation} currentPath={[]} lastChangeInfo={changeInfo} depth={0} parentRepId={id} />
+                    </div>
+                );
+            })}
         </div>
     );
 };

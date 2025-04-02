@@ -21,6 +21,7 @@ const registry = new Map<string, ModuleDefinition>();
 // Register each built-in module
 registry.set('grid', {
     type: 'grid', // Module identifier string
+    displayName: 'Grid',
     component: GridComponent,
     getInitialState: gridLogic.getInitialState,
     updateState: gridLogic.updateState,
@@ -29,6 +30,7 @@ registry.set('grid', {
 
 registry.set('console', {
     type: 'console',
+    displayName: 'Console',
     component: ConsoleComponent,
     getInitialState: consoleLogic.getInitialState,
     updateState: consoleLogic.updateState,
@@ -37,6 +39,7 @@ registry.set('console', {
 
 registry.set('viz', {
     type: 'viz',
+    displayName: 'Viz',
     component: VizComponent,
     getInitialState: vizLogic.getInitialState,
     updateState: vizLogic.updateState,
@@ -45,6 +48,7 @@ registry.set('viz', {
 
 registry.set('canvas', {
     type: 'canvas',
+    displayName: 'Canvas',
     component: CanvasComponent,
     getInitialState: canvasLogic.getInitialState,
     updateState: canvasLogic.updateState,
@@ -53,6 +57,7 @@ registry.set('canvas', {
 
 registry.set('control', {
     type: 'control',
+    displayName: 'Control',
     component: ControlComponent,
     getInitialState: controlLogic.getInitialState,
     updateState: controlLogic.updateState,

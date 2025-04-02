@@ -81,12 +81,9 @@ const CanvasComponent: React.FC<CanvasModuleProps> = ({ id, state }) => {
     }, [ctx, commandQueue, id, width, height, bgColor]);
 
     return (
-        <div className="module-card">
-            <h3>Canvas: {id}</h3>
-            <canvas ref={canvasRef} width={width} height={height} className="canvas-element" style={{ backgroundColor: bgColor || '#FFFFFF' }}>
-                Your browser does not support the canvas element.
-            </canvas>
-        </div>
+        <canvas ref={canvasRef} width={width} height={height} className="canvas-element" style={{ backgroundColor: bgColor || '#FFFFFF' }}>
+            Your browser does not support the canvas element.
+        </canvas>
     );
 };
 

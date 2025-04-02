@@ -95,45 +95,42 @@ const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onIntera
     }
 
     return (
-        <div className="module-card">
-            <h3>Controls: {id}</h3>
-            <div className="controls-wrapper">
-                {controls.size === 0 ? (
-                    <p className="no-controls-message">No controls added yet.</p>
-                ) : (
-                    Array.from(controls.values()).map((control) => (
-                        <div key={control.id} className={`control-item control-type-${getControlTypeClass(control.type)}`}>
-                            {control.type === 'button' && (
+        <div className="controls-wrapper">
+            {controls.size === 0 ? (
+                <p className="no-controls-message">No controls added yet.</p>
+            ) : (
+                Array.from(controls.values()).map((control) => (
+                    <div key={control.id} className={`control-item control-type-${getControlTypeClass(control.type)}`}>
+                        {control.type === 'button' && (
+                            <button
+                                onClick={() => handleButtonClick(control.id)}
+                                className="control-button"
+                            >
+                                {control.config?.text || control.id}
+                            </button>
+                        )}
+                        {control.type === 'textInput' && (
+                            <div className="control-text-input-group">
+                                <input
+                                    type="text"
+                                    value={inputValues[control.id] || ''}
+                                    onChange={(e) => handleInputChange(control.id, e.target.value)}
+                                    onKeyDown={(e) => handleInputKeyDown(e, control.id)}
+                                    placeholder={control.config?.placeholder || ''}
+                                    className="control-text-input"
+                                    aria-label={`Input for ${control.id}`}
+                                />
                                 <button
-                                    onClick={() => handleButtonClick(control.id)}
-                                    className="control-button"
+                                    onClick={() => handleTextSubmit(control.id)}
+                                    className="control-text-submit-button"
                                 >
-                                    {control.config?.text || control.id}
+                                    {control.config?.buttonText || 'Submit'}
                                 </button>
-                            )}
-                            {control.type === 'textInput' && (
-                                <div className="control-text-input-group">
-                                    <input
-                                        type="text"
-                                        value={inputValues[control.id] || ''}
-                                        onChange={(e) => handleInputChange(control.id, e.target.value)}
-                                        onKeyDown={(e) => handleInputKeyDown(e, control.id)}
-                                        placeholder={control.config?.placeholder || ''}
-                                        className="control-text-input"
-                                        aria-label={`Input for ${control.id}`}
-                                    />
-                                    <button
-                                        onClick={() => handleTextSubmit(control.id)}
-                                        className="control-text-submit-button"
-                                    >
-                                        {control.config?.buttonText || 'Submit'}
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    ))
-                )}
-            </div>
+                            </div>
+                        )}
+                    </div>
+                ))
+            )}
         </div>
     );
 };

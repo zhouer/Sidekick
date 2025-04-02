@@ -56,11 +56,8 @@ const GridComponent: React.FC<GridComponentProps> = ({ id, state, onInteraction 
     };
 
     return (
-        <div className="module-card">
-            <h3>Grid: {id} ({width}x{height})</h3>
-            <div className="grid-canvas">
-                {renderGrid()}
-            </div>
+        <div className="grid-canvas">
+            {renderGrid()}
         </div>
     );
 };
