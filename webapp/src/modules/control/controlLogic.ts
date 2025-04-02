@@ -37,8 +37,9 @@ export function updateState(currentState: ControlState, payload: ControlUpdatePa
 
     if (controlAction === 'add') {
         // Validate options for adding a control
-        if (!options || !options.controlType || !options.config) {
-            console.warn(`ControlLogic: Invalid 'add' control options. Missing controlType or config.`, options);
+        // Check for controlType (expecting "button" or "textInput") and config
+        if (!options || !options.controlType || (options.controlType !== 'button' && options.controlType !== 'textInput') || !options.config) {
+            console.warn(`ControlLogic: Invalid 'add' control options. Missing/invalid controlType or config.`, options);
             return currentState; // Return unchanged state
         }
         // Create the definition for the new control

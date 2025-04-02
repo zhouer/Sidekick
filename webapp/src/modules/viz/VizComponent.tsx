@@ -18,7 +18,7 @@ function isVizDictKeyValuePair(item: any): item is VizDictKeyValuePair {
     return typeof item === 'object' && item !== null && 'key' in item && 'value' in item;
 }
 // Compare two path arrays for equality
-function pathsAreEqual(path1: Path, path2: Path): boolean {
+function pathsAreEqual(path1: Path | undefined, path2: Path | undefined): boolean {
     if (!path1 || !path2 || path1.length !== path2.length) return false;
     for (let i = 0; i < path1.length; i++) { if (path1[i] !== path2[i]) return false; }
     return true;
@@ -81,7 +81,6 @@ const RenderValue: React.FC<RenderValueProps> = React.memo(({ data, currentPath,
     return (
         // Use dynamicKey for potential re-mount on highlight
         <div key={dynamicKey} className={`viz-value-container ${typeClassName}${
-            // FIX: Use camelCase 'observableTracked'
             rep.observableTracked ? ' observable-tracked' : ''
         }${highlightClass}`} id={repId}>
 

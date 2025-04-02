@@ -68,7 +68,7 @@ class Control(BaseModule):
             "action": "add",
             "controlId": control_id,
             "options": {
-                "controlType": "text_input",
+                "controlType": "textInput",
                 "config": {
                     "placeholder": placeholder,
                     "initialValue": initial_value,

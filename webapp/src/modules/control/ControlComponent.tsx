@@ -1,5 +1,5 @@
 // Sidekick/webapp/src/modules/control/ControlComponent.tsx
-import React, { useState, useCallback, useEffect } from 'react'; // Import useEffect
+import React, { useState, useCallback, useEffect } from 'react';
 import { ControlState, ControlNotifyPayload } from './types';
 import { SidekickMessage } from '../../types';
 import './ControlComponent.css';
@@ -17,38 +17,36 @@ const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onIntera
     const [inputValues, setInputValues] = useState<Record<string, string>>(() => {
         const initial: Record<string, string> = {};
         controls.forEach(control => {
-            if (control.type === 'text_input') {
-                // FIX: Use camelCase 'initialValue'
+            if (control.type === 'textInput') {
                 initial[control.id] = control.config?.initialValue || '';
             }
         });
         return initial;
     });
 
-    // Update local input state if initialValue changes via props
-    useEffect(() => { // Changed React.useEffect to useEffect
-        const updatedInitial: Record<string, string> = {};
-        let changed = false;
-        controls.forEach(control => {
-            if (control.type === 'text_input') {
-                // FIX: Use camelCase 'initialValue'
-                const initialValueProp = control.config?.initialValue || '';
-                // Update only if prop differs from current state
-                if (inputValues[control.id] !== initialValueProp) {
-                    updatedInitial[control.id] = initialValueProp;
-                    changed = true;
-                } else {
-                    // Keep existing value if prop hasn't changed relative to it
-                    updatedInitial[control.id] = inputValues[control.id];
+    // Effect to synchronize local state with potentially updated initialValue from props
+    useEffect(() => {
+        setInputValues(prevInputValues => {
+            const nextInputValues: Record<string, string> = { ...prevInputValues };
+            let changed = false;
+            controls.forEach(control => {
+                if (control.type === 'textInput') {
+                    const initialValueProp = control.config?.initialValue || '';
+                    if (nextInputValues[control.id] === undefined || nextInputValues[control.id] !== initialValueProp) {
+                        nextInputValues[control.id] = initialValueProp;
+                        changed = true;
+                    }
                 }
-            }
+            });
+            Object.keys(nextInputValues).forEach(controlId => {
+                if (!controls.has(controlId)) {
+                    delete nextInputValues[controlId];
+                    changed = true;
+                }
+            });
+            return changed ? nextInputValues : prevInputValues;
         });
-        if (changed) {
-            // Merge updates carefully to not lose other input states
-            setInputValues(prev => ({ ...prev, ...updatedInitial }));
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [controls]); // Dependency: Re-evaluate when the set of controls changes
+    }, [controls]);
 
 
     // Handler for text input changes
@@ -64,7 +62,6 @@ const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onIntera
         console.log(`Control ${id}: Button ${controlId} clicked.`);
         const payload: ControlNotifyPayload = {
             event: 'click',
-            // FIX: Use camelCase 'controlId'
             controlId: controlId,
         };
         const message: SidekickMessage = { id: 0, module: 'control', method: 'notify', src: id, payload };
@@ -77,7 +74,6 @@ const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onIntera
         console.log(`Control ${id}: Input ${controlId} submitted with value: "${value}"`);
         const payload: ControlNotifyPayload = {
             event: 'submit',
-            // FIX: Use camelCase 'controlId'
             controlId: controlId,
             value: value,
         };
@@ -92,6 +88,12 @@ const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onIntera
         }
     };
 
+    // Helper to generate CSS class based on control type
+    const getControlTypeClass = (type: string): string => {
+        // Convert type ("button", "textInput") to CSS-friendly class ("button", "text-input")
+        return type.replace(/([A-Z])/g, '-$1').toLowerCase();
+    }
+
     return (
         <div className="module-card">
             <h3>Controls: {id}</h3>
@@ -100,7 +102,7 @@ const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onIntera
                     <p className="no-controls-message">No controls added yet.</p>
                 ) : (
                     Array.from(controls.values()).map((control) => (
-                        <div key={control.id} className={`control-item control-type-${control.type}`}>
+                        <div key={control.id} className={`control-item control-type-${getControlTypeClass(control.type)}`}>
                             {control.type === 'button' && (
                                 <button
                                     onClick={() => handleButtonClick(control.id)}
@@ -109,7 +111,7 @@ const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onIntera
                                     {control.config?.text || control.id}
                                 </button>
                             )}
-                            {control.type === 'text_input' && (
+                            {control.type === 'textInput' && (
                                 <div className="control-text-input-group">
                                     <input
                                         type="text"
@@ -124,7 +126,6 @@ const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onIntera
                                         onClick={() => handleTextSubmit(control.id)}
                                         className="control-text-submit-button"
                                     >
-                                        {/* FIX: Use camelCase 'buttonText' */}
                                         {control.config?.buttonText || 'Submit'}
                                     </button>
                                 </div>

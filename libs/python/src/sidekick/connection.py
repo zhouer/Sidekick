@@ -15,6 +15,7 @@ if not logger.hasHandlers():
     ch = logging.StreamHandler()
     ch.setFormatter(formatter)
     logger.addHandler(ch)
+    logger.propagate = False
 
 
 # --- Configuration and State ---

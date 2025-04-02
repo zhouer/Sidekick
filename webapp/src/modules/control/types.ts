@@ -1,11 +1,11 @@
 // Sidekick/webapp/src/modules/control/types.ts
 
 // --- Helper Types ---
-export type ControlType = "button" | "text_input";
+export type ControlType = "button" | "textInput";
 
 export interface ControlDefinition {
     id: string;         // Unique ID for this specific control instance
-    type: ControlType;  // Type of control (button or text_input)
+    type: ControlType;  // Type of control (button or textInput)
     config: {           // Configuration specific to the control type
         text?: string;         // Text for button
         placeholder?: string; // Placeholder for text input
@@ -37,5 +37,5 @@ export interface ControlUpdatePayload {
 export interface ControlNotifyPayload {
     event: "click" | "submit"; // Type of interaction event
     controlId: string;         // ID of the control that triggered the event
-    value?: string;            // Submitted value (only for "submit" event from text input)
+    value?: string;            // Submitted value (only for "submit" event from textInput)
 }
