@@ -1,16 +1,16 @@
-// Sidekick/webapp/src/components/ConsoleModule.tsx
+// Sidekick/webapp/src/modules/console/ConsoleComponent.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ConsoleState, ConsoleNotifyPayload } from './types';
 import { SidekickMessage } from '../../types';
-import './ConsoleModule.css';
+import './ConsoleComponent.css';
 
-interface ConsoleModuleProps {
+interface ConsoleComponentProps {
     id: string;
     state: ConsoleState;
     onInteraction: (message: SidekickMessage) => void;
 }
 
-const ConsoleModule: React.FC<ConsoleModuleProps> = ({ id, state, onInteraction }) => {
+const ConsoleComponent: React.FC<ConsoleComponentProps> = ({ id, state, onInteraction }) => {
     const { lines } = state;
     // --- MODIFICATION: Ref for the output container itself ---
     const outputRef = useRef<HTMLDivElement>(null);
@@ -46,7 +46,7 @@ const ConsoleModule: React.FC<ConsoleModuleProps> = ({ id, state, onInteraction 
     };
 
     return (
-        <div className="console-module-container">
+        <div className="console-component-container">
             <h3>Console: {id}</h3>
             {/* Output Area - Add the ref here */}
             <div className="console-output" ref={outputRef}> {/* <-- Assign ref */}
@@ -79,4 +79,4 @@ const ConsoleModule: React.FC<ConsoleModuleProps> = ({ id, state, onInteraction 
     );
 };
 
-export default ConsoleModule;
+export default ConsoleComponent;

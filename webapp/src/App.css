@@ -85,13 +85,13 @@ body {
   box-sizing: border-box;
 }
 
-/* Card styling for individual module containers */
-/* Apply this common style to all module containers */
-.grid-module-container,
-.console-module-container,
-.viz-module-container,
-.canvas-module-container,
-.control-module-container { /* <-- ADDED control module */
+/* Card styling for individual module component containers */
+/* Apply this common style to all module component containers */
+.grid-component-container,
+.console-component-container,
+.viz-component-container,
+.canvas-component-container,
+.control-component-container {
   background-color: #ffffff;
   border: 1px solid #e0e0e0;
   border-radius: 8px;

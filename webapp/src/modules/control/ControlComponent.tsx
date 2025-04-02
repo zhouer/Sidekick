@@ -1,16 +1,16 @@
-// Sidekick/webapp/src/components/ControlModule.tsx
+// Sidekick/webapp/src/modules/control/ControlComponent.tsx
 import React, { useState, useCallback, useEffect } from 'react'; // Import useEffect
 import { ControlState, ControlNotifyPayload } from './types';
 import { SidekickMessage } from '../../types';
-import './ControlModule.css';
+import './ControlComponent.css';
 
-interface ControlModuleProps {
+interface ControlComponentProps {
     id: string;
     state: ControlState;
     onInteraction: (message: SidekickMessage) => void;
 }
 
-const ControlModule: React.FC<ControlModuleProps> = ({ id, state, onInteraction }) => {
+const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onInteraction }) => {
     const { controls } = state;
 
     // Local state to manage the current value of each text input
@@ -93,7 +93,7 @@ const ControlModule: React.FC<ControlModuleProps> = ({ id, state, onInteraction 
     };
 
     return (
-        <div className="control-module-container">
+        <div className="control-component-container">
             <h3>Controls: {id}</h3>
             <div className="controls-wrapper">
                 {controls.size === 0 ? (
@@ -137,4 +137,4 @@ const ControlModule: React.FC<ControlModuleProps> = ({ id, state, onInteraction 
     );
 };
 
-export default ControlModule;
+export default ControlComponent;

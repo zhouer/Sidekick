@@ -32,10 +32,10 @@ webapp/
 │   │   └── useWebSocket.ts
 │   ├── modules/        # Core application feature: Modules
 │   │   ├── canvas/     # Example: Canvas Module directory
-│   │   │   ├── CanvasModule.css  # Component styles
-│   │   │   ├── CanvasModule.tsx  # Component UI
-│   │   │   ├── canvasLogic.ts    # State initialization & update logic
-│   │   │   └── types.ts          # Module-specific types (State, Payloads)
+│   │   │   ├── CanvasComponent.css  # Component styles
+│   │   │   ├── CanvasComponent.tsx  # Component UI
+│   │   │   ├── canvasLogic.ts       # State initialization & update logic
+│   │   │   └── types.ts             # Module-specific types (State, Payloads)
 │   │   ├── console/    # Console Module directory
 │   │   │   ├── ... (Component, CSS, Logic, Types)
 │   │   ├── control/    # Control Module directory
@@ -96,12 +96,12 @@ webapp/
 
 *   **Co-location:** Each module resides in its own directory (e.g., `src/modules/grid/`).
 *   **Contents:** Typically contains:
-    *   `{ModuleName}Module.tsx`: The React component for UI rendering and handling local UI state/interactions.
+    *   `{ModuleName}Component.tsx`: The React component for UI rendering and handling local UI state/interactions.
     *   `{moduleName}Logic.ts`: Contains the module's `getInitialState` and `updateState` logic (pure functions). May include internal helper functions (like `vizLogic.ts` containing `updateRepresentationAtPath`).
     *   `types.ts`: Defines TypeScript interfaces specific to this module (e.g., `GridState`, `GridUpdatePayload`).
-    *   `{ModuleName}Module.css`: Styles specific to the component.
+    *   `{ModuleName}Component.css`: Styles specific to the component.
 
-### 4.5. Module Components (`src/modules/*/ *Module.tsx`)
+### 4.5. Module Components (`src/modules/*/ *Component.tsx`)
 
 *   **General Structure:** Functional React components receiving `id`, `state` (typed specifically within the component using imports from its local `types.ts`), and potentially `onInteraction` as props.
 *   **Responsibilities:**
@@ -109,12 +109,12 @@ webapp/
     *   Manage any purely local UI state using React hooks (e.g., input values, expand/collapse toggles).
     *   Handle user interaction events (clicks, key presses, form submissions).
     *   If interactive (`isInteractive: true` in definition), call the `onInteraction` prop with a correctly formatted `SidekickMessage` to notify the Hero backend.
-    *   Handle UI-specific side effects using `useEffect` (e.g., `CanvasModule` executes drawing commands; `ConsoleModule` handles auto-scrolling).
+    *   Handle UI-specific side effects using `useEffect` (e.g., `CanvasComponent` executes drawing commands; `ConsoleComponent` handles auto-scrolling).
 
 #### Specific Component Notes:
 
-*   **`VizModule.tsx` / `RenderValue.tsx`:** Renders complex, potentially nested data structures. `RenderValue` is recursive. Manages expand/collapse state locally. Highlighting logic depends on `lastChanges` timestamp in the `VizState`. Complex state *calculation* logic (like `updateRepresentationAtPath`) now resides in `vizLogic.ts`.
-*   **`CanvasModule.tsx`:** Renders an HTML `<canvas>`. Uses `useEffect` and `useRef` to manage the 2D context and, critically, to process the `commandQueue` from props exactly once and in order, executing the actual drawing operations as a side effect. The state update logic in `canvasLogic.ts` simply adds commands to the queue.
+*   **`VizComponent.tsx` / `RenderValue.tsx`:** Renders complex, potentially nested data structures. `RenderValue` is recursive. Manages expand/collapse state locally. Highlighting logic depends on `lastChanges` timestamp in the `VizState`. Complex state *calculation* logic (like `updateRepresentationAtPath`) now resides in `vizLogic.ts`.
+*   **`CanvasComponent.tsx`:** Renders an HTML `<canvas>`. Uses `useEffect` and `useRef` to manage the 2D context and, critically, to process the `commandQueue` from props exactly once and in order, executing the actual drawing operations as a side effect. The state update logic in `canvasLogic.ts` simply adds commands to the queue.
 
 ## 5. Setup & Development
 
@@ -133,7 +133,7 @@ webapp/
 ## 7. Styling
 
 *   Global base styles in `src/index.css` and `src/App.css`.
-*   Module-specific styles are now co-located with their components (e.g., `src/modules/grid/GridModule.css`). Standard CSS conventions are used. Consider CSS Modules or CSS-in-JS for larger-scale projects if needed.
+*   Module-specific styles are now co-located with their components (e.g., `src/modules/grid/GridComponent.css`). Standard CSS conventions are used. Consider CSS Modules or CSS-in-JS for larger-scale projects if needed.
 
 ## 8. Adding a New Visual Module (Workflow)
 
@@ -142,8 +142,8 @@ webapp/
 3.  **Implement Logic (`myNewModuleLogic.ts`):** Create `myNewModuleLogic.ts`. Implement and export:
     *   `getInitialState(instanceId, payload): MyNewModuleState`
     *   `updateState(currentState, payload): MyNewModuleState` (ensure it's pure and handles immutability).
-4.  **Create Component (`MyNewModule.tsx`):** Create the React component file. Implement the UI rendering based on `props.state` (typed as `MyNewModuleState`). If interactive, handle events and call `props.onInteraction`.
-5.  **Add Styles (`MyNewModule.css`):** Create the CSS file and import it into the component.
+4.  **Create Component (`MyNewModuleComponent.tsx`):** Create the React component file. Implement the UI rendering based on `props.state` (typed as `MyNewModuleState`). If interactive, handle events and call `props.onInteraction`.
+5.  **Add Styles (`MyNewModuleComponent.css`):** Create the CSS file and import it into the component.
 6.  **Register (`moduleRegistry.ts`):**
     *   Import the component and logic functions into `src/modules/moduleRegistry.ts`.
     *   Add a new entry using `registry.set('myNewModule', { ... });`, providing the `type` string, imported component, logic functions, and `isInteractive` flag.
@@ -156,4 +156,4 @@ webapp/
 *   **Module Not Appearing:** Check `spawn` message is received. Check `moduleRegistry` for correct registration. Check `moduleOrder` in React DevTools. Check browser console for errors during `getInitialState` or initial render.
 *   **Interaction Not Working:** Check `isInteractive` flag in `moduleRegistry`. Verify `onInteraction` is passed as a prop in `App.tsx`'s render logic. Check component's event handlers and the structure of the `SidekickMessage` being sent. Check Hero-side logs.
 *   **Viz Highlighting/Update Issues:** Check console logs from `vizLogic.ts`. Verify `updateRepresentationAtPath` is correctly calculating the new representation and returning a new object. Check `lastChanges` state in React DevTools.
-*   **Canvas Drawing Issues:** Check browser console for errors during command execution in `CanvasModule.tsx` `useEffect`. Verify `commandId`s are unique and processed correctly using `lastProcessedCommandId`. Ensure `ctx` is not null.
+*   **Canvas Drawing Issues:** Check browser console for errors during command execution in `CanvasComponent.tsx` `useEffect`. Verify `commandId`s are unique and processed correctly using `lastProcessedCommandId`. Ensure `ctx` is not null.

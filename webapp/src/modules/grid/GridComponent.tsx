@@ -1,16 +1,16 @@
-// Sidekick/webapp/src/components/GridModule.tsx
+// Sidekick/webapp/src/modules/grid/GridComponent.tsx
 import React from 'react';
 import { GridState } from './types';
 import { SidekickMessage } from '../../types';
-import './GridModule.css'; // 建立對應的 CSS
+import './GridComponent.css';
 
-interface GridModuleProps {
+interface GridComponentProps {
     id: string; // Instance ID
     state: GridState;
     onInteraction: (message: SidekickMessage) => void; // Callback to send message back
 }
 
-const GridModule: React.FC<GridModuleProps> = ({ id, state, onInteraction }) => {
+const GridComponent: React.FC<GridComponentProps> = ({ id, state, onInteraction }) => {
     const { size, cells } = state;
     const [width, height] = size;
 
@@ -56,7 +56,7 @@ const GridModule: React.FC<GridModuleProps> = ({ id, state, onInteraction }) => 
     };
 
     return (
-        <div className="grid-module-container">
+        <div className="grid-component-container">
             <h3>Grid: {id} ({width}x{height})</h3>
             <div className="grid-canvas">
                 {renderGrid()}
@@ -65,4 +65,4 @@ const GridModule: React.FC<GridModuleProps> = ({ id, state, onInteraction }) => 
     );
 };
 
-export default GridModule;
+export default GridComponent;

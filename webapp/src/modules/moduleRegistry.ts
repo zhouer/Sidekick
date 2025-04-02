@@ -2,11 +2,11 @@
 import { ModuleDefinition } from '../types'; // Import shared types
 
 // Import Module Components
-import GridModule from './grid/GridModule';
-import ConsoleModule from './console/ConsoleModule';
-import VizModule from './viz/VizModule';
-import CanvasModule from './canvas/CanvasModule';
-import ControlModule from './control/ControlModule';
+import GridComponent from './grid/GridComponent.tsx';
+import ConsoleComponent from './console/ConsoleComponent.tsx';
+import VizComponent from './viz/VizComponent.tsx';
+import CanvasComponent from './canvas/CanvasComponent.tsx';
+import ControlComponent from './control/ControlComponent.tsx';
 
 // Import Module Logic functions
 import * as gridLogic from './grid/gridLogic';
@@ -21,7 +21,7 @@ const registry = new Map<string, ModuleDefinition>();
 // Register each built-in module
 registry.set('grid', {
     type: 'grid', // Module identifier string
-    component: GridModule,
+    component: GridComponent,
     getInitialState: gridLogic.getInitialState,
     updateState: gridLogic.updateState,
     isInteractive: true,
@@ -29,7 +29,7 @@ registry.set('grid', {
 
 registry.set('console', {
     type: 'console',
-    component: ConsoleModule,
+    component: ConsoleComponent,
     getInitialState: consoleLogic.getInitialState,
     updateState: consoleLogic.updateState,
     isInteractive: true,
@@ -37,7 +37,7 @@ registry.set('console', {
 
 registry.set('viz', {
     type: 'viz',
-    component: VizModule,
+    component: VizComponent,
     getInitialState: vizLogic.getInitialState,
     updateState: vizLogic.updateState,
     isInteractive: false,
@@ -45,7 +45,7 @@ registry.set('viz', {
 
 registry.set('canvas', {
     type: 'canvas',
-    component: CanvasModule,
+    component: CanvasComponent,
     getInitialState: canvasLogic.getInitialState,
     updateState: canvasLogic.updateState,
     isInteractive: false,
@@ -53,7 +53,7 @@ registry.set('canvas', {
 
 registry.set('control', {
     type: 'control',
-    component: ControlModule,
+    component: ControlComponent,
     getInitialState: controlLogic.getInitialState,
     updateState: controlLogic.updateState,
     isInteractive: true,

@@ -1,13 +1,13 @@
-// Sidekick/webapp/src/components/VizModule.tsx
+// Sidekick/webapp/src/modules/viz/VizComponent.tsx
 import React, { useState, useMemo } from 'react';
-import './VizModule.css';
+import './VizComponent.css';
 import { VizRepresentation, VizDictKeyValuePair, Path, VizChangeInfo, VizState } from './types';
 
 // --- Constants ---
 const HIGHLIGHT_DURATION = 1500; // ms, Duration for the highlight animation
 
 // --- Define Props Interface ---
-interface VizModuleProps {
+interface VizComponentProps {
     id: string; // Instance ID
     state: VizState; // State specific to the Viz module
 }
@@ -179,14 +179,14 @@ const RenderValue: React.FC<RenderValueProps> = React.memo(({ data, currentPath,
 RenderValue.displayName = 'RenderValue'; // Add display name for React DevTools
 
 // --- Main Viz Module Component ---
-const VizModule: React.FC<VizModuleProps> = ({ id, state }) => {
+const VizComponent: React.FC<VizComponentProps> = ({ id, state }) => {
     // Ensure state exists before destructuring
     const { variables, lastChanges } = state || { variables: {}, lastChanges: {} };
     // Memoize sorted variable names to prevent recalculation on every render
     const sortedVarNames = useMemo(() => Object.keys(variables).sort(), [variables]);
 
     return (
-        <div className="viz-module-container">
+        <div className="viz-component-container">
             <h3>Variable Visualizer: {id}</h3>
             <div className="viz-variable-list">
                 {/* Handle empty state */}
@@ -214,4 +214,4 @@ const VizModule: React.FC<VizModuleProps> = ({ id, state }) => {
     );
 };
 
-export default VizModule;
+export default VizComponent;

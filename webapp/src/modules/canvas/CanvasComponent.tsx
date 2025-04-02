@@ -1,14 +1,14 @@
-// Sidekick/webapp/src/components/CanvasModule.tsx
+// Sidekick/webapp/src/modules/canvas/CanvasComponent.tsx
 import React, { useRef, useEffect, useState } from 'react';
 import { CanvasState } from './types';
-import './CanvasModule.css';
+import './CanvasComponent.css';
 
 interface CanvasModuleProps {
     id: string;
     state: CanvasState;
 }
 
-const CanvasModule: React.FC<CanvasModuleProps> = ({ id, state }) => {
+const CanvasComponent: React.FC<CanvasModuleProps> = ({ id, state }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [ctx, setCtx] = useState<CanvasRenderingContext2D | null>(null);
     const lastProcessedCommandId = useRef<string | number | null>(null);
@@ -81,7 +81,7 @@ const CanvasModule: React.FC<CanvasModuleProps> = ({ id, state }) => {
     }, [ctx, commandQueue, id, width, height, bgColor]);
 
     return (
-        <div className="canvas-module-container">
+        <div className="canvas-component-container">
             <h3>Canvas: {id}</h3>
             <canvas ref={canvasRef} width={width} height={height} className="canvas-element" style={{ backgroundColor: bgColor || '#FFFFFF' }}>
                 Your browser does not support the canvas element.
@@ -90,4 +90,4 @@ const CanvasModule: React.FC<CanvasModuleProps> = ({ id, state }) => {
     );
 };
 
-export default CanvasModule;
+export default CanvasComponent;

@@ -1,12 +1,12 @@
-/* Sidekick/webapp/src/components/VizModule.css */
+/* Sidekick/webapp/src/modules/viz/VizComponent.css */
 
-.viz-module-container {
+.viz-component-container {
     font-family: Menlo, Monaco, Consolas, 'Courier New', monospace;
     font-size: 0.9em;
     margin-bottom: 10px; /* Add some spacing below the module */
 }
 
-.viz-module-container h3 {
+.viz-component-container h3 {
     margin-top: 0;
     margin-bottom: 8px;
     font-size: 1.1em;

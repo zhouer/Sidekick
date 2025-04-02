@@ -1,6 +1,6 @@
-/* Sidekick/webapp/src/components/ConsoleModule.css */
+/* Sidekick/webapp/src/modules/console/ConsoleComponent.css */
 
-.console-module-container {
+.console-component-container {
     /* Styles inherited from App.css */
     display: flex; /* Use flexbox for layout */
     flex-direction: column; /* Stack output and input vertically */
