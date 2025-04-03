@@ -2,87 +2,119 @@
 
 ## 1. Introduction
 
-This document specifies the communication protocol between the **Hero** (user's script using the `sidekick` library) and the **Sidekick** frontend (React application). This protocol enables the Hero to control visual modules in the Sidekick UI and allows Sidekick to send notifications back to the Hero.
+This document specifies the communication protocol used within the Sidekick ecosystem. It facilitates communication between the **Hero** (user's script using the `sidekick` library) and the **Sidekick** frontend (React application). Currently, this communication is relayed through a **Server** component, but the protocol is designed with the flexibility to potentially support other topologies in the future.
+
+The protocol enables:
+*   **Peer Discovery & Status:** Allows connected components (Peers) to announce their presence, role, version, and status (`online`/`offline`).
+*   **Module Control:** Enables the Hero to create, update, and remove visual modules in the Sidekick UI.
+*   **Module Feedback:** Allows Sidekick to send user interaction notifications and error reports back to the Hero.
 
 ## 2. Transport Layer
 
 *   **Mechanism:** WebSocket
-*   **Default Endpoint:** `ws://localhost:5163` (Configurable via `sidekick.set_url()`).
+*   **Default Endpoint:** `ws://localhost:5163` (Configurable via `sidekick.set_url()`). The server listens on this endpoint, and peers connect to it.
 *   **Encoding:** JSON strings (UTF-8 encoded).
-*   **Keep-Alive:** The Python client uses WebSocket Ping/Pong frames for connection maintenance and failure detection (after disabling underlying socket timeout). The server should respond to Pings with Pongs.
+*   **Keep-Alive:** The Python client (`hero`) uses WebSocket Ping/Pong frames for connection maintenance and failure detection (after disabling underlying socket timeout). The server should respond to Pings with Pongs. Sidekick frontend relies on browser WebSocket implementation.
 
 ## 3. Message Format
 
-All messages exchanged between Hero and Sidekick share a common JSON structure. Keys within the `payload` object **MUST** use `camelCase`.
+All messages exchanged within the Sidekick ecosystem share a common JSON structure. Keys within the `payload` object **MUST** use `camelCase`.
 
-### 3.1 Hero -> Sidekick Message Structure
-
-These messages are commands sent from the Hero script to control the Sidekick UI modules.
-
-```json
+'''json
 {
   "id": number,       // Reserved. Defaults to 0.
-  "module": string,   // Target module type (e.g., "grid", "console", "viz", "canvas", "control").
-  "method": string,   // The action to perform ("spawn", "update", "remove").
-  "target": string,   // Unique identifier of the target module instance.
-  "payload": object | null // Data specific to the method and module type. Null if no payload. Keys MUST be camelCase.
+  "module": string,   // Target/Source module type (e.g., "grid", "system").
+  "method": string,   // The action or message type (e.g., "spawn", "announce", "notify").
+  "target"?: string,  // Identifier of the target module instance (for module control).
+  "src"?: string,      // Identifier of the source module instance (for module feedback).
+  "payload": object | null // Method-specific data. Keys MUST be camelCase.
 }
-```
+'''
 
-### 3.2 Sidekick -> Hero Message Structure
-
-These messages are notifications or error reports sent from the Sidekick UI back to the Hero script.
-
-```json
-{
-  "id": number,       // Reserved. Defaults to 0.
-  "module": string,   // Source module type (e.g., "grid", "console", "control").
-  "method": string,   // The type of message ("notify", "error").
-  "src": string,      // Unique identifier of the source module instance.
-  "payload": object | null // Data specific to the notification or error. Null if no payload. Keys MUST be camelCase.
-}
-```
-
-### 3.3 Field Descriptions
+### 3.1 Field Descriptions
 
 *   `id` (Integer): Reserved. Defaults to `0`.
-*   `module` (String): Identifies the type of module involved.
-*   `method` (String): Specifies the action (Hero->Sidekick) or message type (Sidekick->Hero).
-*   `target` (String): **Hero -> Sidekick only.** The unique ID of the target module instance.
-*   `src` (String): **Sidekick -> Hero only.** The unique ID of the source module instance.
-*   `payload` (Object | Null): Contains method-specific data structures, detailed in Section 5. Keys within this object **MUST** be `camelCase`.
+*   `module` (String): Identifies the type of module or system component involved.
+*   `method` (String): Specifies the action or message type.
+*   `target` (String, Optional): **Present** for module control messages (`spawn`, `update`, `remove`) sent from Hero. Identifies the specific module instance in Sidekick being controlled. **Omitted** otherwise (e.g., for `system/announce`, `notify`, `error`).
+*   `src` (String, Optional): **Present** for module feedback messages (`notify`, `error`) sent from Sidekick. Identifies the specific module instance in Sidekick that generated the message. **Omitted** otherwise (e.g., for `system/announce`, `spawn`, `update`, `remove`).
+*   `payload` (Object | Null): Contains method-specific data structures detailed in subsequent sections. Keys within this object **MUST** be `camelCase`.
 
-## 4. Core Methods
+## 4. Connection Lifecycle & Peer Discovery (`system` module)
 
-These define the primary interactions possible via the `method` field.
+Peers (Hero or Sidekick instances) use the `system` module and `announce` method to manage their online status and discover other connected peers. These messages are typically broadcast by the Server to all other connected peers.
 
-### 4.1 Hero -> Sidekick Methods
+### 4.1 Method: `announce`
 
-*   **`spawn`**: Creates a new module instance. Payload contains initial configuration.
-*   **`update`**: Modifies an existing module instance. Payload typically contains `action` and `options` fields, but structure varies slightly (see Section 5).
-*   **`remove`**: Destroys a module instance.
+*   **Direction:** Peer -> Server / Other Peers
+*   **Purpose:** Announce connection status (`online`/`offline`), role, and version.
+*   **`target` / `src`:** Omitted.
 
-### 4.2 Sidekick -> Hero Methods
+### 4.2 `announce` Payload
 
-*   **`notify`**: Informs Hero about user actions. Payload contains event details.
-*   **`error`**: Reports an error encountered by Sidekick. Payload contains error message.
+Sent by a peer upon successful connection (`status: "online"`) and optionally upon graceful disconnection (`status: "offline"`). A server might also generate an `offline` announcement on behalf of a peer that disconnected abnormally. **All keys MUST be `camelCase`.**
 
-## 5. Module-Specific Payloads (`payload` structure)
+'''json
+{
+  "peerId": string,             // Unique identifier for the peer instance (e.g., UUID). Generated by the peer.
+  "role": "hero" | "sidekick",  // Role of the announcing peer.
+  "status": "online" | "offline", // Current status.
+  "version": string,            // Version of the peer library/app (e.g., "0.1.0").
+  "timestamp": number           // Timestamp of the announcement (Unix epoch milliseconds).
+}
+'''
 
-This section details the expected structure of the `payload` object for different `module` and `method` combinations. **All keys within `payload` and its nested objects (like `options`, `config`, `valueRepresentation`) MUST be `camelCase`.**
+### 4.3 Connection Flow & Disconnection Handling
 
-### 5.1 Module: `grid`
+1.  **Connection:** A peer (Hero or Sidekick) connects to the Server via WebSocket.
+2.  **Online Announcement:** Upon successful connection, the peer immediately sends an `announce` message with `status: "online"`.
+3.  **Server Broadcast & History:**
+    *   The Server records the new peer's information (`peerId`, `role`, `version`, `status`).
+    *   The Server **broadcasts** this `online` announcement to all *other* currently connected peers.
+    *   The Server sends a list of previously received `online` announcements (from currently connected peers) **only to the newly connected peer**, allowing it to discover existing peers.
+4.  **Peer Records:** Each peer receiving an `announce` message should record the information about the other peer (its ID, role, status, version).
+5.  **Normal Disconnection:**
+    *   Before closing the WebSocket connection gracefully, a peer SHOULD send an `announce` message with `status: "offline"`.
+    *   The Server broadcasts this `offline` message to all remaining peers.
+    *   Peers update the status of the disconnected peer locally.
+6.  **Abnormal Disconnection:**
+    *   The Server detects an unexpected WebSocket closure (e.g., timeout, network error).
+    *   The Server identifies the disconnected peer by its connection.
+    *   The Server **generates and broadcasts** an `announce` message with the corresponding `peerId` and `status: "offline"` on behalf of the disconnected peer. The `timestamp` should reflect when the server detected the disconnection.
+    *   Remaining peers update the status of the disconnected peer locally.
+    *   *(Direct Connection Scenario Note: If direct connection were used, the remaining peer would detect the closure via WebSocket events and update the status locally without needing a server-generated message.)*
+
+## 5. Core Module Interaction Methods
+
+These methods facilitate the primary purpose of Sidekick: controlling and receiving feedback from visual modules.
+
+### 5.1 Hero -> Sidekick (via Server) - Module Control
+
+*   **`spawn`**: Creates a new module instance in Sidekick. `target` is required. Payload contains initial configuration.
+*   **`update`**: Modifies an existing module instance in Sidekick. `target` is required. Payload typically contains `action` and `options`.
+*   **`remove`**: Destroys a module instance in Sidekick. `target` is required.
+
+### 5.2 Sidekick -> Hero (via Server) - Module Feedback
+
+*   **`notify`**: Informs Hero about user actions or module events within Sidekick. `src` is required. Payload contains event details.
+*   **`error`**: Reports an error encountered by Sidekick related to a specific module. `src` is required. Payload contains error message.
+
+## 6. Module-Specific Payloads (`payload` structure)
+
+This section details the expected structure of the `payload` object for different *module interaction* `method` combinations (`spawn`, `update`, `notify`, etc.). **Reminder:** All keys within `payload` and its nested objects (`options`, `config`, `valueRepresentation`, etc.) **MUST** be `camelCase`. *(The `system/announce` payload is defined in Section 4.2)*.
+
+### 6.1 Module: `grid`
 
 *   **`spawn` Payload:**
-    ```json
+    '''json
     {
       // size: [width (columns), height (rows)]
       "size": [width: number, height: number]
     }
-    ```
+    '''
 *   **`update` Payload:** Follows the `action`/`options` pattern.
     *   Set individual cell state:
-        ```json
+        '''json
         {
           "action": "setCell",
           "options": {
@@ -92,60 +124,60 @@ This section details the expected structure of the `payload` object for differen
             "text"?: string | null
           }
         }
-        ```
+        '''
     *   Clear the entire grid:
-        ```json
+        '''json
         {
           "action": "clear"
           // No options needed
         }
-        ```
+        '''
 *   **`notify` Payload (Sidekick -> Hero):**
-    ```json
+    '''json
     {
       "event": "click",
       "x": number, // Column index clicked
       "y": number  // Row index clicked
     }
-    ```
-### 5.2 Module: `console`
+    '''
+### 6.2 Module: `console`
 
 *   **`spawn` Payload:**
-    ```json
+    '''json
     {
       "text"?: string // Optional initial text line
     }
-    ```
+    '''
 *   **`update` Payload:** Follows the `action`/`options` pattern.
     *   Append text line(s):
-        ```json
+        '''json
         {
           "action": "append",
           "options": {
             "text": string // The text line(s) to append
           }
         }
-        ```
+        '''
     *   Clear the console output:
-        ```json
+        '''json
         {
           "action": "clear"
           // No options needed
         }
-        ```
+        '''
 *   **`notify` Payload (Sidekick -> Hero):**
-    ```json
+    '''json
     {
       "event": "submit",
       "value": string
     }
-    ```
+    '''
 
-### 5.3 Module: `viz`
+### 6.3 Module: `viz`
 
-*   **`spawn` Payload:** `{}`
+*   **`spawn` Payload:** `{}` (No specific options needed on spawn)
 *   **`update` Payload:** Handles variable add/update/remove. Contains top-level `action` and `variableName` alongside `options`.
-    ```json
+    '''json
     {
       "action": string,       // e.g., "set", "setitem", "append", "removeVariable"
       "variableName": string, // The name of the variable being updated
@@ -157,35 +189,40 @@ This section details the expected structure of the `payload` object for differen
         // Note: For action="removeVariable", options might be empty or omitted.
       }
     }
-    ```
-    *   *`(VizRepresentation is defined in Section 6)`*
+    '''
+    *   *(VizRepresentation is defined in Section 7)*
 
-### 5.4 Module: `canvas`
+### 6.4 Module: `canvas`
 
 *   **`spawn` Payload:**
-    ```json
+    '''json
     {
       "width": number,
       "height": number,
       "bgColor"?: string
     }
-    ```
+    '''
 *   **`update` Payload:** Contains `action`, `options`, and a mandatory `commandId`.
-    ```json
+    '''json
     {
       "action": string, // e.g., "clear", "config", "line", "rect", "circle"
-      "options": object, // Command-specific parameters (e.g., {x1, y1, x2, y2} for line)
+      "options": object, // Command-specific parameters (see below)
       "commandId": string | number // REQUIRED: Unique ID for this command instance
     }
-    ```
-    *   *(Example `options` keys: `clear: { color? }`, `config: { strokeStyle?, fillStyle?, lineWidth? }`, `line: { x1, y1, x2, y2 }`, `rect: { x, y, width, height, filled? }`, `circle: { cx, cy, radius, filled? }` - all keys must be camelCase)*
+    '''
+    *   *Example `options` structure (keys must be camelCase):*
+        *   `action: "clear"` => `options: { color?: string }`
+        *   `action: "config"` => `options: { strokeStyle?: string, fillStyle?: string, lineWidth?: number }`
+        *   `action: "line"` => `options: { x1: number, y1: number, x2: number, y2: number }`
+        *   `action: "rect"` => `options: { x: number, y: number, width: number, height: number, filled?: boolean }`
+        *   `action: "circle"` => `options: { cx: number, cy: number, radius: number, filled?: boolean }`
 
-### 5.5 Module: `control`
+### 6.5 Module: `control`
 
-*   **`spawn` Payload:** `{}`
+*   **`spawn` Payload:** `{}` (No specific options needed on spawn)
 *   **`update` Payload:** Used to add or remove individual controls. Contains top-level `action` and `controlId` alongside `options` for 'add'.
     *   Add a control:
-        ```json
+        '''json
         {
           "action": "add",
           "controlId": string, // ID of the control to add
@@ -200,29 +237,29 @@ This section details the expected structure of the `payload` object for differen
             }
           }
         }
-        ```
+        '''
     *   Remove a control:
-        ```json
+        '''json
         {
           "action": "remove",
           "controlId": string // ID of the control to remove
           // No options needed for removal
         }
-        ```
+        '''
 *   **`notify` Payload (Sidekick -> Hero):**
-    ```json
+    '''json
     {
       "event": "click" | "submit",
       "controlId": string, // ID of the control that generated the event
       "value"?: string     // Present only for "submit" event (from textInput)
     }
-    ```
+    '''
 
-## 6. Data Representation (`VizRepresentation`)
+## 7. Data Representation (`VizRepresentation`)
 
 This structure is used within the `viz` module's `update` payload (`valueRepresentation`, `keyRepresentation`). **All keys MUST be `camelCase`.**
 
-```typescript
+'''typescript
 interface VizRepresentation {
   type: string;       // e.g., "list", "int", "str", "dict", "MyClass object"
   value: any;         // The actual value or representation (primitive, array of reps, object of reps)
@@ -239,22 +276,23 @@ interface VizRepresentation {
 //     { "type": "int", "id": "int_456_1", "value": 10 },
 //     { "type": "str", "id": "str_789_1", "value": "hello" }
 //   ],
-//   "length": 2
+//   "length": 2,
+//   "observableTracked": false // Example showing observableTracked for the list itself
 // }
-```
+'''
 
-## 7. Error Handling
+## 8. Error Handling
 
-Sidekick -> Hero `error` messages use the standard structure with `method: "error"`. The `payload` typically contains:
+Sidekick -> Hero `error` messages use the standard structure with `method: "error"`, `module` (indicating the module type where the error occurred, e.g., `grid`), and `src` (identifying the specific module instance). The `payload` typically contains:
 
-```json
+'''json
 { "message": string }
-```
+'''
 
-## 8. Versioning and Extensibility
+## 9. Versioning and Extensibility
 
 This protocol definition represents the current version. Future changes may occur.
 *   Implementations should be robust to receiving messages with extra, unexpected fields.
-*   Implementations should strictly require the presence of mandatory fields defined herein (e.g., `commandId` for Canvas updates, `action` for most updates).
+*   Implementations should strictly require the presence of mandatory fields defined herein (e.g., `commandId` for Canvas updates, `action` for most module updates, `peerId`/`role`/`status`/`version`/`timestamp` for system announcements).
 *   Keys within the `payload` object **MUST** use `camelCase`.
-*   There is currently no formal version negotiation mechanism.
+*   Peer version information is exchanged via the `system/announce` message (Section 4). Peers can use this information for basic compatibility checks or logging, although no formal negotiation mechanism is currently defined.
