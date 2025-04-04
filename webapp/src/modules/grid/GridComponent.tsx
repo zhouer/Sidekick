@@ -1,13 +1,13 @@
 // Sidekick/webapp/src/modules/grid/GridComponent.tsx
 import React from 'react';
 import { GridState } from './types';
-import { SidekickMessage } from '../../types';
+import { SentMessage, ModuleNotifyMessage } from '../../types';
 import './GridComponent.css';
 
 interface GridComponentProps {
     id: string; // Instance ID
     state: GridState;
-    onInteraction: (message: SidekickMessage) => void; // Callback to send message back
+    onInteraction: (message: SentMessage) => void; // Callback to send message back
 }
 
 const GridComponent: React.FC<GridComponentProps> = ({ id, state, onInteraction }) => {
@@ -15,7 +15,7 @@ const GridComponent: React.FC<GridComponentProps> = ({ id, state, onInteraction 
     const [width, height] = size;
 
     const handleCellClick = (x: number, y: number) => {
-        const message: SidekickMessage = {
+        const message: ModuleNotifyMessage = {
             id: 0, // or generate unique id if needed
             module: 'grid',
             method: 'notify',

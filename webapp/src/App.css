@@ -17,69 +17,116 @@ body {
     width: 100%;
 }
 
-/* --- Header Styling --- */
+/* --- Header Styling (Compact & Clear) --- */
 .App-header {
-    background-color: #ffffff; /* Light background */
-    padding: 12px 20px;
-    color: #333; /* Dark text color for header */
-    border-bottom: 1px solid #e0e0e0; /* Separator line */
+    background-color: #f8f9fa; /* Lighter background */
+    padding: 8px 15px; /* Reduced padding */
+    color: #343a40; /* Darker text */
+    border-bottom: 1px solid #dee2e6; /* Standard border */
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap; /* Allow wrapping */
-    gap: 10px; /* Spacing between header items */
+    align-items: center; /* Vertically align items */
+    justify-content: space-between; /* Space out main elements */
+    flex-wrap: wrap; /* Allow wrapping on smaller screens */
+    gap: 10px 15px; /* Vertical and horizontal gap */
     width: 100%;
-    box-sizing: border-box; /* Include padding in width */
+    box-sizing: border-box;
 }
 
 .App-header h1 {
     margin: 0;
-    font-size: 1.4em;
-    color: #213547; /* Match default body text */
+    font-size: 1.2em; /* Slightly smaller title */
+    color: #213547;
+    white-space: nowrap; /* Prevent title wrapping */
+    flex-shrink: 0; /* Don't allow title to shrink */
 }
 
-/* Default styling for <p> inside header */
-.App-header p {
-    margin: 0;
-    font-size: 0.9em;
-    padding: 4px 8px;
-    border-radius: 4px;
-    /* Default text color inherited from .App-header */
+/* Container for all status indicators */
+.status-indicators {
+    display: flex;
+    align-items: center;
+    gap: 12px; /* Space between individual status items */
+    font-size: 0.8em; /* Smaller font for status */
+    color: #6c757d; /* Default muted color */
+    flex-grow: 1; /* Allow status to take up space */
+    justify-content: flex-end; /* Align status to the right */
+    min-width: 0; /* Allow shrinking */
+    flex-wrap: wrap; /* Allow status items to wrap if needed */
+    margin-right: 10px; /* Space before the button */
 }
 
-/* Status badge styling - Apply specific background and text color */
-.App-header p:first-of-type[children*='Connected'] {
-    background-color: #4CAF50; /* Green */
-    color: white; /* White text on green */
+.status-indicators p {
+    margin: 0; /* Remove default paragraph margin */
+    padding: 2px 6px; /* Small padding for badges */
+    border-radius: 3px; /* Subtle rounding */
+    white-space: nowrap; /* Prevent wrapping inside status */
+    line-height: 1.4; /* Adjust line height */
+    display: flex; /* Use flex for icon alignment if needed */
+    align-items: center;
 }
-.App-header p:first-of-type[children*='Disconnected'] {
-    background-color: #f44336; /* Red */
-    color: white; /* White text on red */
+
+/* Specific status styles using data attributes or classes */
+.status-connected { /* Class on the WebSocket status <p> */
+    background-color: #d4edda; /* Light green background */
+    color: #155724; /* Dark green text */
+    border: 1px solid #c3e6cb;
+}
+.status-disconnected { /* Class on the WebSocket status <p> */
+    background-color: #f8d7da; /* Light red background */
+    color: #721c24; /* Dark red text */
+    border: 1px solid #f5c6cb;
+}
+
+.hero-status-online { /* Class on the Hero status <p> */
+    /* Optional: Style for online hero */
+    /* background-color: #cfe2ff; */
+    /* color: #084298; */
+    /* border: 1px solid #b6d4fe; */
+    color: #28a745; /* Simpler: Just green text */
+    font-weight: 500;
+}
+.hero-status-offline { /* Class on the Hero status <p> */
+    color: #6c757d; /* Muted color */
+}
+
+.app-version {
+    color: #6c757d;
+    font-style: italic;
+    padding: 2px 0 !important; /* Override badge padding */
+    border: none !important;
+    background-color: transparent !important;
 }
 
 /* Header Button Styling */
 .App-header button {
-    padding: 7px 14px;
-    font-size: 0.9em;
-    background-color: #007bff; /* Primary blue */
+    padding: 5px 12px; /* Reduced padding */
+    font-size: 0.85em; /* Slightly smaller font */
+    background-color: #007bff;
     color: white;
     border: none;
     border-radius: 4px;
     cursor: pointer;
     transition: background-color 0.2s ease;
+    white-space: nowrap; /* Prevent button text wrapping */
+    flex-shrink: 0; /* Don't allow button to shrink */
 }
 
 .App-header button:hover {
-    background-color: #0056b3; /* Darker blue */
+    background-color: #0056b3;
+}
+
+.App-header button:disabled {
+    background-color: #6c757d; /* Muted gray when disabled */
+    cursor: not-allowed;
+    opacity: 0.65;
 }
 
 /* --- Main Content Area Styling --- */
 .App-main {
-    flex-grow: 1; /* Takes remaining vertical space */
-    padding: 30px 20px; /* Padding around the content area */
+    flex-grow: 1;
+    padding: 20px 15px; /* Slightly reduced padding */
     display: flex;
-    flex-direction: column; /* Stack modules vertically */
-    align-items: center; /* Center items horizontally */
+    flex-direction: column;
+    align-items: center;
     width: 100%;
     box-sizing: border-box;
 }
@@ -88,61 +135,75 @@ body {
 .module-card {
     background-color: #ffffff;
     border: 1px solid #eee;
-    border-radius: 8px;
+    border-radius: 6px; /* Slightly smaller radius */
     padding: 15px;
-    /*box-shadow: 0 2px 5px rgba(0, 0, 0, 0.06);*/
     width: 100%;
-    max-width: 1000px; /* Or your preferred max width */
+    max-width: 1000px;
     box-sizing: border-box;
-    margin-bottom: 10px; /* Vertical spacing between cards */
+    margin-bottom: 15px; /* Spacing between cards */
     position: relative;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease; /* Smooth transitions */
 }
 
-/* Slightly enhance border/shadow on hover */
 .module-card:hover {
-    border-color: #e0e0e0; /* Slightly darker border on hover */
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    border-color: #e0e0e0;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07); /* Subtle shadow */
 }
 
 /* --- Info Icon Styles --- */
 .module-info-icon {
     position: absolute;
-    top: 10px; /* Adjust positioning */
-    right: 10px; /* Adjust positioning */
-    color: #aaa; /* Light grey color */
-    font-size: 1.1em; /* Adjust size */
-    z-index: 10; /* Ensure icon is above module content */
-    opacity: 0; /* Hidden by default */
-    visibility: hidden; /* Use visibility to prevent interaction when hidden */
-    transition: opacity 0.2s ease-in-out, visibility 0s 0.2s linear; /* Smooth fade + delayed visibility */
+    top: 8px; /* Adjust positioning */
+    right: 8px;
+    color: #adb5bd; /* Lighter icon color */
+    font-size: 1em; /* Adjust size */
+    z-index: 10;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s ease-in-out, visibility 0s 0.2s linear, color 0.2s ease;
 }
 
-/* --- Show Icon on Card Hover --- */
 .module-card:hover .module-info-icon {
-    opacity: 1; /* Make visible */
+    opacity: 0.6; /* Less prominent opacity */
     visibility: visible;
-    transition-delay: 0s; /* Remove delay when showing */
+    transition-delay: 0s;
 }
 
-/* Darken icon itself on its own hover (when visible) */
 .module-info-icon:hover {
-    color: #555; /* Darken on hover */
+    opacity: 1; /* Fully opaque on direct hover */
+    color: #495057; /* Darken on hover */
 }
 
 /* --- Tooltip Styles --- */
 .module-tooltip {
     position: absolute;
-    top: 60px; /* Position above the icon */
-    right: 35px; /* Position to the left of the icon */
-    transform: translateY(-100%); /* Move it fully above */
-    background-color: #333; /* Dark background */
-    color: #fff; /* White text */
-    padding: 6px 10px;
+    top: 30px; /* Adjust position relative to icon */
+    right: 30px;
+    transform: translateY(-100%);
+    background-color: rgba(52, 58, 64, 0.9); /* Slightly transparent dark background */
+    color: #fff;
+    padding: 5px 8px; /* Reduced padding */
     border-radius: 4px;
-    font-size: 0.85em;
-    white-space: nowrap; /* Prevent wrapping */
-    z-index: 20; /* Ensure tooltip is above everything */
-    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-    opacity: 0.95; /* Slight transparency */
-    pointer-events: none; /* Prevent tooltip from interfering with mouse events */
+    font-size: 0.75em; /* Smaller tooltip font */
+    white-space: pre-line; /* Allow wrapping on newline */
+    z-index: 20;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    opacity: 0; /* Hidden by default */
+    visibility: hidden;
+    transition: opacity 0.15s ease, visibility 0.15s ease;
+    pointer-events: none;
+}
+
+/* Show tooltip when info icon is hovered */
+.module-info-icon:hover + .module-tooltip, /* If tooltip is sibling */
+.module-card:hover .module-info-icon:hover ~ .module-tooltip { /* More robust if nested differently */
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Ensure wrapping works in tooltip */
+.module-tooltip br {
+    display: block; /* Make <br> work like block elements */
+    content: "";
+    margin-top: 4px; /* Add space after line break */
 }

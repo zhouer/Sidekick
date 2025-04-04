@@ -1,24 +1,20 @@
 // Sidekick/webapp/src/modules/console/ConsoleComponent.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ConsoleState, ConsoleNotifyPayload } from './types';
-import { SidekickMessage } from '../../types';
+import { SentMessage, ModuleNotifyMessage } from '../../types';
 import './ConsoleComponent.css';
 
 interface ConsoleComponentProps {
     id: string;
     state: ConsoleState;
-    onInteraction: (message: SidekickMessage) => void;
+    onInteraction: (message: SentMessage) => void;
 }
 
 const ConsoleComponent: React.FC<ConsoleComponentProps> = ({ id, state, onInteraction }) => {
     const { lines } = state;
-    // --- MODIFICATION: Ref for the output container itself ---
     const outputRef = useRef<HTMLDivElement>(null);
-    // --- REMOVED: End ref is no longer needed for scrolling ---
-    // const consoleEndRef = useRef<HTMLDivElement>(null);
     const [inputValue, setInputValue] = useState('');
 
-    // --- MODIFICATION: Scroll the output div directly ---
     useEffect(() => {
         const outputDiv = outputRef.current;
         if (outputDiv) {
@@ -34,7 +30,7 @@ const ConsoleComponent: React.FC<ConsoleComponentProps> = ({ id, state, onIntera
     const sendInput = useCallback(() => {
         if (!inputValue.trim()) return;
         const payload: ConsoleNotifyPayload = { event: 'submit', value: inputValue };
-        const message: SidekickMessage = { id: 0, module: 'console', method: 'notify', src: id, payload: payload };
+        const message: ModuleNotifyMessage = { id: 0, module: 'console', method: 'notify', src: id, payload: payload };
         onInteraction(message);
         setInputValue('');
     }, [inputValue, id, onInteraction]);

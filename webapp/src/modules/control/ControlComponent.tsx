@@ -1,13 +1,13 @@
 // Sidekick/webapp/src/modules/control/ControlComponent.tsx
 import React, { useState, useCallback, useEffect } from 'react';
 import { ControlState, ControlNotifyPayload } from './types';
-import { SidekickMessage } from '../../types';
+import { SentMessage, ModuleNotifyMessage } from '../../types';
 import './ControlComponent.css';
 
 interface ControlComponentProps {
     id: string;
     state: ControlState;
-    onInteraction: (message: SidekickMessage) => void;
+    onInteraction: (message: SentMessage) => void;
 }
 
 const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onInteraction }) => {
@@ -64,7 +64,7 @@ const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onIntera
             event: 'click',
             controlId: controlId,
         };
-        const message: SidekickMessage = { id: 0, module: 'control', method: 'notify', src: id, payload };
+        const message: ModuleNotifyMessage = { id: 0, module: 'control', method: 'notify', src: id, payload };
         onInteraction(message);
     }, [id, onInteraction]);
 
@@ -77,7 +77,7 @@ const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onIntera
             controlId: controlId,
             value: value,
         };
-        const message: SidekickMessage = { id: 0, module: 'control', method: 'notify', src: id, payload };
+        const message: ModuleNotifyMessage = { id: 0, module: 'control', method: 'notify', src: id, payload };
         onInteraction(message);
     }, [id, onInteraction, inputValues]);
 

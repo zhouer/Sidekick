@@ -1,81 +1,106 @@
 // Sidekick/webapp/src/types/index.ts
-import React from 'react';
 
-// --- Shared Communication Message Types ---
+// --- Peer Information ---
+export type PeerRole = "hero" | "sidekick";
+export type PeerStatus = "online" | "offline";
 
+export interface AnnouncePayload {
+    peerId: string;
+    role: PeerRole;
+    status: PeerStatus;
+    version: string;
+    timestamp: number;
+}
+
+// --- Base Message Structure ---
 interface BaseMessage {
-    id: number; // Reserved, often 0
-    module: string; // Module type identifier string
-    method: string; // Action/Notification type
+    id: number; // Reserved
+    module: string;
+    method: string;
+    payload?: object | null;
 }
 
-/** Message from Hero (Python backend) to Sidekick (Frontend) */
-export interface HeroMessage extends BaseMessage {
-    method: 'spawn' | 'update' | 'remove'; // Actions Hero can perform
-    target: string; // The unique ID of the target module instance
-    payload?: any; // Data specific to the method and module type (defined per module)
+// --- Specific Message Types ---
+
+// Messages received FROM Hero (or Server)
+export interface SystemAnnounceMessage extends BaseMessage {
+    module: "system";
+    method: "announce";
+    payload: AnnouncePayload;
+    // target/src are omitted
 }
 
-/** Message from Sidekick (Frontend) to Hero (Python backend) */
-export interface SidekickMessage extends BaseMessage {
-    method: 'notify' | 'error'; // Types of messages Sidekick can send
-    src: string;    // The unique ID of the source module instance
-    payload?: any; // Data specific to the notification/error (defined per module)
+export interface GlobalClearMessage extends BaseMessage {
+    module: "global";
+    method: "clearAll";
+    // target/src/payload are omitted
 }
 
-
-// --- Generic Module Types ---
-
-/**
- * Represents a generic module instance stored in the application state.
- * Specific state details are handled by module-specific logic.
- */
-export interface ModuleInstance {
-    id: string;     // Unique instance identifier
-    type: string;   // Module type identifier string
-    state: any;     // The state specific to this module instance (kept generic here)
+export interface ModuleControlMessage extends BaseMessage {
+    module: string; // e.g., "grid", "console", "viz", etc. (NOT "system" or "global")
+    method: "spawn" | "update" | "remove";
+    target: string; // Target instance ID is required
+    payload?: object | null; // Payload structure depends on module/method
+    // src is omitted
 }
 
-// --- Module Definition for Registry ---
-/**
- * Defines the structure for registering a module type.
- * Uses generics to allow specific module logic/components to be strongly typed internally,
- * while the definition itself remains generic here.
- * @template S The type of the module's state (defaults to any).
- * @template P_Spawn The type of the payload for the 'spawn' message (defaults to any).
- * @template P_Update The type of the payload for the 'update' message (defaults to any).
- */
-export interface ModuleDefinition<S = any, P_Spawn = any, P_Update = any> {
-    /** The unique identifier string for the module type. */
-    type: string;
+// Union type for all messages potentially received by Sidekick
+export type ReceivedMessage = SystemAnnounceMessage | GlobalClearMessage | ModuleControlMessage;
 
-    /** The display name for the module type, used in the UI. */
-    displayName: string;
+// Messages sent FROM Sidekick
+export interface SystemAnnounceMessageToSend extends BaseMessage {
+    module: "system";
+    method: "announce";
+    payload: AnnouncePayload;
+    // target/src are omitted
+}
+export interface ModuleNotifyMessage extends BaseMessage {
+    module: string; // e.g., "grid", "console", "control"
+    method: "notify";
+    src: string; // Source instance ID is required
+    payload: object; // Payload structure depends on module/event
+    // target is omitted
+}
 
-    /** The React component responsible for rendering this module type. */
-    component: React.FC<any>; // Component props are expected to handle specific state type internally
+export interface ModuleErrorMessage extends BaseMessage {
+    module: string; // e.g., "grid"
+    method: "error";
+    src: string; // Source instance ID is required
+    payload: { message: string };
+    // target is omitted
+}
 
-    /**
-     * Creates the initial state for a new module instance.
-     * @param instanceId The unique ID assigned to this instance.
-     * @param payload The payload received from the 'spawn' message.
-     * @returns The initial state object for this module type.
-     */
-    getInitialState: (instanceId: string, payload: P_Spawn) => S;
+// Union type for all messages potentially sent by Sidekick
+export type SentMessage = SystemAnnounceMessageToSend | ModuleNotifyMessage | ModuleErrorMessage;
 
-    /**
-     * Updates the state of a module instance based on an 'update' message payload.
-     * This function MUST be pure and return a new state object if changes occurred.
-     * @param currentState The current state of the module instance.
-     * @param payload The payload received from the 'update' message.
-     * @returns The updated state object. If no change occurred, it should return the original state object reference.
-     */
-    updateState: (currentState: S, payload: P_Update) => S;
+// --- Module Instance State ---
+// Represents a single active module instance in the UI
+export interface ModuleInstance<TState = any> {
+    id: string;
+    type: string; // Module type string (e.g., "grid")
+    state: TState; // Module-specific state object
+}
 
-    /**
-     * Optional flag indicating if this module type requires the 'onInteraction'
-     * callback prop to send messages back to the Hero backend.
-     * Defaults to false if omitted.
-     */
+// --- Module Definition (for Registry) ---
+// Defines the contract for registering a module type
+export interface ModuleDefinition<TState = any, TPayload = any> {
+    type: string; // Unique module type identifier
+    component: React.FC<any>; // The React component to render the module
+    // Pure function to create the initial state for a new instance
+    getInitialState: (instanceId: string, payload: TPayload | null) => TState;
+    // Pure function to calculate the next state based on an update payload
+    // Must return a new object reference if the state changes.
+    updateState: (currentState: TState, payload: TPayload) => TState;
+    // Does this module component require the 'onInteraction' prop?
     isInteractive?: boolean;
+    // Optional display name for UI purposes
+    displayName?: string;
+}
+
+// --- Hero Peer Status (for AppState) ---
+export interface HeroPeerInfo {
+    peerId: string;
+    version: string;
+    status: PeerStatus;
+    timestamp: number;
 }

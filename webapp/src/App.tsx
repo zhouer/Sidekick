@@ -1,13 +1,19 @@
 // Sidekick/webapp/src/App.tsx
 import React, { useCallback, useReducer, Reducer, useState } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
-import { moduleRegistry } from './modules/moduleRegistry'; // Import the central module registry
+import { moduleRegistry } from './modules/moduleRegistry';
 import {
-    HeroMessage,
-    SidekickMessage,
-    ModuleInstance, // Generic ModuleInstance type
-    ModuleDefinition // Generic ModuleDefinition type
-} from './types'; // Import shared, generic types
+    ReceivedMessage, // Use the specific union type
+    SentMessage,     // Use the specific union type
+    ModuleInstance,
+    ModuleDefinition,
+    SystemAnnounceMessage,
+    GlobalClearMessage,
+    ModuleControlMessage,
+    HeroPeerInfo,
+    ModuleNotifyMessage,
+    ModuleErrorMessage
+} from './types';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faInfoCircle } from '@fortawesome/free-solid-svg-icons';
 import './App.css';
@@ -16,148 +22,127 @@ import './App.css';
 interface AppState {
     modulesById: Map<string, ModuleInstance>; // Map instance ID -> ModuleInstance
     moduleOrder: string[];                  // Array of instance IDs in creation order
+    heroStatus: HeroPeerInfo | null;        // Status of the connected Hero (if any)
 }
-// Initial state when the application loads
+
+// Initial state
 const initialState: AppState = {
     modulesById: new Map<string, ModuleInstance>(),
     moduleOrder: [],
+    heroStatus: null,
 };
 
 // --- Reducer Actions Definition ---
-// Defines the types of actions the reducer can handle
-type ModuleAction =
-    | { type: 'PROCESS_MESSAGE'; message: HeroMessage } // Action to process incoming message from Hero
-    | { type: 'CLEAR_ALL' }; // Action to remove all modules
+type AppAction =
+    | { type: 'PROCESS_MESSAGE'; message: ReceivedMessage } // Use the specific union type
+    | { type: 'CLEAR_ALL_MODULES' }; // Renamed for clarity
 
 // =============================================================================
 // == Main Application Reducer ==
-// Manages the central state (modulesById, moduleOrder) based on dispatched actions.
-// Delegates module-specific logic (initialization, updates) to the module registry.
 // =============================================================================
-const rootReducer: Reducer<AppState, ModuleAction> = (state, action): AppState => {
+const rootReducer: Reducer<AppState, AppAction> = (state, action): AppState => {
     switch (action.type) {
-        // Handle processing of messages received from the Hero backend
         case 'PROCESS_MESSAGE': {
             const message = action.message;
-            // Extract message details
-            const { module: moduleType, method, target, payload } = message;
 
-            // Find the corresponding module definition in the registry
-            const moduleDefinition = moduleRegistry.get(moduleType);
+            // --- Handle System Announce ---
+            if (message.module === 'system' && message.method === 'announce') {
+                const payload = (message as SystemAnnounceMessage).payload;
+                if (payload && payload.role === 'hero') {
+                    // Update hero status (overwrite previous hero info for simplicity)
+                    console.log(`Reducer: Received Hero announce (${payload.peerId}, Status: ${payload.status})`);
+                    const newHeroStatus: HeroPeerInfo | null = payload.status === 'online' ? {
+                        peerId: payload.peerId,
+                        version: payload.version,
+                        status: payload.status,
+                        timestamp: payload.timestamp,
+                    } : null; // Set to null if hero goes offline
 
-            // Handle different message methods ('spawn', 'update', 'remove')
-            switch (method) {
-                case 'spawn': {
-                    // Prevent spawning if instance ID already exists
-                    if (state.modulesById.has(target)) {
-                        console.warn(`Reducer: Spawn failed - Duplicate instance ID "${target}".`);
-                        return state;
-                    }
-                    // Ensure the module type is known/registered
-                    if (!moduleDefinition) {
-                        console.warn(`Reducer: Spawn failed - Unknown module type "${moduleType}".`);
-                        return state;
-                    }
-
-                    try {
-                        // Delegate initial state creation to the registered module's logic
-                        const initialModuleState = moduleDefinition.getInitialState(target, payload);
-
-                        // Create the new module instance object
-                        const newModuleInstance: ModuleInstance = {
-                            id: target,
-                            type: moduleType, // Store the type string
-                            state: initialModuleState,
-                        };
-
-                        // Update application state immutably
-                        const newModulesById = new Map(state.modulesById);
-                        newModulesById.set(target, newModuleInstance);
-                        const newModuleOrder = [...state.moduleOrder, target]; // Append ID to order
-
-                        console.log(`Reducer: Spawned "${target}" (${moduleType}). Order:`, newModuleOrder);
-                        return { modulesById: newModulesById, moduleOrder: newModuleOrder };
-
-                    } catch (error: any) {
-                        // Handle errors during initial state creation (e.g., invalid payload)
-                        console.error(`Reducer: Error spawning module "${target}" (${moduleType}):`, error.message || error);
-                        return state; // Return unchanged state on error
+                    // Only return new state if status actually changed
+                    if (state.heroStatus?.peerId !== newHeroStatus?.peerId || state.heroStatus?.status !== newHeroStatus?.status) {
+                        return { ...state, heroStatus: newHeroStatus };
                     }
                 }
-
-                case 'update': {
-                    // Find the module instance to update
-                    const currentModule = state.modulesById.get(target);
-                    if (!currentModule) {
-                        console.warn(`Reducer: Update failed - Module instance "${target}" not found.`);
-                        return state;
-                    }
-                    // Verify the registered definition matches the instance type and incoming message type
-                    if (!moduleDefinition || currentModule.type !== moduleDefinition.type || currentModule.type !== moduleType) {
-                        console.error(`Reducer: Update failed - Module type mismatch or not registered for "${target}" (Instance: ${currentModule.type}, Message: ${moduleType}).`);
-                        return state;
-                    }
-                    // Basic payload check (specific checks happen in module logic)
-                    if (!payload) {
-                        console.warn(`Reducer: Update failed - Missing payload for "${target}".`);
-                        return state;
-                    }
-
-                    try {
-                        // Delegate state update to the registered module's logic
-                        const updatedModuleState = moduleDefinition.updateState(currentModule.state, payload);
-
-                        // If the update function returned the exact same state object, no update needed
-                        if (updatedModuleState === currentModule.state) {
-                            return state;
-                        }
-
-                        // Create the updated module instance with the new state
-                        const updatedModuleInstance = {
-                            ...currentModule,
-                            state: updatedModuleState,
-                        };
-
-                        // Update application state immutably
-                        const newModulesById = new Map(state.modulesById);
-                        newModulesById.set(target, updatedModuleInstance);
-
-                        // Module order remains the same on update
-                        return { ...state, modulesById: newModulesById };
-
-                    } catch (error: any) {
-                        // Handle errors during state update (e.g., invalid payload for the module)
-                        console.error(`Reducer: Error updating module "${target}" (${moduleType}):`, error.message || error);
-                        return state; // Return unchanged state on error
-                    }
-                }
-
-                case 'remove': {
-                    // Only proceed if the module instance actually exists
-                    if (!state.modulesById.has(target)) {
-                        return state; // Already removed or never existed
-                    }
-
-                    // Update application state immutably
-                    const newModulesById = new Map(state.modulesById);
-                    newModulesById.delete(target); // Remove instance from map
-                    const newModuleOrder = state.moduleOrder.filter(id => id !== target); // Filter ID out of order array
-
-                    console.log(`Reducer: Removed module "${target}". Order:`, newModuleOrder);
-                    return { modulesById: newModulesById, moduleOrder: newModuleOrder };
-                }
-
-                // Handle unknown message methods
-                default:
-                    console.warn('Reducer: Unknown message method:', method);
-                    return state;
+                // Ignore sidekick announcements or other roles for now
+                return state; // No state change needed for this message
             }
+
+            // --- Handle Global Clear ---
+            if (message.module === 'global' && message.method === 'clearAll') {
+                console.log("Reducer: Received global/clearAll command.");
+                // Only update if modules actually exist
+                if (state.modulesById.size > 0 || state.moduleOrder.length > 0) {
+                    return { ...state, modulesById: new Map(), moduleOrder: [] };
+                }
+                return state; // Already cleared
+            }
+
+            // --- Handle Module Control Messages ---
+            // Type guard to ensure it's a ModuleControlMessage before proceeding
+            if (message.method === 'spawn' || message.method === 'update' || message.method === 'remove') {
+                const moduleMessage = message as ModuleControlMessage;
+                const { module: moduleType, method, target, payload } = moduleMessage;
+
+                const moduleDefinition = moduleRegistry.get(moduleType);
+
+                switch (method) {
+                    case 'spawn': {
+                        if (state.modulesById.has(target)) { console.warn(`Reducer: Spawn failed - Duplicate ID "${target}".`); return state; }
+                        if (!moduleDefinition) { console.warn(`Reducer: Spawn failed - Unknown module type "${moduleType}".`); return state; }
+
+                        try {
+                            const initialModuleState = moduleDefinition.getInitialState(target, payload);
+                            const newModuleInstance: ModuleInstance = { id: target, type: moduleType, state: initialModuleState };
+                            const newModulesById = new Map(state.modulesById).set(target, newModuleInstance);
+                            const newModuleOrder = [...state.moduleOrder, target];
+                            console.log(`Reducer: Spawned "${target}" (${moduleType}). Order:`, newModuleOrder);
+                            return { ...state, modulesById: newModulesById, moduleOrder: newModuleOrder };
+                        } catch (error: any) { console.error(`Reducer: Error spawning module "${target}" (${moduleType}):`, error.message || error); return state; }
+                    }
+
+                    case 'update': {
+                        const currentModule = state.modulesById.get(target);
+                        if (!currentModule) { console.warn(`Reducer: Update failed - Module "${target}" not found.`); return state; }
+                        if (!moduleDefinition || currentModule.type !== moduleDefinition.type || currentModule.type !== moduleType) { console.error(`Reducer: Update failed - Module type mismatch for "${target}"`); return state; }
+                        if (payload === undefined) { console.warn(`Reducer: Update failed - Missing payload for "${target}".`); return state; } // Check payload exists
+
+                        try {
+                            // Ensure payload is treated as 'any' for the generic updateState function
+                            const updatedModuleState = moduleDefinition.updateState(currentModule.state, payload as any);
+                            if (updatedModuleState === currentModule.state) { return state; } // No change
+
+                            const updatedModuleInstance = { ...currentModule, state: updatedModuleState };
+                            const newModulesById = new Map(state.modulesById).set(target, updatedModuleInstance);
+                            return { ...state, modulesById: newModulesById };
+                        } catch (error: any) { console.error(`Reducer: Error updating module "${target}" (${moduleType}):`, error.message || error); return state; }
+                    }
+
+                    case 'remove': {
+                        if (!state.modulesById.has(target)) { return state; } // Already removed
+                        const newModulesById = new Map(state.modulesById);
+                        newModulesById.delete(target);
+                        const newModuleOrder = state.moduleOrder.filter(id => id !== target);
+                        console.log(`Reducer: Removed module "${target}". Order:`, newModuleOrder);
+                        return { ...state, modulesById: newModulesById, moduleOrder: newModuleOrder };
+                    }
+                    // No default needed as method is constrained by type guard
+                }
+            }
+
+            // Fallback for unhandled message types (should ideally not happen with strict typing)
+            console.warn('Reducer: Unhandled message type received:', message);
+            return state;
         }
-        // Handle the action to clear all modules
-        case 'CLEAR_ALL':
-            console.log("Reducer: Clearing all modules.");
-            return initialState; // Reset state to the initial empty configuration
-        // Handle unknown action types
+
+        // Handle explicit CLEAR_ALL_MODULES action (e.g., from a UI button)
+        case 'CLEAR_ALL_MODULES':
+            console.log("Reducer: Clearing all modules via UI action.");
+            // Only update if modules actually exist
+            if (state.modulesById.size > 0 || state.moduleOrder.length > 0) {
+                return { ...state, modulesById: new Map(), moduleOrder: [], heroStatus: state.heroStatus }; // Keep hero status
+            }
+            return state; // Already cleared
+
         default:
             console.warn("Reducer: Unknown action type:", (action as any)?.type);
             return state;
@@ -166,131 +151,129 @@ const rootReducer: Reducer<AppState, ModuleAction> = (state, action): AppState =
 
 // =============================================================================
 // == Main Application Component ==
-// Renders the UI including header and dynamically rendered modules.
 // =============================================================================
 function App() {
-    // Central application state managed by the reducer
-    const [appState, dispatchModules] = useReducer(rootReducer, initialState);
-    const { modulesById, moduleOrder } = appState;
+    const [appState, dispatch] = useReducer(rootReducer, initialState);
+    const { modulesById, moduleOrder, heroStatus } = appState;
     const [hoveredInfoId, setHoveredInfoId] = useState<string | null>(null);
 
-    // Callback function passed to useWebSocket hook to handle incoming messages
+    // Callback for useWebSocket hook
     const handleWebSocketMessage = useCallback((messageData: any) => {
-        // Basic validation of received data
-        if (typeof messageData === 'object' && messageData !== null) {
-            // Dispatch the message to the reducer if it's a valid object
-            dispatchModules({ type: 'PROCESS_MESSAGE', message: messageData as HeroMessage });
+        // Basic validation
+        if (typeof messageData === 'object' && messageData !== null && messageData.module && messageData.method) {
+            dispatch({ type: 'PROCESS_MESSAGE', message: messageData as ReceivedMessage });
         } else {
-            console.error("App: Received non-object message from WebSocket:", messageData);
+            console.error("App: Received invalid message structure from WebSocket:", messageData);
         }
-    }, []); // dispatchModules is stable, no dependency needed
+    }, []); // dispatch is stable
 
-    // Custom hook to manage WebSocket connection
+    // WebSocket connection hook
     const { isConnected, sendMessage } = useWebSocket(handleWebSocketMessage);
 
-    // Callback function passed down to interactive module components
-    // Used by modules to send notifications back to the Hero backend
-    const handleModuleInteraction = useCallback((interactionMessage: SidekickMessage) => {
-        // Basic validation of the message structure from the module component
-        if (interactionMessage && interactionMessage.module && interactionMessage.method && interactionMessage.src) {
-            sendMessage(interactionMessage); // Send the message via WebSocket
+    // Callback passed to interactive modules
+    const handleModuleInteraction = useCallback((interactionMessage: SentMessage) => {
+        // Check for properties common to messages that should be sent
+        if (interactionMessage && interactionMessage.module && interactionMessage.method) {
+            // Check if it's a type that *should* have 'src' before validating 'src'
+            if ((interactionMessage.method === 'notify' || interactionMessage.method === 'error')) {
+                // Now it's safe to check for src on ModuleNotifyMessage or ModuleErrorMessage
+                const notifyOrErrorMsg = interactionMessage as ModuleNotifyMessage | ModuleErrorMessage;
+                if (notifyOrErrorMsg.src) {
+                    sendMessage(notifyOrErrorMsg);
+                } else {
+                    console.error("App: Invalid notify/error message missing 'src':", interactionMessage);
+                }
+            } else if (interactionMessage.module === 'system') {
+                // Allow sending system messages (though usually only done by useWebSocket hook)
+                sendMessage(interactionMessage);
+            } else {
+                console.error("App: Attempted to send message of unexpected type via interaction:", interactionMessage);
+            }
         } else {
             console.error("App: Invalid interaction message structure from component:", interactionMessage);
         }
-    }, [sendMessage]); // Dependency on the stable sendMessage function
+    }, [sendMessage]);
 
-    // Callback for the "Clear All" button click
-    const clearAllModules = useCallback(() => {
-        dispatchModules({ type: 'CLEAR_ALL' });
-    }, []); // No dependencies
+    // Callback for the UI "Clear All" button
+    const clearAllModulesUI = useCallback(() => {
+        // Dispatch local clear action, Python side handles global/clearAll via config or manual call
+        dispatch({ type: 'CLEAR_ALL_MODULES' });
+    }, []);
 
     // --- Render Logic for Modules ---
     const renderModules = () => {
-        // Map over the moduleOrder array to render components in the correct sequence
         return moduleOrder.map(moduleId => {
-            // Get the module instance data from the state map
             const moduleInstance = modulesById.get(moduleId);
+            if (!moduleInstance) { console.error(`App Render: Module "${moduleId}" in order but not in map!`); return <div key={moduleId}>Error: Module data missing</div>; }
 
-            // Safety check: Handle case where module ID exists in order but not in map (shouldn't happen ideally)
-            if (!moduleInstance) {
-                console.error(`App Render: Module "${moduleId}" found in order but not in map!`);
-                return <div key={moduleId}>Error: Module data missing for {moduleId}</div>;
-            }
-
-            // Find the module's definition (component, logic functions) in the registry
             const moduleDefinition = moduleRegistry.get(moduleInstance.type);
+            if (!moduleDefinition) { console.error(`App Render: Module type "${moduleInstance.type}" (${moduleId}) not registered!`); return <div key={moduleId}>Error: Unknown Module Type '{moduleInstance.type}'</div>; }
 
-            // Safety check: Handle case where the module type isn't registered
-            if (!moduleDefinition) {
-                console.error(`App Render: Module type "${moduleInstance.type}" for instance "${moduleId}" is not registered!`);
-                return <div key={moduleId}>Error: Unknown Module Type '{moduleInstance.type}'</div>;
-            }
-
-            // Get the specific React component to render from the definition
             const ModuleComponent = moduleDefinition.component;
-
-            // Prepare the props required by the module component
-            // Note: state is passed as 'any' here, component internally expects specific type
-            const componentProps: any = {
+            // Define props, casting state to any for flexibility, component expects specific type
+            const componentProps: { id: string; state: any; onInteraction?: (msg: SentMessage) => void } = {
                 id: moduleInstance.id,
                 state: moduleInstance.state,
-                // Conditionally pass the interaction handler only to modules that need it
-                ...( moduleDefinition.isInteractive && { onInteraction: handleModuleInteraction } )
             };
+            // Conditionally add onInteraction if the module needs it
+            if (moduleDefinition.isInteractive) {
+                componentProps.onInteraction = handleModuleInteraction;
+            }
 
+            // --- Tooltip/Info Logic (remains the same) ---
             const handleMouseEnter = () => setHoveredInfoId(moduleId);
             const handleMouseLeave = () => setHoveredInfoId(null);
             const isHovered = hoveredInfoId === moduleId;
-            const moduleDisplayName = (moduleDefinition as any).displayName || moduleInstance.type;
+            const moduleDisplayName = moduleDefinition.displayName || moduleInstance.type;
 
-            // Render the component with its props
             return (
-                // Add position: relative in CSS for positioning context
                 <div key={moduleInstance.id} className="module-card">
-                    {/* --- Info Icon --- */}
-                    <div
-                        className="module-info-icon"
-                        onMouseEnter={handleMouseEnter}
-                        onMouseLeave={handleMouseLeave}
-                        aria-label={`Info for ${moduleDisplayName}: ${moduleInstance.id}`}
-                    >
+                    <div className="module-info-icon" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} aria-label={`Info for ${moduleDisplayName}: ${moduleInstance.id}`}>
                         <FontAwesomeIcon icon={faInfoCircle} />
                     </div>
-
-                    {/* --- Tooltip (conditionally rendered) --- */}
                     {isHovered && (
-                        <div className="module-tooltip">
-                            Type: {moduleDisplayName}<br />
-                            ID: {moduleInstance.id}
-                        </div>
+                        <div className="module-tooltip">Type: {moduleDisplayName}<br />ID: {moduleInstance.id}</div>
                     )}
-
-                    {/* --- Render the actual module component --- */}
                     <ModuleComponent {...componentProps} />
                 </div>
             );
         });
     };
 
+    // --- Render Status Indicators ---
+    const renderStatus = () => {
+        const wsStatusText = isConnected ? 'Connected' : 'Disconnected';
+        const wsStatusClass = isConnected ? 'status-connected' : 'status-disconnected';
+        let heroStatusText = 'Hero: Offline';
+        if (heroStatus?.status === 'online') {
+            heroStatusText = `Hero: Online (v${heroStatus.version})`;
+        }
+        const sidekickStatusText = 'Sidekick (v' + __APP_VERSION__ + ')';
+
+        return (
+            <>
+                <p className={wsStatusClass}>WebSocket: {wsStatusText}</p>
+                <p className="app-version">{heroStatusText}</p>
+                <p className="app-version">{sidekickStatusText}</p>
+            </>
+        );
+    };
+
+
     // --- Main JSX Structure ---
     return (
         <div className="App">
-            {/* Header section */}
             <header className="App-header">
                 <h1>Sidekick</h1>
-                {/* Display WebSocket connection status with appropriate class */}
-                <p className={`status-${isConnected ? 'connected' : 'disconnected'}`}>
-                    WebSocket: {isConnected ? 'Connected' : 'Disconnected'}
-                </p>
-                {/* Button to clear all modules, disabled if none exist */}
-                <button onClick={clearAllModules} disabled={moduleOrder.length === 0}>Clear All</button>
+                <div className="status-indicators"> {/* Group status indicators */}
+                    {renderStatus()}
+                </div>
+                <button onClick={clearAllModulesUI} disabled={moduleOrder.length === 0}>Clear UI</button>
             </header>
 
-            {/* Main content area */}
             <main className="App-main">
-                {/* Show a placeholder message if no modules are active, otherwise render them */}
                 {moduleOrder.length === 0
-                    ? <p>No modules active. Run a script using the Sidekick library!</p>
+                    ? <p>No modules active. Waiting for Hero...</p>
                     : renderModules()}
             </main>
         </div>

@@ -4,26 +4,35 @@
 Sidekick Visual Coding Buddy - Python Client Library
 """
 
-__version__ = "0.1.0"
+# --- Version ---
+from ._version import __version__
 
-# Core connection functions
-from .connection import set_url, close_connection
+# --- Core connection/config functions ---
+from .connection import set_url, set_config, close_connection, activate_connection, clear_all
 
-# Core observable class
+# --- Core observable class ---
 from .observable_value import ObservableValue
 
-# Module classes
+# --- Module classes ---
 from .grid import Grid
 from .console import Console
 from .viz import Viz
 from .canvas import Canvas
 from .control import Control
 
-# Explicitly define __all__ for clarity
+# Explicitly define __all__ for clarity and controlling imports
 __all__ = [
+    # Version
+    '__version__',
+    # Config/Connection
     'set_url',
+    'set_config',
     'close_connection',
+    'activate_connection',
+    'clear_all',
+    # Observable
     'ObservableValue',
+    # Modules
     'Grid',
     'Console',
     'Control',
