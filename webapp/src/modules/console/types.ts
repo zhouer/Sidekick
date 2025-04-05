@@ -3,11 +3,13 @@
 // --- State ---
 export interface ConsoleState {
     lines: string[];
+    showInput: boolean;
 }
 
 // --- Payloads ---
 export interface ConsoleSpawnPayload {
-    text?: string; // Optional initial text line
+    showInput: boolean;
+    text?: string;      // Optional initial text line
 }
 
 export interface ConsoleUpdatePayload {
@@ -18,6 +20,6 @@ export interface ConsoleUpdatePayload {
 }
 
 export interface ConsoleNotifyPayload {
-    event: 'submit';
+    event: 'inputText';
     value: string; // The text submitted by the user
 }

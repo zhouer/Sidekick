@@ -4,24 +4,25 @@ import { GridState, GridSpawnPayload, GridUpdatePayload } from './types';
 /**
  * Creates the initial state for a Grid module.
  * @param instanceId - The ID of the grid instance.
- * @param payload - The spawn payload containing the grid size.
+ * @param payload - The spawn payload containing the grid dimensions (numColumns, numRows).
  * @returns The initial GridState.
- * @throws If size in payload is invalid or missing.
+ * @throws If numColumns or numRows in payload are invalid or missing.
  */
 export function getInitialState(instanceId: string, payload: GridSpawnPayload): GridState {
     console.log(`GridLogic ${instanceId}: Initializing state with payload:`, payload);
 
-    // Validate essential parameters
-    if (!payload?.size || !Array.isArray(payload.size) || payload.size.length !== 2 || typeof payload.size[0] !== 'number' || typeof payload.size[1] !== 'number' || payload.size[0] <= 0 || payload.size[1] <= 0) {
-        console.error(`GridLogic ${instanceId}: Spawn failed - Invalid or missing size in payload:`, payload);
-        throw new Error(`Grid spawn failed for ${instanceId}: Invalid or missing size.`);
+    // Validate essential parameters: numColumns and numRows
+    if (!payload || typeof payload.numColumns !== 'number' || typeof payload.numRows !== 'number' || payload.numColumns <= 0 || payload.numRows <= 0) {
+        console.error(`GridLogic ${instanceId}: Spawn failed - Invalid or missing numColumns/numRows in payload:`, payload);
+        throw new Error(`Grid spawn failed for ${instanceId}: Invalid or missing numColumns/numRows.`);
     }
 
-    const [width, height] = payload.size;
+    const { numColumns, numRows } = payload;
 
-    // Create the initial state ensuring 'size' is a [number, number] tuple
+    // Create the initial state using validated dimensions
     return {
-        size: [width, height], // Use validated size
+        numColumns: numColumns,
+        numRows: numRows,
         cells: {}, // Start with an empty cells object
     };
 }
@@ -42,6 +43,13 @@ export function updateState(currentState: GridState, payload: GridUpdatePayload)
             console.warn(`GridLogic: Invalid 'setCell' options for state update (missing x or y).`, options);
             return currentState;
         }
+
+        // Also validate coordinates against state dimensions
+        if (options.x < 0 || options.x >= currentState.numColumns || options.y < 0 || options.y >= currentState.numRows) {
+            console.warn(`GridLogic: 'setCell' coordinates (${options.x}, ${options.y}) out of bounds (${currentState.numColumns}x${currentState.numRows}). Ignoring.`);
+            return currentState;
+        }
+
         const key = `${options.x},${options.y}`;
         const currentCell = currentState.cells[key];
 
@@ -50,7 +58,6 @@ export function updateState(currentState: GridState, payload: GridUpdatePayload)
         const potentialNewText = options.text !== undefined ? options.text : currentCell?.text;
 
         // Check if the cell needs to be updated (either new or content changed)
-        // Explicitly check for null/undefined vs empty string if that distinction matters
         const needsUpdate = !currentCell ||
             currentCell.color !== potentialNewColor ||
             currentCell.text !== potentialNewText;
@@ -82,10 +89,8 @@ export function updateState(currentState: GridState, payload: GridUpdatePayload)
             }
 
             // Check if the map reference or content actually changed
-            // This comparison is slightly simplified; a deep compare isn't strictly necessary
-            // because Immer handles structural sharing, but checking if the specific key's
-            // value changed or was removed is a good indicator.
             if (currentState.cells[key] !== updatedCells[key]) {
+                // Return new state object (keeping existing numColumns/numRows)
                 return { ...currentState, cells: updatedCells };
             } else {
                 return currentState; // No effective change to this cell
@@ -98,7 +103,8 @@ export function updateState(currentState: GridState, payload: GridUpdatePayload)
         // Only clear if there are cells currently set
         if (Object.keys(currentState.cells).length > 0) {
             console.log(`GridLogic: Clearing grid.`);
-            return { ...currentState, cells: {} }; // Return new state with empty cells
+            // Return new state with empty cells (keeping existing numColumns/numRows)
+            return { ...currentState, cells: {} };
         } else {
             return currentState; // Already empty, no change
         }

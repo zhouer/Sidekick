@@ -11,7 +11,8 @@ interface ConsoleComponentProps {
 }
 
 const ConsoleComponent: React.FC<ConsoleComponentProps> = ({ id, state, onInteraction }) => {
-    const { lines } = state;
+    // Destructure lines and showInput from state
+    const { lines, showInput } = state;
     const outputRef = useRef<HTMLDivElement>(null);
     const [inputValue, setInputValue] = useState('');
 
@@ -29,7 +30,7 @@ const ConsoleComponent: React.FC<ConsoleComponentProps> = ({ id, state, onIntera
 
     const sendInput = useCallback(() => {
         if (!inputValue.trim()) return;
-        const payload: ConsoleNotifyPayload = { event: 'submit', value: inputValue };
+        const payload: ConsoleNotifyPayload = { event: 'inputText', value: inputValue };
         const message: ModuleNotifyMessage = { id: 0, module: 'console', method: 'notify', src: id, payload: payload };
         onInteraction(message);
         setInputValue('');
@@ -56,20 +57,24 @@ const ConsoleComponent: React.FC<ConsoleComponentProps> = ({ id, state, onIntera
                     </div>
                 ))}
             </div>
-            {/* Input Area (no changes needed here) */}
-            <div className="console-input-area">
-                <input
-                    type="text"
-                    value={inputValue}
-                    onChange={handleInputChange}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Enter command or text..."
-                    className="console-input"
-                />
-                <button onClick={sendInput} className="console-send-button">
-                    Send
-                </button>
-            </div>
+
+            {/* Conditionally render Input Area based on showInput state */}
+            {showInput && (
+                <div className="console-input-area">
+                    <input
+                        type="text"
+                        value={inputValue}
+                        onChange={handleInputChange}
+                        onKeyDown={handleKeyDown}
+                        placeholder="Enter command or text..."
+                        className="console-input"
+                        aria-label="Console Input"
+                    />
+                    <button onClick={sendInput} className="console-send-button">
+                        Send
+                    </button>
+                </div>
+            )}
         </div>
     );
 };

@@ -2,7 +2,8 @@
 
 // --- State ---
 export interface GridState {
-    size: [number, number]; // Width, Height tuple
+    numColumns: number;
+    numRows: number;
     cells: {
         [key: string]: { // Key is "x,y"
             color?: string | null;
@@ -13,7 +14,8 @@ export interface GridState {
 
 // --- Payloads ---
 export interface GridSpawnPayload {
-    size?: [number, number]; // Optional: [[width, height]]
+    numColumns: number;
+    numRows: number;
 }
 
 export interface GridUpdatePayload {

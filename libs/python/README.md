@@ -118,14 +118,14 @@ pip install sidekick-py
 
 ### 5.3. `sidekick.Grid`
 
-*   `Grid(width: int, height: int, instance_id: Optional[str] = None, spawn: bool = True, on_message: Optional[Callable] = None)`
+*   `Grid(num_columns: int = 16, num_rows: int = 16, instance_id: Optional[str] = None, spawn: bool = True, on_message: Optional[Callable] = None)`
     *   `spawn=False` requires `instance_id`.
-*   Methods: `.set_color()`, `.set_text()`, `.clear()`, `.remove()`.
+*   Methods: `.set_cell()`, `.set_color()`, `.set_text()`, `.clear()`, `.remove()`.
 
 ### 5.4. `sidekick.Console`
 
-*   `Console(instance_id: Optional[str] = None, spawn: bool = True, initial_text: str = "", on_message: Optional[Callable] = None)`
-    *   `spawn=False` requires `instance_id`. `initial_text` ignored if `spawn=False`.
+*   `Console(instance_id: Optional[str] = None, spawn: bool = True, initial_text: str = "", show_input: bool = False, on_message: Optional[Callable] = None)`
+    *   `spawn=False` requires `instance_id`. `initial_text` and `show_input` ignored if `spawn=False`.
 *   Methods: `.print()`, `.log()`, `.clear()`, `.remove()`.
 
 ### 5.5. `sidekick.Viz`
@@ -163,10 +163,10 @@ pip install sidekick-py
     *   Was the buffer flushed? `Flushing message buffer...`
 *   **`clear_on_connect` Not Working:** Ensure `set_config` called early. Check logs for `global/clearAll` being sent *after* `System is READY`. Note: `clearAll` itself is buffered if Sidekick isn't ready when `set_config` triggers it.
 *   **`clear_on_disconnect` Not Working:** This is best-effort only. May fail if connection already dropped.
-*   **Module Not Appearing (Using `spawn=True`):** Check buffering issues above. Check Sidekick console for errors receiving `spawn`. Verify `target_id`. **Ensure payload keys are `camelCase`**.
+*   **Module Not Appearing (Using `spawn=True`):** Check buffering issues above. Check Sidekick console for errors receiving `spawn`. Verify `target_id`. **Ensure payload keys are `camelCase`**. Check payload matches `protocol.md` (e.g., `numColumns` for Grid).
 *   **Errors Using `spawn=False`:**
     *   Did you provide a valid `instance_id`? Error `instance_id is required...`
     *   Does the instance actually exist in Sidekick with that ID? Sidekick might have cleared it.
     *   Was Sidekick cleared unexpectedly (e.g., via `clear_on_connect` or manual `clear_all`)?
-*   **Callbacks Not Firing:** Check `on_message` registration. Check DEBUG logs for incoming `notify` messages.
+*   **Callbacks Not Firing:** Check `on_message` registration. Check DEBUG logs for incoming `notify` messages. Verify event name matches expectation (e.g., `inputText` for Console/Control).
 *   **Viz/Canvas/Control Issues:** Remember potential buffering delays. Refer to previous notes on `commandId`, `ObservableValue` etc.

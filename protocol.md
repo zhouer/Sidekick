@@ -112,13 +112,16 @@ These methods facilitate the primary purpose of Sidekick: controlling and receiv
 
 ## 7. Module-Specific Payloads (`payload` structure)
 
-This section details the expected structure of the `payload` object for different *module interaction* `method` combinations (`spawn`, `update`, `notify`, etc.). **Reminder:** All keys within `payload` and its nested objects (`options`, `config`, `valueRepresentation`, etc.) **MUST** be `camelCase`. *(Payloads for `system/announce` and `global/clearAll` are defined in Sections 4.2 and 5.1 respectively)*.
+This section details the expected structure of the `payload` object for different *module interaction* `method` combinations (`spawn`, `update`, `notify`, etc.). **Reminder:** All keys within `payload` and its nested objects (`options`, `config`, `valueRepresentation`, etc.) **MUST** use `camelCase`. *(Payloads for `system/announce` and `global/clearAll` are defined in Sections 4.2 and 5.1 respectively)*.
 
 ### 7.1 Module: `grid`
 
-*   **`spawn` Payload:**
+*   **`spawn` Payload:** (REQUIRED keys)
     ```json
-    { "size": [width: number, height: number] }
+    {
+      "numColumns": number, // Number of columns
+      "numRows": number     // Number of rows
+    }
     ```
 *   **`update` Payload:**
     *   Set Cell: `{ "action": "setCell", "options": { "x": number, "y": number, "color"?: string | null, "text"?: string | null } }`
@@ -130,16 +133,19 @@ This section details the expected structure of the `payload` object for differen
 
 ### 7.2 Module: `console`
 
-*   **`spawn` Payload:**
+*   **`spawn` Payload:** (REQUIRED keys)
     ```json
-    { "text"?: string }
+    {
+      "showInput": boolean, // Whether to display the input area
+      "text"?: string      // Optional initial text line
+    }
     ```
 *   **`update` Payload:**
     *   Append Text: `{ "action": "append", "options": { "text": string } }`
     *   Clear Console: `{ "action": "clear" }`
-*   **`notify` Payload:**
+*   **`notify` Payload:** (Sent when user submits text via input area)
     ```json
-    { "event": "submit", "value": string }
+    { "event": "inputText", "value": string }
     ```
 
 ### 7.3 Module: `viz`
@@ -171,7 +177,7 @@ This section details the expected structure of the `payload` object for differen
     {
       "action": string,
       "options": object, // Structure depends on action (see below)
-      "commandId": string | number
+      "commandId": string | number // REQUIRED command identifier
     }
     ```
     *   *Options examples:* `clear: { color? }`, `config: { strokeStyle?, fillStyle?, lineWidth? }`, `line: { x1, y1, x2, y2 }`, `rect: { x, y, width, height, filled? }`, `circle: { cx, cy, radius, filled? }` (keys camelCase)
@@ -184,18 +190,18 @@ This section details the expected structure of the `payload` object for differen
         ```json
         {
           "action": "add",
-          "controlId": string,
+          "controlId": string, // ID for the specific control being added
           "options": {
-            "controlType": "button" | "textInput",
+            "controlType": "button" | "textInput", // Type of control
             "config": { /* camelCase keys: text?, placeholder?, initialValue?, buttonText? */ }
           }
         }
         ```
     *   Remove Control: `{ "action": "remove", "controlId": string }`
-*   **`notify` Payload:**
-    ```json
-    { "event": "click" | "submit", "controlId": string, "value"?: string }
-    ```
+*   **`notify` Payload:** (Sent on user interaction)
+    *   Button Click: ` { "event": "click", "controlId": string }`
+    *   Text Input Submit: `{ "event": "inputText", "controlId": string, "value": string }`
+
 
 ## 8. Data Representation (`VizRepresentation`)
 
@@ -207,7 +213,7 @@ interface VizRepresentation {
   value: any;
   length?: number;
   observableTracked?: boolean;
-  id: string;
+  id: string; // Unique ID for this representation node
 }
 
 // Example nested structure for a list:
@@ -233,6 +239,6 @@ Sidekick -> Hero `error` messages use the standard structure with `method: "erro
 
 This protocol definition represents the current version. Future changes may occur.
 *   Implementations should be robust to receiving messages with extra, unexpected fields.
-*   Mandatory fields (e.g., `commandId` for Canvas, `peerId`/`role`/etc. for announce) must be present.
+*   Mandatory fields (e.g., `commandId` for Canvas, `peerId`/`role`/etc. for announce, `numColumns`/`numRows` for Grid spawn, `showInput` for Console spawn) must be present.
 *   Keys within the `payload` object **MUST** use `camelCase`.
 *   Peer version information is exchanged via the `system/announce` message (Section 4.2).

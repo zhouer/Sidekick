@@ -13,8 +13,9 @@ interface ControlComponentProps {
 const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onInteraction }) => {
     const { controls } = state;
 
-    // Local state to manage the current value of each text input
+    // Local state to manage the *current* value of each text input after user interaction
     const [inputValues, setInputValues] = useState<Record<string, string>>(() => {
+        // Initialize state map based on initial controls props
         const initial: Record<string, string> = {};
         controls.forEach(control => {
             if (control.type === 'textInput') {
@@ -24,32 +25,46 @@ const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onIntera
         return initial;
     });
 
-    // Effect to synchronize local state with potentially updated initialValue from props
+    // Effect to synchronize the *keys* in the local state with the controls map
+    // and ensure new inputs get their initial value reflected in the state map
     useEffect(() => {
-        setInputValues(prevInputValues => {
-            const nextInputValues: Record<string, string> = { ...prevInputValues };
-            let changed = false;
+        setInputValues(currentInputValues => {
+            const nextState = { ...currentInputValues };
+            let stateChanged = false;
+
+            // Ensure state has keys for all current textInput controls
             controls.forEach(control => {
                 if (control.type === 'textInput') {
-                    const initialValueProp = control.config?.initialValue || '';
-                    if (nextInputValues[control.id] === undefined || nextInputValues[control.id] !== initialValueProp) {
-                        nextInputValues[control.id] = initialValueProp;
-                        changed = true;
+                    // If a new control was added, add its key to our local state
+                    if (!(control.id in nextState)) {
+                        // Initialize with the value from config
+                        nextState[control.id] = control.config?.initialValue || '';
+                        stateChanged = true;
+                        console.log(`ControlComponent useEffect: Initialized state for new control ${control.id} with value "${nextState[control.id]}"`);
                     }
+                    // Optional: If initialValue itself could change dynamically after mount
+                    // else if (nextState[control.id] !== (control.config?.initialValue || '') && control.config?.initialValue !== undefined) {
+                    //     nextState[control.id] = control.config.initialValue || '';
+                    //     stateChanged = true;
+                    // }
                 }
             });
-            Object.keys(nextInputValues).forEach(controlId => {
-                if (!controls.has(controlId)) {
-                    delete nextInputValues[controlId];
-                    changed = true;
+
+            // Remove keys for controls that no longer exist
+            Object.keys(nextState).forEach(inputId => {
+                if (!controls.has(inputId)) {
+                    delete nextState[inputId];
+                    stateChanged = true;
+                    console.log(`ControlComponent useEffect: Removed state for control ${inputId}`);
                 }
             });
-            return changed ? nextInputValues : prevInputValues;
+
+            return stateChanged ? nextState : currentInputValues;
         });
-    }, [controls]);
+    }, [controls]); // Rerun only when the set of controls changes
 
 
-    // Handler for text input changes
+    // Handler for text input changes - Updates the local state
     const handleInputChange = (controlId: string, value: string) => {
         setInputValues(prev => ({
             ...prev,
@@ -57,7 +72,7 @@ const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onIntera
         }));
     };
 
-    // Handler for button clicks
+    // Handler for button clicks (no change needed)
     const handleButtonClick = useCallback((controlId: string) => {
         console.log(`Control ${id}: Button ${controlId} clicked.`);
         const payload: ControlNotifyPayload = {
@@ -73,7 +88,7 @@ const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onIntera
         const value = inputValues[controlId] || '';
         console.log(`Control ${id}: Input ${controlId} submitted with value: "${value}"`);
         const payload: ControlNotifyPayload = {
-            event: 'submit',
+            event: 'inputText',
             controlId: controlId,
             value: value,
         };
@@ -90,7 +105,6 @@ const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onIntera
 
     // Helper to generate CSS class based on control type
     const getControlTypeClass = (type: string): string => {
-        // Convert type ("button", "textInput") to CSS-friendly class ("button", "text-input")
         return type.replace(/([A-Z])/g, '-$1').toLowerCase();
     }
 
@@ -112,7 +126,9 @@ const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onIntera
                         {control.type === 'textInput' && (
                             <div className="control-text-input-group">
                                 <input
+                                    key={control.id} // Ensure re-mount if ID changes
                                     type="text"
+                                    // Use value to make it a controlled component
                                     value={inputValues[control.id] || ''}
                                     onChange={(e) => handleInputChange(control.id, e.target.value)}
                                     onKeyDown={(e) => handleInputKeyDown(e, control.id)}

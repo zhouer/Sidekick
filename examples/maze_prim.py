@@ -383,7 +383,7 @@ if __name__ == "__main__":
 
         console_instance = Console(instance_id="maze_console")
         console = console_instance
-        grid_instance = Grid(width=grid_width, height=grid_height, instance_id="maze_grid")
+        grid_instance = Grid(num_columns=grid_width, num_rows=grid_height, instance_id="maze_grid")
         grid = grid_instance
         controls_instance = Control(instance_id="maze_controls", on_message=control_handler)
         controls = controls_instance

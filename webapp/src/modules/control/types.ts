@@ -35,7 +35,7 @@ export interface ControlUpdatePayload {
 }
 
 export interface ControlNotifyPayload {
-    event: "click" | "submit"; // Type of interaction event
-    controlId: string;         // ID of the control that triggered the event
-    value?: string;            // Submitted value (only for "submit" event from textInput)
+    event: "click" | "inputText"; // Type of interaction event
+    controlId: string;            // ID of the control that triggered the event
+    value?: string;               // Submitted value (only for "inputText" event from textInput)
 }

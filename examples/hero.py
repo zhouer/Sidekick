@@ -73,7 +73,7 @@ def control_interaction_handler(message):
             elif control_id == 'remove_me_btn':
                  console.log(f"Button '{control_id}' clicked. Removing this button.")
                  controls.remove_control('remove_me_btn') # Test removing control from callback
-        elif event == 'submit':
+        elif event == 'inputText':
             value = payload.get('value', '')
             script_logger.info(f"--> Control Input '{control_id}' submitted value: '{value}'")
             if control_id == 'text_input_1':
@@ -95,7 +95,7 @@ if __name__ == "__main__":
         # --- Initialize Modules ---
         script_logger.info("Initializing modules...")
         # Grid with click handler
-        grid = Grid(width=10, height=8, instance_id="test-grid", on_message=grid_interaction_handler)
+        grid = Grid(num_columns=10, num_rows=8, instance_id="test-grid", on_message=grid_interaction_handler)
         # Console with input handler
         console = Console(instance_id="main-console", on_message=console_interaction_handler)
         # Control panel with interaction handler

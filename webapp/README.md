@@ -74,7 +74,7 @@ webapp/
     *   `moduleOrder: string[]`: An array storing the IDs of active modules in creation order, dictating the rendering sequence.
 *   **Root Reducer (`rootReducer`):** Acts as a central dispatcher based on incoming message `method` (`spawn`, `update`, `remove`).
     *   **Delegation:** Uses the `moduleRegistry` to find the correct `ModuleDefinition` based on the message's `module` type string.
-    *   **Spawn:** Calls the registered `getInitialState(targetId, payload)` function to create the initial state. Updates `modulesById` and `moduleOrder`.
+    *   **Spawn:** Calls the registered `getInitialState(targetId, payload)` function to create the initial state. Validates required spawn payload fields (e.g., `numColumns`, `showInput`). Updates `modulesById` and `moduleOrder`.
     *   **Update:** Retrieves the current module instance, then calls the registered **pure** `updateState(currentState, payload)` function. If `updateState` returns a new object reference (indicating a change), the reducer updates the instance in `modulesById`. It relies on `updateState` to handle immutability correctly.
     *   **Remove:** Removes the instance from `modulesById` and filters its ID from `moduleOrder`.
     *   **Immutability:** The reducer ensures top-level state (`AppState`, `modulesById`, `moduleOrder`) updates are immutable. Module-specific state immutability is the responsibility of the `updateState` functions.
@@ -87,6 +87,7 @@ webapp/
     *   `getInitialState`: Function `(instanceId, payload) => State` to create initial state.
     *   `updateState`: **Pure function** `(currentState, payload) => State` to calculate the next state. Must return a new object reference if state changes.
     *   `isInteractive?`: Optional boolean indicating if the module needs the `onInteraction` callback prop.
+    *   `displayName?`: Optional user-friendly name for tooltips.
 *   **Registry (`moduleRegistry.ts`)**:
     *   **Location:** `src/modules/moduleRegistry.ts`
     *   **Functionality:** A central `Map` mapping `type` strings to `ModuleDefinition` objects. Built-in modules are registered statically.
@@ -97,18 +98,20 @@ webapp/
 
 *   **Co-location:** Each module resides in its own directory.
 *   **Contents:**
-    *   `{ModuleName}Component.tsx`: React component for UI. Receives `id`, `state`, `onInteraction?`. Handles local UI state and user events. Calls `onInteraction` with `SidekickMessage` (using `camelCase` payload keys).
-    *   `{moduleName}Logic.ts`: Contains pure `getInitialState` and `updateState` functions. Handles module-specific state logic based on `camelCase` payloads from Hero. Responsible for returning new state objects on change. May include internal helpers (e.g., `vizLogic.ts`'s `applyModification`).
-    *   `types.ts`: Defines module-specific TypeScript interfaces (e.g., `GridState`, `GridUpdatePayload`). Payload interfaces should reflect `camelCase` keys (e.g., `controlType: "textInput"`).
+    *   `{ModuleName}Component.tsx`: React component for UI. Receives `id`, `state`, `onInteraction?`. Handles local UI state and user events. Calls `onInteraction` with `SidekickMessage` (using `camelCase` payload keys and correct event names like `inputText`).
+    *   `{moduleName}Logic.ts`: Contains pure `getInitialState` and `updateState` functions. Handles module-specific state logic based on `camelCase` payloads from Hero (incl. required spawn fields). Responsible for returning new state objects on change. May include internal helpers.
+    *   `types.ts`: Defines module-specific TypeScript interfaces (e.g., `GridState`, `GridUpdatePayload`, `ConsoleState`). Payload interfaces should reflect `camelCase` keys and required fields (e.g., `numColumns`, `showInput`).
     *   `{ModuleName}Component.css`: Component-specific styles.
 
 ### 4.5. Module Components (`src/modules/*/ *Component.tsx`)
 
-*   **General:** Functional components taking `id`, `state`, `onInteraction?`. Render based on `state`. Manage local UI state. Call `onInteraction` with correctly formatted `SidekickMessage` (incl. `src`, `module`, `method`, and `camelCase` `payload`).
-*   **Specific Notes:**
-    *   **`VizComponent.tsx` / `RenderValue.tsx`:** Renders complex data recursively. `RenderValue` manages local expand/collapse. Highlighting relies on `lastChanges` timestamp from `VizState`. Uses `observableTracked` (camelCase). Complex state *calculation* logic (`applyModification`) resides in `vizLogic.ts`.
-    *   **`CanvasComponent.tsx`:** Renders `<canvas>`. Uses `useEffect` and `useRef` to manage 2D context. Processes the `commandQueue` (containing full update payloads with `commandId`) from props exactly once per command ID using `lastProcessedCommandId`. Executes drawing operations as a side effect. The state update logic in `canvasLogic.ts` just adds commands to the queue.
-    *   **`ControlComponent.tsx`:** Renders dynamic controls based on `state.controls`. Manages local input values. Reads config using `camelCase` keys (`initialValue`, `buttonText`). Renders based on `type: "button"` or `type: "textInput"`. Sends `notify` messages with `camelCase` keys in payload (`controlId`, `value?`).
+*   **General:** Functional components taking `id`, `state`, `onInteraction?`. Render based on `state`. Manage local UI state. Call `onInteraction` with correctly formatted `SidekickMessage` (incl. `src`, `module`, `method: 'notify'`, and `camelCase` `payload` with correct `event` like `inputText`).
+*   **Specific Notes (Updated):**
+    *   **`GridComponent.tsx`:** Renders based on `numColumns` and `numRows` from state. Sends `notify` messages with `event: "click"`.
+    *   **`ConsoleComponent.tsx`:** Conditionally renders input area based on `showInput` state. Sends `notify` messages with `event: "inputText"`.
+    *   **`ControlComponent.tsx`:** Renders dynamic controls based on `state.controls`. Sends `notify` messages with `event: "click"` or `event: "inputText"`.
+    *   **`VizComponent.tsx`:** (No changes needed from previous state) Renders complex data recursively. Highlighting relies on `lastChanges`. Uses `observableTracked`.
+    *   **`CanvasComponent.tsx`:** (No changes needed from previous state) Renders `<canvas>`. Processes `commandQueue`. Executes drawing operations.
 
 ## 5. Setup & Development
 
@@ -132,22 +135,21 @@ webapp/
 ## 8. Adding a New Visual Module (Workflow)
 
 1.  **Create Directory:** `src/modules/myNewModule/`.
-2.  **Define Types (`types.ts`):** Create `types.ts`. Define `MyNewModuleState`, `MyNewModuleSpawnPayload`, `MyNewModuleUpdatePayload`, `MyNewModuleNotifyPayload` interfaces. Ensure payload interfaces use **`camelCase` keys**.
+2.  **Define Types (`types.ts`):** Create `types.ts`. Define `MyNewModuleState`, `MyNewModuleSpawnPayload` (incl. required fields), `MyNewModuleUpdatePayload`, `MyNewModuleNotifyPayload` interfaces. Ensure payload interfaces use **`camelCase` keys**. Define correct `event` names.
 3.  **Implement Logic (`myNewModuleLogic.ts`):** Create `myNewModuleLogic.ts`. Implement and export:
-    *   `getInitialState(instanceId, payload): MyNewModuleState` (handles `camelCase` payload).
+    *   `getInitialState(instanceId, payload): MyNewModuleState` (handles `camelCase` payload, validates required fields).
     *   `updateState(currentState, payload): MyNewModuleState` (pure function, handles `camelCase` payload, returns new object on change).
-4.  **Create Component (`MyNewModuleComponent.tsx`):** Create the React component. Render UI based on `props.state`. If interactive, handle events and call `props.onInteraction` with a `SidekickMessage` containing a `camelCase` payload.
+4.  **Create Component (`MyNewModuleComponent.tsx`):** Create the React component. Render UI based on `props.state`. If interactive, handle events and call `props.onInteraction` with a `SidekickMessage` containing a `camelCase` payload and correct `event`.
 5.  **Add Styles (`MyNewModuleComponent.css`):** Create and import CSS.
 6.  **Register (`moduleRegistry.ts`):** Import component and logic functions. Add `registry.set('myNewModule', { type: 'myNewModule', component, getInitialState, updateState, isInteractive });`.
-7.  **Protocol (`protocol.md`):** Document the `camelCase` payloads for your new module.
-8.  **Python Lib (Optional):** Add a corresponding class in the Python library (`libs/python/src/sidekick/`) that sends the correct `camelCase` payloads. Update `libs/python/README.md`.
+7.  **Protocol (`protocol.md`):** Document the `camelCase` payloads (including required spawn fields) and `notify` event names for your new module.
+8.  **Python Lib (Optional):** Add a corresponding class in the Python library (`libs/python/src/sidekick/`) that sends the correct `camelCase` payloads (incl. required spawn fields). Update `libs/python/README.md`.
 
 ## 9. Troubleshooting
 
 *   **WebSocket Issues:** Check backend logs, browser DevTools (Network & Console), firewall, URL (`ws://localhost:5163`). Check `isConnected` state.
-*   **UI Not Updating / Incorrect State:** Verify incoming messages (Network tab) have correct `module`, `method`, `target`, and **`camelCase` `payload` keys/structure**. Check console warnings/errors from `rootReducer` and specific `*Logic.ts` files. Ensure `updateState` functions are pure and return *new* object references on change. Use React DevTools to inspect component props (`id`, `state`) and `AppState`.
-*   **Module Not Appearing:** Check `spawn` message is received with correct `target`. Check `moduleRegistry` registration. Check `moduleOrder` in React DevTools. Check console for errors during `getInitialState` or initial render.
-*   **Interaction Not Working:** Check `isInteractive` flag in `moduleRegistry`. Verify `onInteraction` is passed as a prop. Check component's event handlers call `onInteraction` with a `SidekickMessage` having the correct `src`, `module`, `method: 'notify'`, and **`camelCase` `payload` keys/structure**. Check Hero-side logs for received message processing.
-*   **Viz Highlighting/Update Issues:** Check console logs from `vizLogic.ts` (`applyModification`). Verify incoming `update` payload has correct `action`/`variableName`/`options` structure with `camelCase` keys. Check `lastChanges` state in React DevTools. Ensure `RenderValue` uses `observableTracked` (camelCase).
-*   **Canvas Drawing Issues:** Check console for errors in `CanvasComponent.tsx` `useEffect`. Verify incoming `update` payload includes unique `commandId`. Check `lastProcessedCommandId` state. Ensure `ctx` is not null.
-*   **Control Issues:** Check `add`/`remove` payloads sent from Python have correct `action`/`controlId`/`options` structure with `camelCase` config keys and `controlType: "textInput"` or `"button"`. Check `ControlComponent` reads config using `camelCase` and renders based on the correct `type`. Check `notify` messages sent from `ControlComponent` have correct `event`, `controlId` (camelCase), and `value?`.
+*   **UI Not Updating / Incorrect State:** Verify incoming messages (Network tab) have correct `module`, `method`, `target`, and **`camelCase` `payload` keys/structure** (incl. required spawn fields like `numColumns`, `showInput`). Check console warnings/errors from `rootReducer` and specific `*Logic.ts` files (especially `getInitialState` validations). Ensure `updateState` functions are pure and return *new* object references on change. Use React DevTools to inspect component props (`id`, `state`) and `AppState`.
+*   **Module Not Appearing:** Check `spawn` message is received with correct `target` and **all required payload fields** (`numColumns`, `numRows` for Grid; `showInput` for Console). Check console for errors during `getInitialState` (payload validation might fail). Check `moduleRegistry` registration. Check `moduleOrder` in React DevTools.
+*   **Interaction Not Working:** Check `isInteractive` flag in `moduleRegistry`. Verify `onInteraction` is passed as a prop. Check component's event handlers call `onInteraction` with a `SidekickMessage` having the correct `src`, `module`, `method: 'notify'`, and **`camelCase` `payload` keys/structure** with correct `event` name (e.g., `inputText`). Check Hero-side logs for received message processing.
+*   **Console Input Not Showing:** Verify `ConsoleState` in React DevTools has `showInput: true`. Check `ConsoleComponent.tsx` conditional rendering logic. Ensure the `spawn` payload from Python correctly sent `showInput: true`.
+*   **Grid Size Incorrect:** Verify `GridState` in React DevTools has correct `numColumns` and `numRows`. Ensure the `spawn` payload from Python sent correct values. Check `GridComponent.tsx` uses these state values in its render loops.
