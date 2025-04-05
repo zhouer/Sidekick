@@ -242,23 +242,31 @@ function App() {
 
     // --- Render Status Indicators ---
     const renderStatus = () => {
+        // WebSocket Status
         const wsStatusText = isConnected ? 'Connected' : 'Disconnected';
         const wsStatusClass = isConnected ? 'status-connected' : 'status-disconnected';
+
+        // Hero Status
         let heroStatusText = 'Hero: Offline';
+        let heroStatusClass = 'hero-status-offline'; // Default class
         if (heroStatus?.status === 'online') {
-            heroStatusText = `Hero: Online (v${heroStatus.version})`;
+            heroStatusText = `Hero: Online (v${heroStatus.version || 'unknown'})`; // Add fallback for version
+            heroStatusClass = 'hero-status-online'; // Set online class
         }
+
+        // Sidekick Status
         const sidekickStatusText = 'Sidekick (v' + __APP_VERSION__ + ')';
 
         return (
             <>
                 <p className={wsStatusClass}>WebSocket: {wsStatusText}</p>
-                <p className="app-version">{heroStatusText}</p>
+                {/* Apply dynamic class for Hero status */}
+                <p className={heroStatusClass}>{heroStatusText}</p>
+                {/* Sidekick status still uses app-version for basic styling */}
                 <p className="app-version">{sidekickStatusText}</p>
             </>
         );
     };
-
 
     // --- Main JSX Structure ---
     return (

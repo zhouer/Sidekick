@@ -77,20 +77,20 @@ body {
 }
 
 .hero-status-online { /* Class on the Hero status <p> */
-    /* Optional: Style for online hero */
-    /* background-color: #cfe2ff; */
-    /* color: #084298; */
-    /* border: 1px solid #b6d4fe; */
-    color: #28a745; /* Simpler: Just green text */
-    font-weight: 500;
+    background-color: #d4edda; /* Light green background */
+    color: #155724; /* Dark green text */
+    border-color: #c3e6cb; /* Match border color */
+    /* Inherits padding and border-radius from .status-indicators p */
 }
 .hero-status-offline { /* Class on the Hero status <p> */
-    color: #6c757d; /* Muted color */
+    background-color: #f8d7da; /* Light red background */
+    color: #721c24; /* Dark red text */
+    border-color: #f5c6cb; /* Match border color */
+    /* Inherits padding and border-radius from .status-indicators p */
 }
 
 .app-version {
     color: #6c757d;
-    font-style: italic;
     padding: 2px 0 !important; /* Override badge padding */
     border: none !important;
     background-color: transparent !important;
