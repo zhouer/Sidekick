@@ -75,7 +75,7 @@ interface BaseSidekickMessage extends BaseMessage {
     target?: never; // Sidekick never targets specific Hero instances
 }
 
-// Module Event message (Sidekick -> Hero) - formerly Notify
+// Module Event message (Sidekick -> Hero)
 export interface ModuleEventMessage extends BaseSidekickMessage {
     module: string;
     type: "event";

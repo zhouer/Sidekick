@@ -62,7 +62,7 @@ class Canvas(BaseModule):
             instance_id=instance_id,
             spawn=spawn,
             payload=spawn_payload if spawn else None, # Pass payload only if spawning
-            on_message=None # Canvas typically doesn't send notifications back
+            on_message=None
         )
         # Store dimensions locally for potential future use or reference.
         self.width = width

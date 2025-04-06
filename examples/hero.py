@@ -1,319 +1,269 @@
-# comprehensive_hero_test.py
+# hero.py
+import sidekick
 import time
-import logging
 import random
-from sidekick import (
-    Grid,
-    Console,
-    Viz,
-    Canvas,
-    Control,
-    ObservableValue,
-    set_url,
-    close_connection,
-    connection # Import connection to potentially access logger/other functions
-)
+import math
+import threading # For delayed actions demonstration
 
-# --- Configuration ---
-SIDEKICK_URL = "ws://localhost:5163" # Default URL
-INTERACTION_WAIT_TIME = 15 # Seconds to wait for user interaction tests
-STEP_DELAY = 1.5 # Seconds delay between automated steps for visualization
+# --- Configuration (Optional, but good for testing) ---
+# Ensure a clean slate in Sidekick UI when the script connects
+# Set connection URL if not using the default localhost:5163
+# sidekick.set_url("ws://...")
+sidekick.set_config(clear_on_connect=True, clear_on_disconnect=False)
 
-# --- Logging Setup ---
-# Configure logging to see Sidekick library messages and script output
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-# Optionally set Sidekick connection logger to DEBUG for more detail
-connection.logger.setLevel(logging.DEBUG)
-script_logger = logging.getLogger("HeroTestScript")
-script_logger.setLevel(logging.INFO)
+# --- Global Flags/Data (Optional) ---
+script_running = True
 
 # --- Callback Handlers ---
-# These functions will be called when messages arrive from specific modules
+# Define handlers *before* creating modules that use them
 
-def grid_interaction_handler(message):
-    """Handles messages from the 'test-grid'."""
-    script_logger.info(f"[Grid Handler] Received: {message}")
+def handle_grid_click(message):
+    """Callback for Grid module events."""
     payload = message.get('payload', {})
-    if message.get('method') == 'notify' and payload.get('event') == 'click':
-        script_logger.info(f"--> Grid cell clicked at ({payload.get('x')}, {payload.get('y')})")
-        # Example response: Set clicked cell to blue
-        grid.set_color(payload.get('x'), payload.get('y'), 'blue')
+    event_type = payload.get('event')
+    if event_type == 'click':
+        x, y = payload.get('x'), payload.get('y')
+        # Provide feedback using the main console
+        if main_console:
+            main_console.print(f"Grid Clicked: ({x}, {y})")
+        # Optionally, change the clicked cell
+        if test_grid and 0 <= x < test_grid.num_columns and 0 <= y < test_grid.num_rows:
+             test_grid.set_cell(x, y, color="#FFA500", text="Clicked") # Orange
 
-def console_interaction_handler(message):
-    """Handles messages from the 'main-console'."""
-    script_logger.info(f"[Console Handler] Received: {message}")
+def handle_console_input(message):
+    """Callback for the interactive Console module events."""
+    global script_running
     payload = message.get('payload', {})
-    if message.get('method') == 'notify' and payload.get('event') == 'submit':
-        user_input = payload.get('value', '')
-        script_logger.info(f"--> Console input submitted: '{user_input}'")
-        console.print(f"Hero received: '{user_input}'. Responding...")
-        # Example response based on input
-        if user_input.lower() == 'hello':
-            console.print("Hello there!")
-        elif user_input.lower() == 'clear grid':
-             grid.clear()
-             console.print("Grid cleared via console command.")
-        else:
-            console.print(f"Unknown command: {user_input}")
+    event_type = payload.get('event')
+    if event_type == 'inputText':
+        value = payload.get('value', '')
+        main_console.print(f"Hero Received Input: '{value}'")
+        if value.lower() == 'quit':
+            main_console.print("Quit signal received. Shutting down.")
+            script_running = False
+        elif value.lower() == 'clear grid':
+             if test_grid: test_grid.clear()
+        elif value.lower() == 'clear canvas':
+             if test_canvas: test_canvas.clear()
+        elif value.lower().startswith('viz remove '):
+            var_name = value.split(' ', 2)[-1]
+            if test_viz and var_name:
+                 test_viz.remove_variable(var_name)
 
-def control_interaction_handler(message):
-    """Handles messages from the 'interactive-controls'."""
-    script_logger.info(f"[Control Handler] Received: {message}")
+
+def handle_control_interaction(message):
+    """Callback for Control module events."""
     payload = message.get('payload', {})
-    event = payload.get('event')
-    control_id = payload.get('controlId') # Expecting camelCase from protocol
+    event_type = payload.get('event')
+    control_id = payload.get('controlId')
 
-    if message.get('method') == 'notify':
-        if event == 'click':
-            script_logger.info(f"--> Control Button '{control_id}' clicked.")
-            if control_id == 'test_button_1':
-                console.log("Test Button 1 was clicked!")
-                # Example: Change grid cell on button click
-                grid.set_color(0, 0, f"rgb({random.randint(0,255)},{random.randint(0,255)},{random.randint(0,255)})")
-            elif control_id == 'remove_me_btn':
-                 console.log(f"Button '{control_id}' clicked. Removing this button.")
-                 controls.remove_control('remove_me_btn') # Test removing control from callback
-        elif event == 'inputText':
-            value = payload.get('value', '')
-            script_logger.info(f"--> Control Input '{control_id}' submitted value: '{value}'")
-            if control_id == 'text_input_1':
-                 console.log(f"Received text from Control Input 1: {value.upper()}")
-                 # Example: Update a visualized variable based on input
-                 if 'message_obs' in globals():
-                     message_obs.set(f"From Control: {value}")
+    if event_type == 'click':
+        main_console.print(f"Control Click: Button '{control_id}'")
+        if control_id == 'remove_me_button':
+             main_console.print(f"Removing button '{control_id}'...")
+             if test_controls:
+                 test_controls.remove_control(control_id)
 
+    elif event_type == 'inputText':
+        value = payload.get('value', '')
+        main_console.print(f"Control Input: Text field '{control_id}' submitted value: '{value}'")
 
-# --- Main Test Script ---
-if __name__ == "__main__":
-    script_logger.info("--- Starting Sidekick Comprehensive Test Script ---")
+# --- Module Instances (Initialize to None) ---
+main_console: sidekick.Console | None = None
+test_grid: sidekick.Grid | None = None
+test_canvas: sidekick.Canvas | None = None
+test_viz: sidekick.Viz | None = None
+test_controls: sidekick.Control | None = None
 
-    try:
-        # --- Optional: Set URL if not default ---
-        # set_url("ws://...")
-        # script_logger.info(f"Set Sidekick URL to: {SIDEKICK_URL}") # Log if set_url is used
+# --- Main Application Logic ---
+try:
+    # 1. --- Console ---
+    # Create the main console first for logging script progress
+    # Keep the instance_id predictable for potential re-attachment
+    console_id = "main-test-console"
+    main_console = sidekick.Console(
+        instance_id=console_id,
+        spawn=True, # Create it initially
+        show_input=True, # Enable the input field
+        initial_text="--- Sidekick Test App Initialized ---"
+    )
+    # Re-attach to register the handler (demonstrates spawn=False)
+    # Note: This only works reliably if Sidekick preserves state across Hero restarts
+    # For this script, it mainly tests the mechanism.
+    console_handler_attacher = sidekick.Console(
+        instance_id=console_id,
+        spawn=False, # Don't re-create, just attach
+        on_message=handle_console_input # Register handler
+    )
+    main_console.print("Console Ready. Type 'quit' to exit.")
+    time.sleep(0.5)
 
-        # --- Initialize Modules ---
-        script_logger.info("Initializing modules...")
-        # Grid with click handler
-        grid = Grid(num_columns=10, num_rows=8, instance_id="test-grid", on_message=grid_interaction_handler)
-        # Console with input handler
-        console = Console(instance_id="main-console", on_message=console_interaction_handler)
-        # Control panel with interaction handler
-        controls = Control(instance_id="interactive-controls", on_message=control_interaction_handler)
-        # Canvas for drawing
-        canvas = Canvas(width=400, height=200, bg_color="lightyellow", instance_id="drawing-canvas")
-        # Variable visualizer
-        viz = Viz(instance_id="variable-viz")
-        script_logger.info("Modules initialized.")
-        time.sleep(STEP_DELAY)
+    # 2. --- Grid ---
+    main_console.print("Creating Grid (10x8)...")
+    test_grid = sidekick.Grid(
+        num_columns=10,
+        num_rows=8,
+        instance_id="test-grid-1",
+        on_message=handle_grid_click # Register click handler
+    )
+    time.sleep(0.5)
 
-        # --- Console Tests ---
-        console.log("--- Console Tests ---")
-        console.print("Hello from the Hero script!")
-        console.print("Testing print with", "multiple", "arguments", sep='|')
-        console.print("This line has no 'end'.", end='')
-        console.print("This should be on the same line.")
-        time.sleep(STEP_DELAY)
-        console.clear()
-        console.print("Console cleared. Waiting for input...")
-        script_logger.info(f"Console ready. Try typing 'hello' or 'clear grid' and submitting in Sidekick UI.")
-        time.sleep(STEP_DELAY) # Give some time to see the message
+    main_console.print("Populating Grid...")
+    for y in range(test_grid.num_rows):
+        for x in range(test_grid.num_columns):
+            color = f"hsl({(x + y * 2) * 20 % 360}, 70%, 50%)"
+            text = f"{x},{y}"
+            test_grid.set_cell(x, y, color=color, text=text)
+            # time.sleep(0.01) # Very fast, maybe too fast
+    time.sleep(1)
+    main_console.print("Grid populated. Click on cells!")
+    main_console.print("Type 'clear grid' in console input to clear.")
+    time.sleep(1)
 
-        # --- Grid Tests ---
-        console.log("--- Grid Tests ---")
-        grid.set_color(1, 1, "red")
-        grid.set_text(1, 1, "Hi")
-        grid.set_color(3, 4, "#00FF00")
-        grid.set_text(3, 4, "OK")
-        grid.set_color(5, 0, "rgba(0, 0, 255, 0.5)")
-        console.print("Grid cells updated.")
-        script_logger.info("Grid updated. Try clicking cells in the Sidekick UI.")
-        time.sleep(STEP_DELAY * 2)
-        console.print("Clearing grid...")
-        grid.clear() # Test grid clear
-        console.print("Grid cleared.")
-        time.sleep(STEP_DELAY)
+    # 3. --- Canvas ---
+    main_console.print("Creating Canvas (400x300)...")
+    test_canvas = sidekick.Canvas(width=400, height=300, instance_id="test-canvas-1", bg_color="#f0f0f0")
+    time.sleep(0.5)
 
-        # --- Canvas Tests ---
-        console.log("--- Canvas Tests ---")
-        # Config styles
-        canvas.config(line_width=3, stroke_style="purple")
-        # Draw shapes
-        canvas.draw_line(10, 10, 390, 190)
-        canvas.config(fill_style="orange")
-        canvas.draw_rect(50, 50, 100, 80, filled=True)
-        canvas.config(stroke_style="teal", line_width=1)
-        canvas.draw_rect(200, 30, 150, 100, filled=False)
-        canvas.config(fill_style="rgba(255, 0, 0, 0.7)")
-        canvas.draw_circle(80, 150, 40, filled=True)
-        canvas.config(line_width=5, stroke_style="black")
-        canvas.draw_circle(300, 100, 50, filled=False)
-        console.print("Canvas drawing commands sent.")
-        # Test rapid commands (check frontend queueing)
-        console.print("Sending rapid canvas commands...")
-        for i in range(0, 400, 20):
-            canvas.config(stroke_style=f"hsl({i % 360}, 100%, 50%)")
-            canvas.draw_line(i, 195, i+10, 10)
-        console.print("Rapid commands finished.")
-        time.sleep(STEP_DELAY * 2)
-        canvas.clear(color="lightblue") # Test clear with color
-        console.print("Canvas cleared with lightblue.")
-        time.sleep(STEP_DELAY)
+    main_console.print("Drawing on Canvas...")
+    # Configure styles
+    test_canvas.config(stroke_style="blue", line_width=2)
+    # Draw lines
+    test_canvas.draw_line(10, 10, 390, 290)
+    test_canvas.config(stroke_style="red", line_width=1)
+    test_canvas.draw_line(10, 290, 390, 10)
+    time.sleep(0.5)
+    # Draw rectangles
+    test_canvas.config(stroke_style="green", fill_style="rgba(0, 255, 0, 0.3)", line_width=3)
+    test_canvas.draw_rect(50, 50, 100, 80, filled=False) # Outline
+    test_canvas.draw_rect(200, 150, 120, 100, filled=True) # Filled
+    time.sleep(0.5)
+    # Draw circles
+    test_canvas.config(stroke_style="#8A2BE2", fill_style="yellow", line_width=4) # BlueViolet outline
+    test_canvas.draw_circle(100, 200, 40, filled=False) # Outline
+    test_canvas.draw_circle(300, 80, 50, filled=True)   # Filled
+    time.sleep(1)
+    main_console.print("Canvas drawing complete.")
+    main_console.print("Type 'clear canvas' in console input to clear.")
+    time.sleep(1)
 
-        # --- Control Tests ---
-        console.log("--- Control Tests ---")
-        controls.add_button(control_id="test_button_1", text="Click Me!")
-        controls.add_text_input(
-            control_id="text_input_1",
-            placeholder="Enter message for Viz",
-            initial_value="Default Text",
-            button_text="Update Viz"
-        )
-        controls.add_button(control_id="remove_me_btn", text="Remove This Button")
-        console.print("Controls added.")
-        script_logger.info("Controls added. Try clicking buttons or submitting text in Sidekick UI.")
-        # Wait longer here to allow user interaction
-        script_logger.info(f"Waiting {INTERACTION_WAIT_TIME} seconds for Control interactions...")
-        time.sleep(INTERACTION_WAIT_TIME)
-        # Test removing a control programmatically (if not removed by callback)
-        # Check if button still exists before trying to remove
-        # This requires frontend state or assuming it wasn't clicked. Let's skip for now.
-        # try: controls.remove_control('remove_me_btn')
-        # except Exception: pass # Might already be removed
-        console.print("Finished control interaction test period.")
-        time.sleep(STEP_DELAY)
+    # 4. --- Control ---
+    main_console.print("Creating Control Panel...")
+    test_controls = sidekick.Control(instance_id="test-controls-1", on_message=handle_control_interaction)
+    time.sleep(0.5)
 
+    main_console.print("Adding controls...")
+    test_controls.add_button(control_id="hello_button", text="Say Hello")
+    time.sleep(0.2)
+    test_controls.add_text_input(
+        control_id="name_input",
+        placeholder="Enter your name",
+        initial_value="Sidekick User",
+        button_text="Submit Name"
+    )
+    time.sleep(0.2)
+    test_controls.add_button(control_id="remove_me_button", text="Remove Me")
+    time.sleep(1)
+    main_console.print("Controls added. Interact with them!")
+    time.sleep(1)
 
-        # --- Viz Tests ---
-        console.log("--- Viz Tests ---")
-        # Static values
-        viz.show("my_integer", 123)
-        viz.show("my_float", 3.14159)
-        viz.show("my_string", "Hello Sidekick!")
-        viz.show("my_boolean", True)
-        viz.show("my_none", None)
-        my_list = [1, "two", None, [4, 5]]
-        my_dict = {"a": 10, "b": {"c": True, "d": my_list}}
-        my_set = {1, 1, 2, 3, "hello"}
-        my_tuple = (100, 200)
-        viz.show("my_list", my_list)
-        viz.show("my_dict", my_dict)
-        viz.show("my_set", my_set)
-        viz.show("my_tuple", my_tuple) # Tuples are immutable, treated like lists for display
+    # 5. --- Viz ---
+    main_console.print("Creating Variable Visualizer (Viz)...")
+    test_viz = sidekick.Viz(instance_id="test-viz-1")
+    time.sleep(0.5)
 
-        console.print("Static variables shown in Viz.")
-        time.sleep(STEP_DELAY * 2)
+    main_console.print("Showing variables in Viz...")
+    # Basic types
+    test_viz.show("my_string", "Hello Viz!")
+    test_viz.show("my_integer", 12345)
+    test_viz.show("my_float", 3.14159)
+    test_viz.show("my_boolean", True)
+    test_viz.show("my_none", None)
+    time.sleep(0.5)
 
-        # Observable values
-        console.print("Testing ObservableValues with Viz...")
-        counter_obs = ObservableValue(0)
-        list_obs = ObservableValue([10, 20, {"id": "item3"}])
-        dict_obs = ObservableValue({"x": 1, "y": 2, "nested": ObservableValue("initial")}) # Nested observable
-        set_obs = ObservableValue({100, 200})
-        message_obs = ObservableValue("Original message") # Used by control callback
+    # Containers (non-observable first)
+    simple_list = [1, "two", False, None, 3.0]
+    simple_dict = {"a": 10, "b": "bee", "c": [1,2], True: "Yes"}
+    simple_set = {1, 1, 2, 3, "apple", "banana"}
+    test_viz.show("simple_list", simple_list)
+    test_viz.show("simple_dict", simple_dict)
+    test_viz.show("simple_set", simple_set)
+    time.sleep(0.5)
 
-        viz.show("counter", counter_obs)
-        viz.show("observable_list", list_obs)
-        viz.show("observable_dict", dict_obs)
-        viz.show("observable_set", set_obs)
-        viz.show("message", message_obs)
-        console.print("Observable variables shown. Starting updates...")
-        time.sleep(STEP_DELAY)
+    # Observable Containers
+    obs_list = sidekick.ObservableValue([10, 20, 30])
+    obs_dict = sidekick.ObservableValue({"x": 100, "y": 200})
+    obs_nested = sidekick.ObservableValue({
+        "name": "Nested Observable",
+        "data": sidekick.ObservableValue([
+            {"id": 1, "value": sidekick.ObservableValue("A")},
+            {"id": 2, "value": sidekick.ObservableValue("B")}
+        ]),
+        "settings": {"enabled": True}
+    })
+    test_viz.show("observable_list", obs_list)
+    test_viz.show("observable_dict", obs_dict)
+    test_viz.show("observable_nested", obs_nested)
+    time.sleep(1)
 
-        # Test updates
-        script_logger.info("Updating counter (set)...")
-        counter_obs.set(1)
-        time.sleep(STEP_DELAY)
+    # --- Demonstrate Reactivity ---
+    main_console.print("Modifying observable variables...")
+    time.sleep(1)
 
-        script_logger.info("Appending to list (append)...")
-        list_obs.append(30)
-        time.sleep(STEP_DELAY)
+    main_console.print(" -> Appending to observable_list")
+    obs_list.append(40)
+    time.sleep(1)
 
-        script_logger.info("Updating list item (setitem)...")
-        list_obs[1] = 25
-        time.sleep(STEP_DELAY)
+    main_console.print(" -> Changing item in observable_list")
+    obs_list[1] = 25 # Update value at index 1
+    time.sleep(1)
 
-        script_logger.info("Popping from list (pop)...")
-        popped = list_obs.pop()
-        console.print(f"(Popped value: {popped})")
-        time.sleep(STEP_DELAY)
+    main_console.print(" -> Adding item to observable_dict")
+    obs_dict["z"] = 300 # Add new key
+    time.sleep(1)
 
-        script_logger.info("Updating dict item (setitem)...")
-        dict_obs["y"] = 3
-        time.sleep(STEP_DELAY)
+    main_console.print(" -> Updating item in observable_dict")
+    obs_dict["x"] = 150 # Update existing key
+    time.sleep(1)
 
-        script_logger.info("Adding dict item (setitem)...")
-        dict_obs["z"] = ObservableValue(99) # Add another observable
-        time.sleep(STEP_DELAY)
+    main_console.print(" -> Modifying nested observable value")
+    # Access nested observable value and set it
+    obs_nested.get()["data"].get()[0]["value"].set("Alpha")
+    time.sleep(1)
 
-        script_logger.info("Updating nested observable in dict (set)...")
-        dict_obs["nested"].set("updated nested") # Access internal observable and set
-        time.sleep(STEP_DELAY)
+    main_console.print(" -> Appending to nested observable list")
+    # Access nested observable list and append
+    obs_nested.get()["data"].append({"id": 3, "value": sidekick.ObservableValue("C")})
+    time.sleep(1)
 
-        script_logger.info("Deleting dict item (delitem)...")
-        del dict_obs["x"]
-        time.sleep(STEP_DELAY)
+    main_console.print(" -> Removing variable 'simple_set'")
+    test_viz.remove_variable("simple_set")
+    time.sleep(0.5)
+    main_console.print("Type 'viz remove <var_name>' to remove others.")
 
-        script_logger.info("Updating dict via update() method (multiple setitem)...")
-        dict_obs.update({"y": 4, "new_key": "added"})
-        time.sleep(STEP_DELAY)
+    # --- Keep Script Running ---
+    main_console.print("--- Test Setup Complete ---")
+    main_console.print("Interact with UI elements. Type 'quit' in Console input to exit.")
+    while script_running:
+        # Keep alive, maybe add periodic actions if needed
+        time.sleep(0.5)
 
-        script_logger.info("Adding to set (add_set)...")
-        set_obs.add(300)
-        set_obs.add(100) # Should not trigger notification
-        time.sleep(STEP_DELAY)
-
-        script_logger.info("Discarding from set (discard_set)...")
-        set_obs.discard(200)
-        set_obs.discard(999) # Should not trigger notification
-        time.sleep(STEP_DELAY)
-
-        script_logger.info("Clearing list (clear)...")
-        list_obs.clear()
-        time.sleep(STEP_DELAY)
-
-        script_logger.info("Clearing dict (clear)...")
-        dict_obs.clear()
-        time.sleep(STEP_DELAY)
-
-        # Test removing variable
-        console.print("Removing 'counter' and 'observable_set' from Viz...")
-        viz.remove_variable("counter")
-        viz.remove_variable("observable_set")
-        time.sleep(STEP_DELAY)
-
-        console.print("Observable value tests complete.")
-
-        # --- Keep Running for Interaction ---
-        script_logger.info("--- Test Script Setup Complete ---")
-        script_logger.info("Script will now wait for interactions or KeyboardInterrupt (Ctrl+C).")
-        script_logger.info("Try interacting with the Grid, Console, and Controls in Sidekick.")
-        while True:
-            # Keep main thread alive to allow background listener thread to work
-            time.sleep(10)
-            # Optional: Add periodic updates here if needed
-            # counter_obs.set(counter_obs.get() + 10)
-            # viz.show("timestamp", time.time())
-
-
-    except KeyboardInterrupt:
-        script_logger.info("\n--- KeyboardInterrupt received, shutting down. ---")
-    except ConnectionRefusedError:
-         script_logger.error(f"Connection Refused: Could not connect to Sidekick at {SIDEKICK_URL}. Is Sidekick running?")
-    except Exception as e:
-        script_logger.exception(f"An unexpected error occurred: {e}")
-    finally:
-        # --- Cleanup ---
-        # Optional: Explicitly remove modules (connection closes automatically via atexit)
-        # It's often better to let atexit handle closure unless testing removal specifically.
-        script_logger.info("Performing cleanup (connection will close via atexit).")
-        # if 'grid' in globals(): grid.remove()
-        # if 'console' in globals(): console.remove()
-        # if 'controls' in globals(): controls.remove()
-        # if 'canvas' in globals(): canvas.remove()
-        # if 'viz' in globals(): viz.remove()
-
-        # Ensure connection closes if script exits abnormally before atexit might run
-        # close_connection() # Usually handled by atexit
-
-        script_logger.info("--- Test Script Finished ---")
+except ConnectionRefusedError:
+    print("[ERROR] Connection refused. Is the Sidekick server (e.g., Vite dev server or VS Code extension) running?")
+except Exception as e:
+    print(f"[ERROR] An unexpected error occurred: {e}")
+    import traceback
+    traceback.print_exc()
+finally:
+    print("Hero script finishing. Closing connection...")
+    # --- Cleanup ---
+    # remove() sends the remove command and unregisters handlers
+    if test_grid: test_grid.remove()
+    if test_canvas: test_canvas.remove()
+    if test_viz: test_viz.remove()
+    if test_controls: test_controls.remove()
+    # Removing the console last might prevent seeing final messages if it closes too quickly
+    if main_console: main_console.remove()
+    # Explicitly close the WebSocket connection
+    sidekick.close_connection()
+    print("Connection closed.")

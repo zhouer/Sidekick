@@ -125,8 +125,7 @@ def draw_grid(current: List[List[int]], next_g: List[List[int]]):
             if current[r][c] != next_g[r][c]:
                 changes += 1
                 color = LIVE_COLOR if next_g[r][c] == 1 else DEAD_COLOR
-                # Use set_color (which calls internal _set_cell -> _send_update)
-                grid.set_color(c, r, color) # Note: grid uses (x, y) order
+                grid.set_color(c, r, color)
     if changes > 0:
         logging.debug(f"Drew {changes} cell changes.")
 
@@ -139,7 +138,7 @@ def draw_full_grid():
     for r in range(height):
         for c in range(width):
             color = LIVE_COLOR if game_grid[r][c] == 1 else DEAD_COLOR
-            grid.set_color(c, r, color) # Note: grid uses (x, y) order
+            grid.set_color(c, r, color)
 
 def control_handler(msg: Dict[str, Any]):
     """Handles messages received from the Control module."""
@@ -147,7 +146,7 @@ def control_handler(msg: Dict[str, Any]):
     logging.debug(f"Control handler received: {msg}")
     payload = msg.get('payload', {})
     event = payload.get('event')
-    control_id = payload.get('controlId') # Expect camelCase from frontend
+    control_id = payload.get('controlId')
 
     if event == 'click':
         with run_lock: # Lock when potentially modifying 'running' or grid
@@ -250,7 +249,7 @@ if __name__ == "__main__":
 
         # Create Sidekick modules
         console = Console(instance_id="gol_console")
-        grid = Grid(width=GRID_WIDTH, height=GRID_HEIGHT, instance_id="gol_grid")
+        grid = Grid(num_columns=GRID_WIDTH, num_rows=GRID_HEIGHT, instance_id="gol_grid")
         controls = Control(instance_id="gol_controls", on_message=control_handler)
 
         console.print("Welcome to Conway's Game of Life!")

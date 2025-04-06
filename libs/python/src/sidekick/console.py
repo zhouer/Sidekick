@@ -70,7 +70,7 @@ class Console(BaseModule):
             instance_id=instance_id,
             spawn=spawn,
             payload=spawn_payload if spawn else None, # Only send payload if spawning
-            on_message=on_message # Register the callback for 'notify' messages
+            on_message=on_message # Register the callback for 'event' messages
         )
         connection.logger.info(f"Console '{self.target_id}' initialized (spawn={spawn}, show_input={show_input if spawn else 'N/A'}).")
 

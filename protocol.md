@@ -107,7 +107,7 @@ These message types facilitate the primary purpose of Sidekick: controlling and 
 
 ### 6.2 Sidekick -> Hero (via Server) - Module Feedback
 
-*   **`event`**: Informs Hero about user actions or module events within Sidekick. `src` is required. Payload contains event details. (Formerly `notify`)
+*   **`event`**: Informs Hero about user actions or module events within Sidekick. `src` is required. Payload contains event details.
 *   **`error`**: Reports an error encountered by Sidekick related to a specific module. `src` is required. Payload contains error message.
 
 ## 7. Module-Specific Payloads (`payload` structure)

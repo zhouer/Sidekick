@@ -1,4 +1,4 @@
-# forest_fire_simulation.py
+# forest_fire.py
 import time
 import random
 import threading
@@ -137,7 +137,7 @@ def draw_full_forest():
     for r in range(GRID_HEIGHT):
         for c in range(GRID_WIDTH):
             color = map_state_to_color(forest_grid[r][c])
-            grid.set_color(c, r, color) # Grid uses (x, y) order
+            grid.set_color(c, r, color)
 
 def draw_forest_changes(current: List[List[int]], next_g: List[List[int]]):
     """Updates the Sidekick Grid, only drawing cells that changed state."""
@@ -148,7 +148,7 @@ def draw_forest_changes(current: List[List[int]], next_g: List[List[int]]):
             if current[r][c] != next_g[r][c]:
                 changes += 1
                 color = map_state_to_color(next_g[r][c])
-                grid.set_color(c, r, color) # Grid uses (x, y) order
+                grid.set_color(c, r, color)
     if changes > 0:
         logging.debug(f"Drew {changes} cell changes.")
 
@@ -273,7 +273,7 @@ if __name__ == "__main__":
         console_instance = Console(instance_id="fire_console")
         console = console_instance
 
-        grid_instance = Grid(width=GRID_WIDTH, height=GRID_HEIGHT, instance_id="fire_grid")
+        grid_instance = Grid(num_columns=GRID_WIDTH, num_rows=GRID_HEIGHT, instance_id="fire_grid")
         grid = grid_instance
 
         controls_instance = Control(instance_id="fire_controls", on_message=control_handler)

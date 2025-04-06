@@ -100,7 +100,7 @@ webapp/
 *   **Contents:**
     *   `{ModuleName}Component.tsx`: React component for UI. Receives `id`, `state`, `onInteraction?`. Handles local UI state and user events. Calls `onInteraction` (if provided) with a `SentMessage` (`type: "event"`, using `camelCase` payload keys and correct event names like `inputText`).
     *   `{moduleName}Logic.ts`: Contains pure `getInitialState` and `updateState` functions. Handles module-specific state logic based on `camelCase` payloads from Hero (incl. required spawn fields). Responsible for returning new state objects on change. May include internal helpers.
-    *   `types.ts`: Defines module-specific TypeScript interfaces (e.g., `GridState`, `GridUpdatePayload`, `ConsoleState`, `ConsoleNotifyPayload`). Payload interfaces should reflect `camelCase` keys and required fields (e.g., `numColumns`, `showInput`). Notify payloads define `event` names.
+    *   `types.ts`: Defines module-specific TypeScript interfaces (e.g., `GridState`, `GridUpdatePayload`, `ConsoleState`, `ConsoleEventPayload`). Payload interfaces should reflect `camelCase` keys and required fields (e.g., `numColumns`, `showInput`). Event payloads define `event` names.
     *   `{ModuleName}Component.css`: Component-specific styles.
 
 ### 4.5. Module Components (`src/modules/*/ *Component.tsx`)
@@ -132,20 +132,7 @@ webapp/
 *   Global styles in `src/index.css` and `src/App.css`.
 *   Module-specific styles co-located (e.g., `src/modules/grid/GridComponent.css`).
 
-## 8. Adding a New Visual Module (Workflow)
-
-1.  **Create Directory:** `src/modules/myNewModule/`.
-2.  **Define Types (`types.ts`):** Create `types.ts`. Define `MyNewModuleState`, `MyNewModuleSpawnPayload` (incl. required fields), `MyNewModuleUpdatePayload`, `MyNewModuleNotifyPayload` (this is for the `event` message's payload) interfaces. Ensure payload interfaces use **`camelCase` keys**. Define correct `event` names within the notify payload type.
-3.  **Implement Logic (`myNewModuleLogic.ts`):** Create `myNewModuleLogic.ts`. Implement and export:
-    *   `getInitialState(instanceId, payload): MyNewModuleState` (handles `camelCase` payload, validates required fields).
-    *   `updateState(currentState, payload): MyNewModuleState` (pure function, handles `camelCase` payload, returns new object on change).
-4.  **Create Component (`MyNewModuleComponent.tsx`):** Create the React component. Define its props interface, making `onInteraction` optional if it's interactive. Render UI based on `props.state`. If interactive, handle events and call `props.onInteraction` (check if defined!) with a `ModuleEventMessage` containing a `camelCase` payload (matching your `MyNewModuleNotifyPayload`) and correct `event`.
-5.  **Add Styles (`MyNewModuleComponent.css`):** Create and import CSS.
-6.  **Register (`moduleRegistry.ts`):** Import component and logic functions. Add `registry.set('myNewModule', { type: 'myNewModule', component, getInitialState, updateState, isInteractive: true_or_false });`.
-7.  **Protocol (`protocol.md`):** Document the `camelCase` payloads (including required spawn fields) and `event` message payloads (formerly notify) for your new module.
-8.  **Python Lib (Optional):** Add a corresponding class in the Python library (`libs/python/src/sidekick/`) that sends the correct `camelCase` payloads (incl. required spawn fields). Update `libs/python/README.md` regarding the `on_message` callback receiving `event` messages.
-
-## 9. Troubleshooting
+## 8. Troubleshooting
 
 *   **WebSocket Issues:** Check backend logs, browser DevTools (Network & Console), firewall, URL (`ws://localhost:5163`). Check `isConnected` state and `status` in `useWebSocket`. Look for `[useWebSocket]` logs.
 *   **UI Not Updating / Incorrect State:** Verify incoming messages (Network tab) have correct `module`, `type`, `target`, and **`camelCase` `payload` keys/structure** (incl. required spawn fields like `numColumns`, `showInput`). Check console warnings/errors from `rootReducer` and specific `*Logic.ts` files (especially `getInitialState` validations). Ensure `updateState` functions are pure and return *new* object references on change. Use React DevTools to inspect component props (`id`, `state`) and `AppState`.
