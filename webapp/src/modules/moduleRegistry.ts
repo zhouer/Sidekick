@@ -25,7 +25,6 @@ registry.set('grid', {
     component: GridComponent,
     getInitialState: gridLogic.getInitialState,
     updateState: gridLogic.updateState,
-    isInteractive: true,
 });
 
 registry.set('console', {
@@ -34,7 +33,6 @@ registry.set('console', {
     component: ConsoleComponent,
     getInitialState: consoleLogic.getInitialState,
     updateState: consoleLogic.updateState,
-    isInteractive: true,
 });
 
 registry.set('viz', {
@@ -43,7 +41,6 @@ registry.set('viz', {
     component: VizComponent,
     getInitialState: vizLogic.getInitialState,
     updateState: vizLogic.updateState,
-    isInteractive: false,
 });
 
 registry.set('canvas', {
@@ -52,7 +49,6 @@ registry.set('canvas', {
     component: CanvasComponent,
     getInitialState: canvasLogic.getInitialState,
     updateState: canvasLogic.updateState,
-    isInteractive: false,
 });
 
 registry.set('control', {
@@ -61,7 +57,6 @@ registry.set('control', {
     component: ControlComponent,
     getInitialState: controlLogic.getInitialState,
     updateState: controlLogic.updateState,
-    isInteractive: true,
 });
 
 // Export the registry for use in the main application

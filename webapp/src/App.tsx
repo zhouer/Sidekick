@@ -211,15 +211,14 @@ function App() {
             if (!moduleDefinition) { console.error(`App Render: Module type "${moduleInstance.type}" (${moduleId}) not registered!`); return <div key={moduleId}>Error: Unknown Module Type '{moduleInstance.type}'</div>; }
 
             const ModuleComponent = moduleDefinition.component;
-            // Define props, casting state to any for flexibility, component expects specific type
-            const componentProps: { id: string; state: any; onInteraction?: (msg: SentMessage) => void } = {
+
+            // Define props, always include onInteraction
+            // Casting state to 'any' for flexibility, component expects specific type
+            const componentProps: { id: string; state: any; onInteraction: (msg: SentMessage) => void } = {
                 id: moduleInstance.id,
                 state: moduleInstance.state,
+                onInteraction: handleModuleInteraction,
             };
-            // Conditionally add onInteraction if the module needs it
-            if (moduleDefinition.isInteractive) {
-                componentProps.onInteraction = handleModuleInteraction;
-            }
 
             // --- Tooltip/Info Logic (remains the same) ---
             const handleMouseEnter = () => setHoveredInfoId(moduleId);

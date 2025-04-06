@@ -108,12 +108,40 @@ export interface ModuleInstance<TState = any> { // TState is the module-specific
     state: TState;
 }
 
-// Defines the contract for a visual module plugin
-export interface ModuleDefinition<TState = any, TSpawnPayload = any, TUpdatePayload = any> {
-    type: string; // Unique module type identifier
-    component: React.ComponentType<{ id: string; state: TState; onInteraction?: (message: SentMessage) => void }>; // The React component to render
-    getInitialState: (instanceId: string, payload: TSpawnPayload) => TState; // Creates initial state from spawn payload
-    updateState: (currentState: TState, payload: TUpdatePayload) => TState; // Pure function to update state based on payload
-    isInteractive?: boolean; // Does this module need the onInteraction callback?
-    displayName?: string; // User-friendly name for display
+/**
+ * Defines the contract for a Sidekick module.
+ * Each module provides functions for state management and a React component for rendering.
+ */
+export interface ModuleDefinition<
+    TState = any, // Generic type for module-specific state
+    TSpawnPayload = any, // Generic type for spawn payload
+    TUpdatePayload = any, // Generic type for update payload
+> {
+    /** Unique string identifier for the module type (e.g., "grid", "console"). */
+    type: string;
+    /** React functional component responsible for rendering the module's UI. */
+    component: React.FC<{
+        id: string; // Instance ID
+        state: TState; // Module-specific state
+        onInteraction?: (message: SentMessage) => void; // Callback to send messages back
+    }>;
+    /**
+     * Pure function to calculate the initial state for a new module instance.
+     * Should validate the payload and throw an error if invalid.
+     * @param instanceId The unique ID for the new instance.
+     * @param payload The payload received from the 'spawn' command.
+     * @returns The initial state object for the module instance.
+     */
+    getInitialState: (instanceId: string, payload: TSpawnPayload) => TState;
+    /**
+     * Pure function to calculate the next state based on the current state and an update payload.
+     * Should validate the payload and return the current state if the update is invalid or causes no change.
+     * MUST return a new object reference if the state changes, otherwise return the original currentState object.
+     * @param currentState The current state of the module instance.
+     * @param payload The payload received from the 'update' command.
+     * @returns The new state object if changes occurred, otherwise the original currentState.
+     */
+    updateState: (currentState: TState, payload: TUpdatePayload) => TState;
+    /** Optional user-friendly display name for the module type (e.g., in tooltips). */
+    displayName?: string;
 }
