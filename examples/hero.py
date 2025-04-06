@@ -1,269 +1,368 @@
-# hero.py
 import sidekick
 import time
 import random
-import math
-import threading # For delayed actions demonstration
+import logging
+import colorsys  # For generating distinct colors
+from typing import Any
 
-# --- Configuration (Optional, but good for testing) ---
-# Ensure a clean slate in Sidekick UI when the script connects
-# Set connection URL if not using the default localhost:5163
-# sidekick.set_url("ws://...")
+# --- Logging Setup ---
+# Configure Sidekick connection logger for detailed WebSocket communication (optional)
+# logging.getLogger("SidekickConn").setLevel(logging.DEBUG)
+# Configure general logging for the script
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger("ComprehensiveTest")
+
+# --- Configuration ---
+# Use clear_on_connect=True to ensure a fresh UI state each time the script runs.
 sidekick.set_config(clear_on_connect=True, clear_on_disconnect=False)
 
-# --- Global Flags/Data (Optional) ---
+# --- Global State ---
 script_running = True
-
-# --- Callback Handlers ---
-# Define handlers *before* creating modules that use them
-
-def handle_grid_click(message):
-    """Callback for Grid module events."""
-    payload = message.get('payload', {})
-    event_type = payload.get('event')
-    if event_type == 'click':
-        x, y = payload.get('x'), payload.get('y')
-        # Provide feedback using the main console
-        if main_console:
-            main_console.print(f"Grid Clicked: ({x}, {y})")
-        # Optionally, change the clicked cell
-        if test_grid and 0 <= x < test_grid.num_columns and 0 <= y < test_grid.num_rows:
-             test_grid.set_cell(x, y, color="#FFA500", text="Clicked") # Orange
-
-def handle_console_input(message):
-    """Callback for the interactive Console module events."""
-    global script_running
-    payload = message.get('payload', {})
-    event_type = payload.get('event')
-    if event_type == 'inputText':
-        value = payload.get('value', '')
-        main_console.print(f"Hero Received Input: '{value}'")
-        if value.lower() == 'quit':
-            main_console.print("Quit signal received. Shutting down.")
-            script_running = False
-        elif value.lower() == 'clear grid':
-             if test_grid: test_grid.clear()
-        elif value.lower() == 'clear canvas':
-             if test_canvas: test_canvas.clear()
-        elif value.lower().startswith('viz remove '):
-            var_name = value.split(' ', 2)[-1]
-            if test_viz and var_name:
-                 test_viz.remove_variable(var_name)
-
-
-def handle_control_interaction(message):
-    """Callback for Control module events."""
-    payload = message.get('payload', {})
-    event_type = payload.get('event')
-    control_id = payload.get('controlId')
-
-    if event_type == 'click':
-        main_console.print(f"Control Click: Button '{control_id}'")
-        if control_id == 'remove_me_button':
-             main_console.print(f"Removing button '{control_id}'...")
-             if test_controls:
-                 test_controls.remove_control(control_id)
-
-    elif event_type == 'inputText':
-        value = payload.get('value', '')
-        main_console.print(f"Control Input: Text field '{control_id}' submitted value: '{value}'")
-
-# --- Module Instances (Initialize to None) ---
+# Store module instances globally so callbacks can access them if needed
 main_console: sidekick.Console | None = None
+info_console: sidekick.Console | None = None
 test_grid: sidekick.Grid | None = None
 test_canvas: sidekick.Canvas | None = None
 test_viz: sidekick.Viz | None = None
 test_controls: sidekick.Control | None = None
 
-# --- Main Application Logic ---
-try:
-    # 1. --- Console ---
-    # Create the main console first for logging script progress
-    # Keep the instance_id predictable for potential re-attachment
-    console_id = "main-test-console"
-    main_console = sidekick.Console(
-        instance_id=console_id,
-        spawn=True, # Create it initially
-        show_input=True, # Enable the input field
-        initial_text="--- Sidekick Test App Initialized ---"
-    )
-    # Re-attach to register the handler (demonstrates spawn=False)
-    # Note: This only works reliably if Sidekick preserves state across Hero restarts
-    # For this script, it mainly tests the mechanism.
-    console_handler_attacher = sidekick.Console(
-        instance_id=console_id,
-        spawn=False, # Don't re-create, just attach
-        on_message=handle_console_input # Register handler
-    )
-    main_console.print("Console Ready. Type 'quit' to exit.")
-    time.sleep(0.5)
+# --- Helper Functions ---
+def hsv_to_hex(h, s, v):
+    """Converts HSV color values to a hex string."""
+    r, g, b = colorsys.hsv_to_rgb(h, s, v)
+    return '#{:02x}{:02x}{:02x}'.format(int(r*255), int(g*255), int(b*255))
 
-    # 2. --- Grid ---
-    main_console.print("Creating Grid (10x8)...")
-    test_grid = sidekick.Grid(
-        num_columns=10,
-        num_rows=8,
-        instance_id="test-grid-1",
-        on_message=handle_grid_click # Register click handler
-    )
-    time.sleep(0.5)
+# --- Callback Handlers ---
 
-    main_console.print("Populating Grid...")
-    for y in range(test_grid.num_rows):
-        for x in range(test_grid.num_columns):
-            color = f"hsl({(x + y * 2) * 20 % 360}, 70%, 50%)"
-            text = f"{x},{y}"
-            test_grid.set_cell(x, y, color=color, text=text)
-            # time.sleep(0.01) # Very fast, maybe too fast
-    time.sleep(1)
-    main_console.print("Grid populated. Click on cells!")
-    main_console.print("Type 'clear grid' in console input to clear.")
-    time.sleep(1)
+# -- Global Handler --
+def global_message_handler(message: dict):
+    """Logs all messages received from Sidekick."""
+    module = message.get('module', '?')
+    msg_type = message.get('type', '?')
+    src = message.get('src', 'N/A')
+    logger.debug(f"[Global Handler] Received: mod={module}, type={msg_type}, src={src}")
 
-    # 3. --- Canvas ---
-    main_console.print("Creating Canvas (400x300)...")
-    test_canvas = sidekick.Canvas(width=400, height=300, instance_id="test-canvas-1", bg_color="#f0f0f0")
-    time.sleep(0.5)
+# -- Console Handlers --
+def handle_main_console_input(value: str):
+    """Handles input from the main interactive console."""
+    global script_running
+    if not main_console or not info_console: return
 
-    main_console.print("Drawing on Canvas...")
-    # Configure styles
-    test_canvas.config(stroke_style="blue", line_width=2)
-    # Draw lines
-    test_canvas.draw_line(10, 10, 390, 290)
-    test_canvas.config(stroke_style="red", line_width=1)
-    test_canvas.draw_line(10, 290, 390, 10)
-    time.sleep(0.5)
-    # Draw rectangles
-    test_canvas.config(stroke_style="green", fill_style="rgba(0, 255, 0, 0.3)", line_width=3)
-    test_canvas.draw_rect(50, 50, 100, 80, filled=False) # Outline
-    test_canvas.draw_rect(200, 150, 120, 100, filled=True) # Filled
-    time.sleep(0.5)
-    # Draw circles
-    test_canvas.config(stroke_style="#8A2BE2", fill_style="yellow", line_width=4) # BlueViolet outline
-    test_canvas.draw_circle(100, 200, 40, filled=False) # Outline
-    test_canvas.draw_circle(300, 80, 50, filled=True)   # Filled
-    time.sleep(1)
-    main_console.print("Canvas drawing complete.")
-    main_console.print("Type 'clear canvas' in console input to clear.")
-    time.sleep(1)
+    main_console.print(f">>> Received command: '{value}'")
+    info_console.log(f"Main Console Input: '{value}'") # Log to info console
 
-    # 4. --- Control ---
-    main_console.print("Creating Control Panel...")
-    test_controls = sidekick.Control(instance_id="test-controls-1", on_message=handle_control_interaction)
-    time.sleep(0.5)
+    command = value.lower().strip()
+    if command == 'quit':
+        main_console.print("Quit command received. Shutting down...")
+        script_running = False
+    elif command == 'clear grid':
+        if test_grid: test_grid.clear(); main_console.print("Grid cleared.")
+    elif command == 'clear canvas':
+        if test_canvas: test_canvas.clear(); main_console.print("Canvas cleared.")
+    elif command == 'populate grid':
+        if test_grid: populate_grid_demo(test_grid); main_console.print("Grid populated.")
+    elif command.startswith('viz remove '):
+        var_name = value.split(' ', 2)[-1].strip()
+        if test_viz and var_name:
+            test_viz.remove_variable(var_name)
+            main_console.print(f"Removed '{var_name}' from Viz.")
+        else:
+            main_console.print(f"Cannot remove '{var_name}' from Viz.")
+    else:
+        main_console.print(f"Unknown command: '{value}'. Try: quit, clear grid, clear canvas, populate grid, viz remove <name>")
 
-    main_console.print("Adding controls...")
-    test_controls.add_button(control_id="hello_button", text="Say Hello")
+# -- Grid Handlers --
+def handle_grid_click(x: int, y: int):
+    """Handles clicks on the test grid."""
+    if not info_console or not test_grid: return
+    info_console.log(f"Grid clicked at ({x}, {y})")
+    test_grid.set_cell(x, y, color="yellow", text=f"{x}, {y}") # Update text to show coordinates
+    # To revert color automatically would require timers or frontend logic.
+
+# -- Control Handlers --
+def handle_control_click(control_id: str):
+    """Handles button clicks from the control panel."""
+    if not info_console: return
+    info_console.log(f"Control Button Clicked: '{control_id}'")
+
+    if control_id == 'add_random_button':
+        if test_controls:
+            new_id = f"random_btn_{random.randint(100, 999)}"
+            test_controls.add_button(control_id=new_id, text=f"Rand {new_id[-3:]}")
+            info_console.log(f"Added button: {new_id}")
+    elif control_id.startswith('random_btn_'):
+        info_console.log(f"Random button '{control_id}' does nothing specific yet.")
+    elif control_id == 'self_destruct_button':
+        if test_controls:
+            info_console.log("Removing self-destruct button...")
+            try:
+                test_controls.remove_control(control_id)
+            except Exception as e:
+                 info_console.log(f"Error removing control: {e}")
+
+def handle_control_input(control_id: str, value: str):
+    """Handles text input submissions from the control panel."""
+    if not info_console: return
+    info_console.log(f"Control Input Submitted: ID='{control_id}', Value='{value}'")
+    if control_id == 'viz_input':
+        if test_viz:
+            try:
+                # VERY UNSAFE, for demo only! Eval can execute arbitrary code.
+                evaluated_value = eval(value)
+                test_viz.show(f"eval_{random.randint(100,999)}", evaluated_value)
+                info_console.log(f"Evaluated and showed '{value}' in Viz.")
+            except Exception as e:
+                info_console.log(f"Failed to eval '{value}': {e}")
+        else:
+            info_console.log("Viz module not available.")
+
+# -- Generic Error Handler --
+def handle_module_error(module_name: str, error_message: str):
+    """Handles errors reported by any module."""
+    log_message = f"ERROR from {module_name}: {error_message}"
+    logger.error(log_message)
+    # Try logging to info_console first, then main_console as fallback
+    target_console = info_console if info_console else main_console
+    if target_console:
+        try:
+            # Avoid potential infinite loops if console itself errors
+            # Use target_id for comparison as module_name might just be descriptive
+            if target_console.target_id and module_name != target_console.target_id:
+                target_console.print(log_message)
+            elif not target_console.target_id: # Fallback if target_id isn't set yet?
+                 target_console.print(log_message)
+        except Exception as e:
+            logger.error(f"Failed to print error to console: {e}")
+
+# --- Demo Functions ---
+
+def populate_grid_demo(grid_instance: sidekick.Grid):
+    """Fills the grid with a color/text pattern."""
+    logger.info("Populating grid demo...")
+    if not grid_instance: return
+    grid_instance.clear() # Start fresh
+    rows = grid_instance.num_rows
+    cols = grid_instance.num_columns
+    for r in range(rows):
+        for c in range(cols):
+            hue = (r / rows + c / cols) / 2.0
+            saturation = 0.7 + (r / rows) * 0.3
+            value = 0.6 + (c / cols) * 0.4
+            color = hsv_to_hex(hue % 1.0, saturation, value)
+            text = f"{c},{r}"
+            grid_instance.set_cell(c, r, color=color, text=text)
+            # Add small delay for visual effect, but can make it slow
+            # time.sleep(0.005)
+    logger.info("Grid population demo complete.")
+
+def canvas_drawing_demo(canvas_instance: sidekick.Canvas):
+    """Draws various shapes on the canvas."""
+    logger.info("Starting canvas drawing demo...")
+    if not canvas_instance: return
+
+    w, h = canvas_instance.width, canvas_instance.height
+
+    # Background
+    canvas_instance.clear("#111827") # Dark gray background
     time.sleep(0.2)
-    test_controls.add_text_input(
-        control_id="name_input",
-        placeholder="Enter your name",
-        initial_value="Sidekick User",
-        button_text="Submit Name"
-    )
+
+    # Grid lines
+    canvas_instance.config(stroke_style="#4B5563", line_width=1) # Gray grid lines
+    for i in range(1, 10):
+        x = w * i / 10
+        y = h * i / 10
+        canvas_instance.draw_line(int(x), 0, int(x), h)
+        canvas_instance.draw_line(0, int(y), w, int(y))
+    time.sleep(0.3)
+
+    # Colorful shapes
+    # Red outlined rectangle
+    canvas_instance.config(stroke_style="#EF4444", line_width=3)
+    canvas_instance.draw_rect(int(w*0.1), int(h*0.1), int(w*0.3), int(h*0.25), filled=False)
     time.sleep(0.2)
-    test_controls.add_button(control_id="remove_me_button", text="Remove Me")
-    time.sleep(1)
-    main_console.print("Controls added. Interact with them!")
-    time.sleep(1)
+    # Blue filled rectangle
+    canvas_instance.config(fill_style="#3B82F6")
+    canvas_instance.draw_rect(int(w*0.6), int(h*0.15), int(w*0.25), int(h*0.3), filled=True)
+    time.sleep(0.2)
+    # Green outlined circle
+    canvas_instance.config(stroke_style="#10B981", line_width=4)
+    canvas_instance.draw_circle(int(w*0.25), int(h*0.7), int(min(w, h) * 0.15), filled=False)
+    time.sleep(0.2)
+    # Yellow filled circle with purple outline
+    canvas_instance.config(fill_style="#F59E0B", stroke_style="#8B5CF6", line_width=2)
+    canvas_instance.draw_circle(int(w*0.75), int(h*0.75), int(min(w, h) * 0.12), filled=True)
+    time.sleep(0.3)
 
-    # 5. --- Viz ---
-    main_console.print("Creating Variable Visualizer (Viz)...")
-    test_viz = sidekick.Viz(instance_id="test-viz-1")
+    # Text (Requires Canvas frontend support for text drawing)
+    # canvas_instance.config(fill_style="white", font="16px sans-serif")
+    # canvas_instance.draw_text("Canvas Demo", w/2, h/2, align="center")
+
+    logger.info("Canvas drawing demo complete.")
+
+def viz_reactivity_demo(viz_instance: sidekick.Viz):
+    """Demonstrates ObservableValue reactivity."""
+    logger.info("Starting Viz reactivity demo...")
+    if not viz_instance or not info_console: return
+
+    info_console.log("Creating observable list/dict...")
+    obs_list = sidekick.ObservableValue([100, "hello", None])
+    obs_dict = sidekick.ObservableValue({"a": 1, "b": {"nested": True}})
+    viz_instance.show("Reactive List", obs_list)
+    viz_instance.show("Reactive Dict", obs_dict)
     time.sleep(0.5)
 
-    main_console.print("Showing variables in Viz...")
-    # Basic types
-    test_viz.show("my_string", "Hello Viz!")
-    test_viz.show("my_integer", 12345)
-    test_viz.show("my_float", 3.14159)
-    test_viz.show("my_boolean", True)
-    test_viz.show("my_none", None)
-    time.sleep(0.5)
+    info_console.log("Modifying observables...")
 
-    # Containers (non-observable first)
-    simple_list = [1, "two", False, None, 3.0]
-    simple_dict = {"a": 10, "b": "bee", "c": [1,2], True: "Yes"}
-    simple_set = {1, 1, 2, 3, "apple", "banana"}
-    test_viz.show("simple_list", simple_list)
-    test_viz.show("simple_dict", simple_dict)
-    test_viz.show("simple_set", simple_set)
-    time.sleep(0.5)
+    # List modifications
+    time.sleep(1); info_console.log(" -> list.append(True)"); obs_list.append(True)
+    time.sleep(1); info_console.log(" -> list[1] = 'world'"); obs_list[1] = "world"
+    time.sleep(1); info_console.log(" -> list.insert(0, 50)"); obs_list.insert(0, 50)
+    time.sleep(1); info_console.log(" -> list.pop()"); obs_list.pop()
+    time.sleep(1); info_console.log(" -> del list[0]"); del obs_list[0]
 
-    # Observable Containers
-    obs_list = sidekick.ObservableValue([10, 20, 30])
-    obs_dict = sidekick.ObservableValue({"x": 100, "y": 200})
-    obs_nested = sidekick.ObservableValue({
-        "name": "Nested Observable",
-        "data": sidekick.ObservableValue([
-            {"id": 1, "value": sidekick.ObservableValue("A")},
-            {"id": 2, "value": sidekick.ObservableValue("B")}
-        ]),
-        "settings": {"enabled": True}
-    })
-    test_viz.show("observable_list", obs_list)
-    test_viz.show("observable_dict", obs_dict)
-    test_viz.show("observable_nested", obs_nested)
+    # Dict modifications
+    time.sleep(1); info_console.log(" -> dict['c'] = [1, 2]"); obs_dict['c'] = [1, 2]
+    time.sleep(1); info_console.log(" -> dict['a'] = 5"); obs_dict['a'] = 5
+    time.sleep(1); info_console.log(" -> dict['b']['nested'] = False (Directly, No notification!)")
+    # NOTE: This direct modification bypasses ObservableValue's tracking on the *inner* dict.
+    # The outer dict doesn't change reference, so Viz won't update automatically here.
+    # To make the inner change visible, the inner dict also needs to be an ObservableValue,
+    # or the outer dict needs to be explicitly set again.
+    obs_dict.get()['b']['nested'] = False
+    # Explicitly trigger update by setting the outer dict (optional way to show the change)
+    time.sleep(1); info_console.log(" -> dict.set({...}) # Force update"); obs_dict.set(obs_dict.get()) # Trigger resend
+
+    time.sleep(1); info_console.log(" -> del dict['a']"); del obs_dict['a']
+    time.sleep(1); info_console.log(" -> dict.clear()"); obs_dict.clear()
     time.sleep(1)
 
-    # --- Demonstrate Reactivity ---
-    main_console.print("Modifying observable variables...")
-    time.sleep(1)
+    logger.info("Viz reactivity demo complete.")
 
-    main_console.print(" -> Appending to observable_list")
-    obs_list.append(40)
-    time.sleep(1)
 
-    main_console.print(" -> Changing item in observable_list")
-    obs_list[1] = 25 # Update value at index 1
-    time.sleep(1)
+# --- Main Execution ---
+if __name__ == "__main__":
+    logger.info("--- Starting Comprehensive Sidekick Test ---")
+    try:
+        # --- Activate Connection and Register Global Handler ---
+        sidekick.activate_connection()
+        sidekick.register_global_message_handler(global_message_handler)
+        logger.info("Connection activated, global handler registered.")
+        logger.info("Waiting for connection to become ready...")
+        # Wait a bit for connection and Sidekick peer announcement
+        time.sleep(1.5)
 
-    main_console.print(" -> Adding item to observable_dict")
-    obs_dict["z"] = 300 # Add new key
-    time.sleep(1)
+        # --- Create Modules ---
+        logger.info("Creating Sidekick modules...")
 
-    main_console.print(" -> Updating item in observable_dict")
-    obs_dict["x"] = 150 # Update existing key
-    time.sleep(1)
+        # Create Info Console (read-only) first
+        info_console = sidekick.Console(instance_id="info-console", show_input=False)
+        info_console.on_error(lambda err: handle_module_error("info-console", err)) # Use instance_id in handler
+        info_console.print("--- Test Information ---")
 
-    main_console.print(" -> Modifying nested observable value")
-    # Access nested observable value and set it
-    obs_nested.get()["data"].get()[0]["value"].set("Alpha")
-    time.sleep(1)
+        # Create Main Console (interactive)
+        main_console = sidekick.Console(instance_id="main-console", show_input=True)
+        main_console.on_input_text(handle_main_console_input)
+        main_console.on_error(lambda err: handle_module_error("main-console", err)) # Use instance_id in handler
+        main_console.print("--- Main Interactive Console ---")
+        main_console.print("Type commands here (e.g., 'quit'). Output below, info in the console above.")
 
-    main_console.print(" -> Appending to nested observable list")
-    # Access nested observable list and append
-    obs_nested.get()["data"].append({"id": 3, "value": sidekick.ObservableValue("C")})
-    time.sleep(1)
+        # Create Grid
+        test_grid = sidekick.Grid(num_columns=12, num_rows=10, instance_id="demo-grid")
+        test_grid.on_click(handle_grid_click)
+        test_grid.on_error(lambda err: handle_module_error("demo-grid", err)) # Use instance_id in handler
 
-    main_console.print(" -> Removing variable 'simple_set'")
-    test_viz.remove_variable("simple_set")
-    time.sleep(0.5)
-    main_console.print("Type 'viz remove <var_name>' to remove others.")
+        # Create Controls
+        test_controls = sidekick.Control(instance_id="demo-controls")
+        test_controls.on_click(handle_control_click)
+        test_controls.on_input_text(handle_control_input)
+        test_controls.on_error(lambda err: handle_module_error("demo-controls", err)) # Use instance_id in handler
 
-    # --- Keep Script Running ---
-    main_console.print("--- Test Setup Complete ---")
-    main_console.print("Interact with UI elements. Type 'quit' in Console input to exit.")
-    while script_running:
-        # Keep alive, maybe add periodic actions if needed
-        time.sleep(0.5)
+        # Create Canvas
+        test_canvas = sidekick.Canvas(width=500, height=350, instance_id="demo-canvas")
+        test_canvas.on_error(lambda err: handle_module_error("demo-canvas", err)) # Use instance_id in handler
 
-except ConnectionRefusedError:
-    print("[ERROR] Connection refused. Is the Sidekick server (e.g., Vite dev server or VS Code extension) running?")
-except Exception as e:
-    print(f"[ERROR] An unexpected error occurred: {e}")
-    import traceback
-    traceback.print_exc()
-finally:
-    print("Hero script finishing. Closing connection...")
-    # --- Cleanup ---
-    # remove() sends the remove command and unregisters handlers
-    if test_grid: test_grid.remove()
-    if test_canvas: test_canvas.remove()
-    if test_viz: test_viz.remove()
-    if test_controls: test_controls.remove()
-    # Removing the console last might prevent seeing final messages if it closes too quickly
-    if main_console: main_console.remove()
-    # Explicitly close the WebSocket connection
-    sidekick.close_connection()
-    print("Connection closed.")
+        # Create Viz
+        test_viz = sidekick.Viz(instance_id="demo-viz")
+        test_viz.on_error(lambda err: handle_module_error("demo-viz", err)) # Use instance_id in handler
+
+        logger.info("All modules created.")
+        info_console.log("All Sidekick modules initialized.")
+        time.sleep(0.5) # Allow module spawn messages to be processed
+
+        # --- Run Demos ---
+        info_console.log("--- Starting Grid Demo ---")
+        populate_grid_demo(test_grid)
+        info_console.log("Grid Demo complete. Click cells!")
+        time.sleep(1)
+
+        info_console.log("--- Starting Controls Demo ---")
+        test_controls.add_button(control_id="add_random_button", text="Add Random Button")
+        test_controls.add_text_input(control_id="viz_input", placeholder="Enter Python expression (unsafe!)", button_text="Show in Viz")
+        test_controls.add_button(control_id="self_destruct_button", text="Remove This Button")
+        info_console.log("Controls Demo setup complete. Interact!")
+        time.sleep(1)
+
+        info_console.log("--- Starting Canvas Demo ---")
+        canvas_drawing_demo(test_canvas)
+        info_console.log("Canvas Demo complete.")
+        time.sleep(1)
+
+        info_console.log("--- Starting Viz Demo ---")
+        test_viz.show("script_info", {
+            "status": "Running",
+            "modules_active": [m.target_id for m in [main_console, info_console, test_grid, test_controls, test_canvas, test_viz] if m is not None],
+            "start_time": time.time()
+        })
+        test_viz.show("random_numbers", [random.random() for _ in range(5)])
+        viz_reactivity_demo(test_viz)
+        info_console.log("Viz Demo complete.")
+        time.sleep(1)
+
+        # --- Main Loop ---
+        main_console.print("--- All Demos Complete ---")
+        main_console.print("Script is running. Interact with UI or type 'quit' in this console.")
+        info_console.log("Main loop started. Waiting for user interaction or 'quit' command.")
+
+        while script_running:
+            # Update a variable periodically in Viz
+            if test_viz:
+                 # Ensure script_info exists before trying to update time
+                 script_info_val = test_viz._shown_variables.get("script_info", {}).get('value_or_observable')
+                 if isinstance(script_info_val, dict):
+                      script_info_val['current_time'] = time.time() # Modify dict directly
+                      test_viz.show("script_info", script_info_val) # Re-show to trigger update
+                 else: # Fallback if it wasn't a dict or didn't exist
+                     test_viz.show("current_time", time.time())
+
+            time.sleep(1) # Keep main thread alive
+
+        logger.info("Main loop finished.")
+
+    except ConnectionRefusedError:
+        logger.error("Connection refused. Is the Sidekick server running?")
+    except KeyboardInterrupt:
+        logger.info("Keyboard interrupt detected. Exiting gracefully...")
+    except Exception as e:
+        logger.exception(f"An unexpected error occurred in the main thread: {e}")
+        # Try to report error to console if possible
+        if main_console:
+            try: main_console.print(f"FATAL ERROR: {e}")
+            except Exception: pass
+    finally:
+        logger.info("--- Initiating Script Cleanup ---")
+        # Explicitly remove modules in reverse order of creation (optional, but good practice)
+        if test_viz: test_viz.remove()
+        if test_canvas: test_canvas.remove()
+        if test_controls: test_controls.remove()
+        if test_grid: test_grid.remove()
+        # Keep consoles until the very end if possible
+        time.sleep(0.1) # Allow final messages
+        if main_console: main_console.remove()
+        if info_console: info_console.remove()
+
+        # Unregister global handler
+        sidekick.register_global_message_handler(None)
+
+        # Close connection (also called by atexit)
+        sidekick.close_connection()
+        logger.info("--- Comprehensive Sidekick Test Finished ---")

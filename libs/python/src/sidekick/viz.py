@@ -13,7 +13,6 @@ from .observable_value import ObservableValue, UnsubscribeFunction, Subscription
 _MAX_DEPTH = 5
 _MAX_ITEMS = 50
 def _get_representation(data: Any, depth: int = 0, visited_ids: Optional[Set[int]] = None) -> Dict[str, Any]:
-    # ... (Full implementation of _get_representation as previously shown) ...
     # --- Ensure keys like 'observableTracked' are camelCase ---
     if visited_ids is None: visited_ids = set()
     current_id = id(data)
@@ -139,11 +138,17 @@ class Viz(BaseModule):
             instance_id=instance_id,
             spawn=spawn,
             payload=spawn_payload,
-            on_message=None # Viz module typically doesn't receive messages from frontend
         )
         # Stores information about shown variables and their potential unsubscribe functions.
         self._shown_variables: Dict[str, Dict[str, Any]] = {}
         connection.logger.info(f"Viz panel '{self.target_id}' initialized (spawn={spawn}).")
+
+    # _internal_message_handler is inherited from BaseModule and handles 'error'
+    # Viz currently doesn't have specific 'event' types to handle.
+
+    # on_error is inherited from BaseModule
+    # def on_error(self, callback: Optional[Callable[[str], None]]): inherited
+
 
     def _handle_observable_update(self, variable_name: str, change_details: Dict[str, Any]):
         """
@@ -175,11 +180,17 @@ class Viz(BaseModule):
             # Resend the full representation of the observable's *current* value.
             if action_type in ["set", "clear"] and not path: # Only if path is empty (root change)
                 observable_instance = self._shown_variables.get(variable_name, {}).get('value_or_observable')
-                options["valueRepresentation"] = _get_representation(observable_instance)
-                # Ensure length is also updated for root set/clear
-                actual_data = observable_instance.get() if isinstance(observable_instance, ObservableValue) else observable_instance
-                try: options["length"] = len(actual_data) if hasattr(actual_data, '__len__') else None
-                except TypeError: options["length"] = None
+                # Ensure observable_instance is not None before getting representation
+                if observable_instance is not None:
+                    options["valueRepresentation"] = _get_representation(observable_instance)
+                    # Ensure length is also updated for root set/clear
+                    actual_data = observable_instance.get() if isinstance(observable_instance, ObservableValue) else observable_instance
+                    try: options["length"] = len(actual_data) if hasattr(actual_data, '__len__') else None
+                    except TypeError: options["length"] = None
+                else:
+                     # If the observable was removed concurrently, we might not have it. Log and skip.
+                     connection.logger.warning(f"Viz '{self.target_id}': Observable instance for '{variable_name}' not found during root update. Skipping.")
+                     return
 
 
             # Construct the full update payload.
@@ -333,3 +344,8 @@ class Viz(BaseModule):
 
         # Call the base class remove method, which sends the 'remove' command for the panel itself.
         super().remove()
+
+    def _reset_specific_callbacks(self):
+        """Resets Viz-specific state (subscriptions) on removal."""
+        # The main remove() method already handles unsubscribing.
+        self._shown_variables.clear()

@@ -8,10 +8,13 @@ class BaseModule:
     Base class for Sidekick Python module interfaces (Grid, Console, Viz, etc.).
 
     Handles common functionality like activating the connection, managing instance IDs,
-    registering message handlers, and sending commands ('spawn', 'remove', 'update').
+    registering an internal message handler for errors, and sending commands.
 
     Provides the `spawn` parameter to control whether a new instance is created
     in Sidekick or if the Python object should attach to an existing instance.
+
+    Subclasses should override `_internal_message_handler` to handle specific
+    'event' messages and call specific callbacks (e.g., `_click_callback`).
     """
     def __init__(
         self,
@@ -19,7 +22,6 @@ class BaseModule:
         instance_id: Optional[str] = None,
         spawn: bool = True,
         payload: Optional[Dict[str, Any]] = None,
-        on_message: Optional[Callable[[Dict[str, Any]], None]] = None
     ):
         """
         Initializes the base module.
@@ -34,11 +36,10 @@ class BaseModule:
                    already exists in Sidekick and attaches to it without sending 'spawn'.
             payload: The initial payload for the 'spawn' command (only used if spawn=True).
                      Keys should generally be camelCase.
-            on_message: Optional callback for 'event' or 'error' messages from the frontend module.
-                        Receives the full message dictionary.
         """
         connection.activate_connection() # Ensure connection attempt is triggered
         self.module_type = module_type
+        self._error_callback: Optional[Callable[[str], None]] = None
 
         if not spawn and instance_id is None:
             raise ValueError(f"instance_id is required when spawn=False for module type '{module_type}'")
@@ -47,14 +48,53 @@ class BaseModule:
         self.target_id = instance_id or generate_unique_id(module_type)
         connection.logger.debug(f"Initializing BaseModule: type='{module_type}', id='{self.target_id}', spawn={spawn}")
 
-        self._on_message_callback = on_message
-        if self._on_message_callback:
-            connection.register_message_handler(self.target_id, self._on_message_callback)
+        # Register the internal handler for this instance
+        connection.register_message_handler(self.target_id, self._internal_message_handler)
 
         # Only send spawn command if requested
         if spawn:
             self._send_command("spawn", payload or {})
         # else: Assuming instance exists, just track it locally
+
+    def _internal_message_handler(self, message: Dict[str, Any]):
+        """
+        Internal handler for messages received for this specific instance.
+        Registered with the connection manager. Parses message type and payload.
+        Base implementation handles 'error' messages. Subclasses should override
+        this to handle 'event' messages and call super() for error handling.
+        """
+        msg_type = message.get("type")
+        payload = message.get("payload")
+
+        if msg_type == "error":
+            error_message = "Unknown error"
+            if payload and isinstance(payload.get("message"), str):
+                error_message = payload["message"]
+            connection.logger.error(f"Module '{self.target_id}' received error from Sidekick: {error_message}")
+            if self._error_callback:
+                try:
+                    self._error_callback(error_message)
+                except Exception as e:
+                    connection.logger.exception(f"Error in {self.module_type} '{self.target_id}' on_error callback: {e}")
+        elif msg_type == "event":
+            # Base implementation doesn't handle specific events, subclasses should.
+            pass
+        else:
+            connection.logger.warning(f"Module '{self.target_id}' received unhandled message type '{msg_type}': {message}")
+
+    def on_error(self, callback: Optional[Callable[[str], None]]):
+        """
+        Registers a function to be called when an error message related to this
+        module instance is received from Sidekick.
+
+        Args:
+            callback: A function that accepts a single string argument (the error message),
+                      or None to unregister.
+        """
+        if callback is not None and not callable(callback):
+            raise TypeError("Error callback must be callable or None")
+        connection.logger.info(f"Setting on_error callback for module '{self.target_id}'.")
+        self._error_callback = callback
 
     def _send_command(self, msg_type: str, payload: Optional[Dict[str, Any]] = None):
         """
@@ -90,9 +130,17 @@ class BaseModule:
         connection.logger.info(f"Requesting removal of module '{self.target_id}'.")
         # Always try to unregister handler first
         connection.unregister_message_handler(self.target_id)
-        self._send_command("remove") # Send remove command (might be buffered)
+        # Reset local callbacks
+        self._error_callback = None
+        # Let subclasses reset their specific callbacks if needed
+        self._reset_specific_callbacks()
+        # Send remove command (might be buffered)
+        self._send_command("remove")
 
-    # __del__ remains the same (best-effort cleanup)
+    def _reset_specific_callbacks(self):
+        """Placeholder for subclasses to reset their specific event callbacks on remove."""
+        pass
+
     def __del__(self):
         """Attempts to unregister the message handler upon garbage collection."""
         try:

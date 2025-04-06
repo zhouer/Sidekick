@@ -7,10 +7,9 @@ class Console(BaseModule):
     """
     Represents a Console module instance in the Sidekick UI.
 
-    Allows printing text output to a scrolling area in Sidekick. You can also
-    clear the console area. Optionally, an input field can be displayed below
-    the output area, allowing the user to type text and send it back to your
-    Python script via a callback function.
+    Allows printing text output to a scrolling area and optionally receiving
+    user input via a text field. Callbacks can be registered for input events
+    and errors.
 
     This class can either create a new console instance in Sidekick or attach
     to a pre-existing one.
@@ -23,116 +22,114 @@ class Console(BaseModule):
         instance_id: Optional[str] = None,
         spawn: bool = True,
         initial_text: str = "",
-        show_input: bool = False,
-        on_message: Optional[Callable[[Dict[str, Any]], None]] = None
+        show_input: bool = False
     ):
         """
         Initializes or attaches to a Console module in the Sidekick UI.
 
         Args:
             instance_id (Optional[str]): A specific ID for this console instance.
-                Useful if you want to ensure you are always interacting with the same
-                console UI element across script runs (requires `spawn=False`).
-                - If `spawn=True`: Optional. If None, an ID will be generated automatically.
-                - If `spawn=False`: **Required**. Specifies the ID of the existing
-                  console instance in Sidekick to attach to.
-            spawn (bool): If True (default), creates a new console instance in Sidekick.
-                Sends a 'spawn' command with the configuration (like `showInput`).
-                If False, attaches to an existing console with `instance_id`.
-                No 'spawn' command sent, and `initial_text`/`show_input` are ignored.
+                - If `spawn=True`: Optional. Auto-generated if None.
+                - If `spawn=False`: **Required**.
+            spawn (bool): If True (default), creates a new console instance.
+                If False, attaches to an existing one. `initial_text` and `show_input`
+                are ignored if `spawn=False`.
             initial_text (str): Text line to display immediately upon creation.
                 Only used if `spawn=True`. Defaults to "".
-            show_input (bool): If True, displays a text input field and a send button
-                below the console output area in Sidekick. Defaults to False (no input shown).
-                Only used if `spawn=True`.
-            on_message (Optional[Callable]): A function to call when the user sends
-                input from the Sidekick UI (only relevant if `show_input=True`).
-                The function will receive a single dictionary argument representing the
-                message from Sidekick. For input events, the payload will look like:
-                `{'event': 'inputText', 'value': submitted_text}`.
-                Make sure the function you provide can accept one argument.
+            show_input (bool): If True, displays a text input field in Sidekick.
+                Defaults to False. Only used if `spawn=True`.
 
         Raises:
-            ValueError: If `spawn` is False and `instance_id` is None.
+            ValueError: If `spawn` is False and `instance_id` is None, or if
+                        `show_input` is missing/invalid when `spawn` is True.
         """
-        # Payload only matters if spawning a new instance
         spawn_payload: Dict[str, Any] = {}
         if spawn:
-            # Ensure showInput is always included in the spawn payload
+            # Validate showInput during spawn
+            if show_input is None or not isinstance(show_input, bool):
+                 raise ValueError(f"Console spawn requires a boolean 'show_input', got {show_input}")
             spawn_payload["showInput"] = show_input # camelCase key
             if initial_text:
-                 # Only add initial text if it's not empty
                  spawn_payload["text"] = initial_text
 
-        # Initialize the base class, which handles connection, ID, spawn command etc.
+        # Initialize the base class
         super().__init__(
             module_type="console",
             instance_id=instance_id,
             spawn=spawn,
-            payload=spawn_payload if spawn else None, # Only send payload if spawning
-            on_message=on_message # Register the callback for 'event' messages
+            payload=spawn_payload if spawn else None
         )
+        self._input_text_callback: Optional[Callable[[str], None]] = None
         connection.logger.info(f"Console '{self.target_id}' initialized (spawn={spawn}, show_input={show_input if spawn else 'N/A'}).")
+
+    def _internal_message_handler(self, message: Dict[str, Any]):
+        """Handles incoming messages for this console instance."""
+        msg_type = message.get("type")
+        payload = message.get("payload")
+
+        if msg_type == "event":
+            event_type = payload.get("event") if payload else None
+            if event_type == "inputText" and self._input_text_callback:
+                try:
+                    value = payload.get("value")
+                    if isinstance(value, str):
+                        self._input_text_callback(value)
+                    else:
+                         connection.logger.warning(f"Console '{self.target_id}' received inputText event with non-string value: {payload}")
+                except Exception as e:
+                    connection.logger.exception(f"Error in Console '{self.target_id}' on_input_text callback: {e}")
+            else:
+                 connection.logger.debug(f"Console '{self.target_id}' received unhandled event type '{event_type}'.")
+
+        # Call base handler for error messages
+        super()._internal_message_handler(message)
+
+    def on_input_text(self, callback: Optional[Callable[[str], None]]):
+        """
+        Registers a function to be called when text is submitted via the
+        input field in the Sidekick UI (only applicable if `show_input=True`).
+
+        The callback function will receive one string argument: the text entered
+        by the user.
+
+        Args:
+            callback: A function accepting a single string argument, or None to unregister.
+        """
+        if callback is not None and not callable(callback):
+            raise TypeError("Input text callback must be callable or None")
+        connection.logger.info(f"Setting on_input_text callback for console '{self.target_id}'.")
+        self._input_text_callback = callback
+
+    # on_error is inherited from BaseModule
 
     def print(self, *args: Any, sep: str = ' ', end: str = ''):
         """
-        Prints text to this console module instance in Sidekick, appending it
-        to the output area.
-
-        This works very similar to Python's built-in `print()` function.
-        It converts all arguments to strings, joins them with the `sep` string,
-        and adds the `end` string. The final text is then displayed on a new
-        line (or appended, depending on `end`) in the Sidekick console.
-
-        Example:
-            console.print("Hello", "world!")  # Sends "Hello world!"
-            console.print(1, 2, 3, sep='-')   # Sends "1-2-3"
+        Prints text to this console module instance in Sidekick.
 
         Args:
-            *args (Any): One or more objects to print. They will be converted to
-                         strings using `str()`.
-            sep (str): The separator string inserted between objects. Defaults to a space ' '.
-            end (str): The string appended after the last object. Defaults to an empty
-                       string '', meaning subsequent prints start right after.
-                       Use `end='\\n'` to ensure a newline, although the UI usually handles this.
+            *args (Any): Objects to print (converted to string).
+            sep (str): Separator between objects. Defaults to ' '.
+            end (str): String appended at the end. Defaults to ''.
         """
         text_to_print = sep.join(map(str, args)) + end
-        # Construct the payload for the 'update' command
-        # Using the standard action/options structure for Sidekick updates
         payload = {
-            "action": "append", # Instructs the UI to add text
-            "options": {
-                "text": text_to_print # The text content (ensure payload key is camelCase)
-            }
+            "action": "append",
+            "options": { "text": text_to_print } # camelCase key
         }
-        # Send the update command (handles buffering via connection.send_message)
         self._send_update(payload)
 
     def log(self, message: Any):
-        """
-        A convenient shortcut to print a single message to the console.
-
-        This is equivalent to calling `console.print(message)`.
-
-        Args:
-            message (Any): The message or object to print. It will be converted to a string.
-        """
-        self.print(message) # Simply calls the more general print method
+        """A convenient shortcut to print a single message."""
+        self.print(message)
 
     def clear(self):
-        """
-        Removes all previously displayed text from this console instance in Sidekick,
-        leaving the output area empty.
-        """
+        """Removes all text from this console instance in Sidekick."""
         connection.logger.info(f"Requesting clear for console '{self.target_id}'.")
-        # Construct the payload for the 'clear' action
-        payload = {
-            "action": "clear"
-            # 'options' are not needed for the clear action
-        }
-        # Send the update command (handles buffering via connection.send_message)
+        payload = { "action": "clear" }
         self._send_update(payload)
 
-    # remove() method is inherited from BaseModule.
-    # Calling console_instance.remove() will send a 'remove' command to Sidekick
-    # for this console instance and unregister the local message handler.
+    def _reset_specific_callbacks(self):
+        """Resets console-specific callbacks on removal."""
+        self._input_text_callback = None
+
+    # remove() is inherited from BaseModule

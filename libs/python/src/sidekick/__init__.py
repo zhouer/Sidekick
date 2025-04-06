@@ -8,7 +8,14 @@ Sidekick Visual Coding Buddy - Python Client Library
 from ._version import __version__
 
 # --- Core connection/config functions ---
-from .connection import set_url, set_config, close_connection, activate_connection, clear_all
+from .connection import (
+    set_url,
+    set_config,
+    close_connection,
+    activate_connection,
+    clear_all,
+    register_global_message_handler
+)
 
 # --- Core observable class ---
 from .observable_value import ObservableValue
@@ -30,6 +37,7 @@ __all__ = [
     'close_connection',
     'activate_connection',
     'clear_all',
+    'register_global_message_handler',
     # Observable
     'ObservableValue',
     # Modules

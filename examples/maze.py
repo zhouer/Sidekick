@@ -165,7 +165,7 @@ def generate_maze_prims():
 
             # Visualize carving the opposite cell
             grid.set_color(opposite_c, opposite_r, CURRENT_COLOR) # (x, y)
-            time.sleep(GENERATION_DELAY)
+            time.sleep(GENERATION_DELAY) # Full delay here
             maze[opposite_r][opposite_c] = PATH_CHAR
             grid.set_color(opposite_c, opposite_r, PATH_COLOR) # (x, y)
 
@@ -211,7 +211,7 @@ def generate_maze_task():
              for r in range(grid_height):
                   if is_valid(r, 0) and maze[r][0] == PATH_CHAR: start_pos = (r, 0); break
         # Fallback if no path found on top/left (shouldn't happen with Prim's from (0,0) effectively)
-        if start_pos is None: start_pos = (0,0)
+        if start_pos is None: start_pos = (0,0); maze[0][0] = PATH_CHAR # Ensure fallback is path
         maze[start_pos[0]][start_pos[1]] = START_CHAR
         if grid: grid.set_color(start_pos[1], start_pos[0], START_COLOR) # (x, y)
 
@@ -224,11 +224,14 @@ def generate_maze_task():
             for r in range(grid_height-1, -1, -1):
                  if is_valid(r, grid_width-1) and maze[r][grid_width-1] == PATH_CHAR: end_pos = (r, grid_width-1); break
         # Fallback
-        if end_pos is None: end_pos = (grid_height - 1, grid_width - 1)
+        if end_pos is None: end_pos = (grid_height - 1, grid_width - 1); maze[end_pos[0]][end_pos[1]] = PATH_CHAR # Ensure fallback is path
         # Ensure start != end
         if end_pos == start_pos:
+             # Try moving end left or up if overlapping and possible
              if is_valid(end_pos[0], end_pos[1]-1) and maze[end_pos[0]][end_pos[1]-1] == PATH_CHAR: end_pos = (end_pos[0], end_pos[1]-1)
              elif is_valid(end_pos[0]-1, end_pos[1]) and maze[end_pos[0]-1][end_pos[1]] == PATH_CHAR: end_pos = (end_pos[0]-1, end_pos[1])
+             # If still overlapping, log warning but proceed
+             if end_pos == start_pos: logging.warning("Could not separate start and end points.")
         maze[end_pos[0]][end_pos[1]] = END_CHAR
         if grid: grid.set_color(end_pos[1], end_pos[0], END_COLOR) # (x, y)
 
@@ -374,36 +377,42 @@ def solve_maze_task():
 # ==================================
 # == Sidekick Control Handler     ==
 # ==================================
-def control_handler(msg: Dict[str, Any]):
-    """Handles messages received from the Control module."""
+def handle_control_click(control_id: str):
+    """Handles button clicks from the Control module."""
     global solving, generating # Declare intention to modify global variables
     if not console: logging.error("Control handler called but console is None!"); return
 
-    logging.debug(f"Control handler received: {msg}")
-    # Callback message payload keys are expected to be camelCase
-    payload = msg.get('payload', {})
-    event = payload.get('event')
-    control_id = payload.get('controlId') # Access camelCase key
+    logging.debug(f"Control click handler received: {control_id}")
 
-    if event == 'click':
-        if control_id == 'generate_btn':
-            with state_lock:
-                # Interrupt solver if running
-                if solving: solving = False; console.print("Interrupting solver for new generation...")
-                # Interrupt generation if running (though unlikely to click again)
-                if generating: generating = False; console.print("Interrupting current generation...")
-            # Start generation in a new thread
-            gen_thread = threading.Thread(target=generate_maze_task, daemon=True)
-            gen_thread.start()
-        elif control_id == 'solve_btn':
-            with state_lock:
-                # Interrupt generation if running
-                if generating: generating = False; console.print("Interrupting generator for solving...")
-            # Start solving in a new thread
-            solve_thread = threading.Thread(target=solve_maze_task, daemon=True)
-            solve_thread.start()
-        else: logging.warning(f"Unknown control click: {control_id}")
-    else: logging.warning(f"Received non-click event from controls: {event}")
+    if control_id == 'generate_btn':
+        with state_lock:
+            # Interrupt solver if running
+            if solving: solving = False; console.print("Interrupting solver for new generation...")
+            # Interrupt generation if running (though unlikely to click again)
+            if generating: generating = False; console.print("Interrupting current generation...")
+        # Start generation in a new thread
+        gen_thread = threading.Thread(target=generate_maze_task, daemon=True)
+        gen_thread.start()
+    elif control_id == 'solve_btn':
+        with state_lock:
+            # Interrupt generation if running
+            if generating: generating = False; console.print("Interrupting generator for solving...")
+            # Interrupt solver if running (to restart it)
+            if solving: solving = False; console.print("Interrupting current solver to restart...")
+        # Start solving in a new thread
+        solve_thread = threading.Thread(target=solve_maze_task, daemon=True)
+        solve_thread.start()
+    else:
+        logging.warning(f"Unknown control click: {control_id}")
+
+def handle_module_error(module_name: str, error_message: str):
+    """Generic error handler for modules."""
+    logging.error(f"Error from {module_name}: {error_message}")
+    if console:
+        try:
+            console.print(f"ERROR [{module_name}]: {error_message}")
+        except Exception:
+            pass # Avoid errors during error reporting
 
 # ==================================
 # == Main Execution               ==
@@ -419,10 +428,18 @@ if __name__ == "__main__":
 
         console_instance = Console(instance_id="maze_console")
         console = console_instance
+        console.on_error(lambda err: handle_module_error("Console", err))
+
         grid_instance = Grid(num_columns=grid_width, num_rows=grid_height, instance_id="maze_grid")
         grid = grid_instance
-        controls_instance = Control(instance_id="maze_controls", on_message=control_handler)
+        grid.on_error(lambda err: handle_module_error("Grid", err))
+        # Grid clicks are not used for interaction in this maze example currently
+
+        controls_instance = Control(instance_id="maze_controls") # Removed on_message
         controls = controls_instance
+        # Register specific handlers
+        controls.on_click(handle_control_click)
+        controls.on_error(lambda err: handle_module_error("Control", err))
 
         console.print("Maze Generator & Solver Initialized.")
         console.print(f"Grid Size: {grid_width}x{grid_height}")

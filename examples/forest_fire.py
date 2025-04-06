@@ -213,47 +213,47 @@ def simulation_loop():
 
 
 # ==================================
-# == Sidekick Control Handler     ==
+# == Sidekick Control Handlers    ==
 # ==================================
 
-def control_handler(msg: Dict[str, Any]):
-    """Handles messages received from the Control module."""
+def handle_control_click(control_id: str):
+    """Handles button clicks from the Control module."""
     global running, forest_grid # Need access to modify running and potentially reset grid
 
     if not console: logging.error("Control handler called but console is None!"); return
 
-    logging.debug(f"Control handler received: {msg}")
-    payload = msg.get('payload', {})
-    event = payload.get('event')
-    control_id = payload.get('controlId')
+    logging.debug(f"Control click handler received: {control_id}")
 
-    if event == 'click':
-        with state_lock: # Acquire lock to safely modify shared state
-            if control_id == 'start_btn':
-                if not running:
-                    running = True
-                    console.print("Simulation Started.")
-                    logging.info("Start button clicked - Running set to True")
-            elif control_id == 'stop_btn':
-                if running:
-                    running = False
-                    console.print("Simulation Stopped.")
-                    logging.info("Stop button clicked - Running set to False")
-            elif control_id == 'reset_btn':
-                # Stop the simulation first
-                if running:
-                    running = False
-                    console.print("Simulation Stopped for Reset.")
-                    logging.info("Reset button clicked - Running set to False")
-                # Re-initialize the forest state
-                initialize_forest()
-                # Draw the newly initialized state immediately
-                draw_full_forest()
-                console.print("Forest Reset.")
-            else:
-                logging.warning(f"Unknown control click: {control_id}")
-    else:
-        logging.warning(f"Received non-click event from controls: {event}")
+    with state_lock: # Acquire lock to safely modify shared state
+        if control_id == 'start_btn':
+            if not running:
+                running = True
+                console.print("Simulation Started.")
+                logging.info("Start button clicked - Running set to True")
+        elif control_id == 'stop_btn':
+            if running:
+                running = False
+                console.print("Simulation Stopped.")
+                logging.info("Stop button clicked - Running set to False")
+        elif control_id == 'reset_btn':
+            # Stop the simulation first
+            if running:
+                running = False
+                console.print("Simulation Stopped for Reset.")
+                logging.info("Reset button clicked - Running set to False")
+            # Re-initialize the forest state
+            initialize_forest()
+            # Draw the newly initialized state immediately
+            draw_full_forest()
+            console.print("Forest Reset.")
+        else:
+            logging.warning(f"Unknown control click: {control_id}")
+
+def handle_control_error(error_message: str):
+    """Handles errors reported by the Control module."""
+    if not console: logging.error("Control error handler called but console is None!"); return
+    console.print(f"ERROR from Controls UI: {error_message}")
+    logging.error(f"Received error from Control module: {error_message}")
 
 # ==================================
 # == Main Execution               ==
@@ -272,12 +272,17 @@ if __name__ == "__main__":
         # --- Create Sidekick Modules ---
         console_instance = Console(instance_id="fire_console")
         console = console_instance
+        console.on_error(lambda err: logging.error(f"Console Error: {err}")) # Basic error handler
 
         grid_instance = Grid(num_columns=GRID_WIDTH, num_rows=GRID_HEIGHT, instance_id="fire_grid")
         grid = grid_instance
+        grid.on_error(lambda err: logging.error(f"Grid Error: {err}")) # Basic error handler
 
-        controls_instance = Control(instance_id="fire_controls", on_message=control_handler)
+        controls_instance = Control(instance_id="fire_controls") # Removed on_message
         controls = controls_instance
+        # Register specific handlers
+        controls.on_click(handle_control_click)
+        controls.on_error(handle_control_error)
 
         console.print("Forest Fire Simulation Initialized.")
         console.print(f"Grid: {GRID_WIDTH}x{GRID_HEIGHT}, Growth: {P_GROWTH:.2f}, Lightning: {P_LIGHTNING:.4f}")

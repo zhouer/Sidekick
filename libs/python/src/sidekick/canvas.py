@@ -1,7 +1,7 @@
 # Sidekick/libs/python/src/sidekick/canvas.py
 from . import connection
 from .base_module import BaseModule
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable
 
 class Canvas(BaseModule):
     """
@@ -61,13 +61,18 @@ class Canvas(BaseModule):
             module_type="canvas",
             instance_id=instance_id,
             spawn=spawn,
-            payload=spawn_payload if spawn else None, # Pass payload only if spawning
-            on_message=None
+            payload=spawn_payload if spawn else None,
         )
         # Store dimensions locally for potential future use or reference.
         self.width = width
         self.height = height
         connection.logger.info(f"Canvas '{self.target_id}' initialized (spawn={spawn}, size={width}x{height}).")
+
+    # _internal_message_handler is inherited from BaseModule and handles 'error'
+    # Canvas currently doesn't have specific 'event' types to handle.
+
+    # on_error is inherited from BaseModule
+    # def on_error(self, callback: Optional[Callable[[str], None]]): inherited
 
     def _send_canvas_command(self, action: str, options: Optional[Dict[str, Any]] = None):
         """

@@ -40,6 +40,7 @@ _ws_connection: Optional[websocket.WebSocket] = None
 _connection_lock = threading.RLock() # Use RLock for potential re-entrant calls
 _listener_thread: Optional[threading.Thread] = None
 _listener_started: bool = False
+# Maps instance_id to the internal handler of the module instance
 _message_handlers: Dict[str, Callable[[Dict[str, Any]], None]] = {}
 _command_counter: int = 0 # Counter for Canvas command IDs
 
@@ -50,6 +51,8 @@ _sidekick_peers_online: Set[str] = set() # Store peerIds of online sidekicks
 _message_buffer: Deque[Dict[str, Any]] = deque() # Buffer for non-system messages
 _clear_on_connect: bool = True
 _clear_on_disconnect: bool = False
+# Global handler for all incoming messages
+_global_message_handler: Optional[Callable[[Dict[str, Any]], None]] = None
 
 # WebSocket Keep-Alive settings (remains the same)
 _PING_INTERVAL = 20
@@ -142,7 +145,7 @@ def _handle_sidekick_online(sidekick_peer_id: str):
 
 def _listen_for_messages():
     """Background thread function to listen for incoming messages."""
-    global _connection_status, _message_handlers, _sidekick_peers_online, _listener_started
+    global _connection_status, _message_handlers, _sidekick_peers_online, _listener_started, _global_message_handler
     logger.info("Listener thread started.")
 
     while _connection_status != ConnectionStatus.DISCONNECTED:
@@ -175,12 +178,20 @@ def _listen_for_messages():
             with _connection_lock: # Acquire lock to process message and update state
                  if _connection_status == ConnectionStatus.DISCONNECTED: break # Check again after potential delay
 
+                 # --- 1. Call Global Handler (if registered) ---
+                 if _global_message_handler:
+                     try:
+                         _global_message_handler(message_data)
+                     except Exception as e:
+                         logger.exception(f"Listener: Error in global message handler: {e}")
+
+                 # --- 2. Handle Message Dispatch ---
                  module = message_data.get('module')
                  msg_type = message_data.get('type')
                  payload = message_data.get('payload')
 
                  # --- Handle System Announce ---
-                 if module == 'system' and msg_type == 'announce' and payload: # Check 'type'
+                 if module == 'system' and msg_type == 'announce' and payload:
                       peer_id = payload.get('peerId')
                       role = payload.get('role')
                       status = payload.get('status')
@@ -199,23 +210,24 @@ def _listen_for_messages():
                                           # Keep READY state for simplicity for now
                                           pass
 
-                 # --- Handle Module Event/Error ---
+                 # --- Handle Module Event/Error (Dispatch to specific handler) ---
                  elif msg_type in ['event', 'error']:
                       instance_id = message_data.get('src')
                       if instance_id and instance_id in _message_handlers:
                            handler = _message_handlers[instance_id]
                            try:
                                 logger.debug(f"Listener: Invoking handler for instance '{instance_id}' (type: {msg_type}).")
-                                handler(message_data) # Call handler
+                                handler(message_data) # Call the module's internal handler
                            except Exception as e:
                                 logger.exception(f"Listener: Error executing handler for instance '{instance_id}': {e}")
                       elif instance_id:
-                           logger.debug(f"Listener: No handler registered for instance '{instance_id}'.")
+                           logger.debug(f"Listener: No specific handler registered for instance '{instance_id}' for message type {msg_type}.")
                       else:
                            logger.debug(f"Listener: Received {msg_type} message without 'src': {message_data}")
 
                  else:
-                      logger.debug(f"Listener: Received unhandled message type '{msg_type}' for module '{module}': {message_data}")
+                      # Other message types (e.g., spawn/update coming from Sidekick?) are not expected here yet.
+                      logger.debug(f"Listener: Received message not dispatched to specific handler: type='{msg_type}', module='{module}'")
 
         except websocket.WebSocketConnectionClosedException:
             if _connection_status != ConnectionStatus.DISCONNECTED:
@@ -424,31 +436,51 @@ def close_connection(log_info=True):
                  logger.error(f"Error during WebSocket close(): {e}")
 
         # --- Clear Handlers ---
+        # Keep global handler, but clear instance handlers
         if _message_handlers:
-            logger.debug("Clearing message handlers.")
+            logger.debug("Clearing instance message handlers.")
             _message_handlers.clear()
 
         if log_info: logger.info("WebSocket connection closed.")
 
-# --- Registration/Utility Functions (remain largely the same) ---
+# --- Registration/Utility Functions ---
 
 def register_message_handler(instance_id: str, handler: Callable[[Dict[str, Any]], None]):
-    """Registers a callback for messages from a specific module instance."""
+    """Registers the internal message handler for a specific module instance."""
     if not callable(handler):
         logger.error(f"Handler for instance '{instance_id}' is not callable.")
         return
     with _connection_lock:
-        logger.info(f"Registering message handler for instance '{instance_id}'.")
+        logger.info(f"Registering internal message handler for instance '{instance_id}'.")
         _message_handlers[instance_id] = handler
 
 def unregister_message_handler(instance_id: str):
-    """Unregisters the callback for a specific module instance."""
+    """Unregisters the internal message handler for a specific module instance."""
     with _connection_lock:
         if instance_id in _message_handlers:
-            logger.info(f"Unregistering message handler for instance '{instance_id}'.")
+            logger.info(f"Unregistering internal message handler for instance '{instance_id}'.")
             del _message_handlers[instance_id]
         else:
-            logger.debug(f"No message handler found for instance '{instance_id}' to unregister.")
+            logger.debug(f"No internal message handler found for instance '{instance_id}' to unregister.")
+
+def register_global_message_handler(handler: Optional[Callable[[Dict[str, Any]], None]]):
+    """
+    Registers a single handler function to receive ALL incoming messages from Sidekick.
+    Set to None to unregister.
+
+    Args:
+        handler: A function that accepts the raw message dictionary, or None.
+    """
+    global _global_message_handler
+    with _connection_lock:
+        if handler is None:
+            logger.info("Unregistering global message handler.")
+            _global_message_handler = None
+        elif callable(handler):
+            logger.info(f"Registering global message handler: {handler}")
+            _global_message_handler = handler
+        else:
+            logger.error("Global message handler must be callable or None.")
 
 def get_next_command_id() -> int:
     """Generates a sequential ID for commands (like Canvas drawing ops)."""

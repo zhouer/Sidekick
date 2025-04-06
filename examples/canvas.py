@@ -74,6 +74,11 @@ def update_balls(balls: List[Ball], dt: float, width: int, height: int):
             ball["y"] = height - ball["r"]
             ball["vy"] *= -1
 
+# --- Error Handler (Optional) ---
+def handle_canvas_error(error_message: str):
+    """Callback for handling errors from the canvas instance."""
+    logging.error(f"Received error from Canvas: {error_message}")
+
 # --- Main Test Function ---
 
 def run_stress_test():
@@ -89,6 +94,9 @@ def run_stress_test():
         # Create the canvas instance
         canvas = Canvas(width=CANVAS_WIDTH, height=CANVAS_HEIGHT, bg_color="#202020", instance_id="stress-test-canvas")
         logging.info(f"Canvas '{canvas.target_id}' created.")
+
+        # Register error handler (optional)
+        canvas.on_error(handle_canvas_error)
 
         # Allow time for spawn message to be processed
         time.sleep(0.5)

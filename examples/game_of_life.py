@@ -140,64 +140,83 @@ def draw_full_grid():
             color = LIVE_COLOR if game_grid[r][c] == 1 else DEAD_COLOR
             grid.set_color(c, r, color)
 
-def control_handler(msg: Dict[str, Any]):
-    """Handles messages received from the Control module."""
+def handle_control_click(control_id: str):
+    """Handles button clicks from the Control module."""
     global running, game_grid
-    logging.debug(f"Control handler received: {msg}")
-    payload = msg.get('payload', {})
-    event = payload.get('event')
-    control_id = payload.get('controlId')
+    logging.debug(f"Control click handler received: {control_id}")
 
-    if event == 'click':
-        with run_lock: # Lock when potentially modifying 'running' or grid
-            if control_id == 'start_btn':
-                if not running:
-                    running = True
-                    console.print("Simulation Started.")
-                    logging.info("Start button clicked - Running set to True")
-            elif control_id == 'stop_btn':
-                if running:
-                    running = False
-                    console.print("Simulation Stopped.")
-                    logging.info("Stop button clicked - Running set to False")
-            elif control_id == 'step_btn':
-                # Stop simulation first, then perform one step
-                if running:
-                    running = False
-                    console.print("Simulation Stopped for Stepping.")
-                    logging.info("Step button clicked - Running set to False")
-                # Compute and draw one step
-                console.print("Performing one step...")
-                logging.info("Step button clicked - Computing next gen")
-                current_grid_copy = deepcopy(game_grid) # Keep current state for comparison
-                next_grid = compute_next_gen()
-                if next_grid:
-                    draw_grid(current_grid_copy, next_grid)
-                    game_grid = next_grid # Update state after drawing changes
-                console.print("Step completed.")
-            elif control_id == 'random_btn':
-                 # Stop simulation before randomizing
-                if running:
-                    running = False
-                    console.print("Simulation Stopped for Randomization.")
-                    logging.info("Randomize button clicked - Running set to False")
-                randomize_grid()
-                draw_full_grid() # Draw the new randomized state
-                console.print("Grid randomized.")
-            elif control_id == 'clear_btn':
-                 # Stop simulation before clearing
-                if running:
-                    running = False
-                    console.print("Simulation Stopped for Clearing.")
-                    logging.info("Clear button clicked - Running set to False")
-                clear_grid()
-                draw_full_grid() # Draw the new cleared state
-                console.print("Grid cleared.")
-            else:
-                logging.warning(f"Unknown control click: {control_id}")
-    else:
-        logging.warning(f"Received non-click event: {event}")
+    if not console: return
 
+    with run_lock: # Lock when potentially modifying 'running' or grid
+        if control_id == 'start_btn':
+            if not running:
+                running = True
+                console.print("Simulation Started.")
+                logging.info("Start button clicked - Running set to True")
+        elif control_id == 'stop_btn':
+            if running:
+                running = False
+                console.print("Simulation Stopped.")
+                logging.info("Stop button clicked - Running set to False")
+        elif control_id == 'step_btn':
+            # Stop simulation first, then perform one step
+            if running:
+                running = False
+                console.print("Simulation Stopped for Stepping.")
+                logging.info("Step button clicked - Running set to False")
+            # Compute and draw one step
+            console.print("Performing one step...")
+            logging.info("Step button clicked - Computing next gen")
+            current_grid_copy = deepcopy(game_grid) # Keep current state for comparison
+            next_grid = compute_next_gen()
+            if next_grid:
+                draw_grid(current_grid_copy, next_grid)
+                game_grid = next_grid # Update state after drawing changes
+            console.print("Step completed.")
+        elif control_id == 'random_btn':
+             # Stop simulation before randomizing
+            if running:
+                running = False
+                console.print("Simulation Stopped for Randomization.")
+                logging.info("Randomize button clicked - Running set to False")
+            randomize_grid()
+            draw_full_grid() # Draw the new randomized state
+            console.print("Grid randomized.")
+        elif control_id == 'clear_btn':
+             # Stop simulation before clearing
+            if running:
+                running = False
+                console.print("Simulation Stopped for Clearing.")
+                logging.info("Clear button clicked - Running set to False")
+            clear_grid()
+            draw_full_grid() # Draw the new cleared state
+            console.print("Grid cleared.")
+        else:
+            logging.warning(f"Unknown control click: {control_id}")
+
+def handle_grid_click(x: int, y: int):
+    """Handles clicks on the Grid module."""
+    global game_grid
+    if not grid or not console or not game_grid: return
+
+    with run_lock: # Prevent modification while simulation might be reading
+        if 0 <= y < len(game_grid) and 0 <= x < len(game_grid[0]):
+            # Toggle the state of the clicked cell
+            game_grid[y][x] = 1 - game_grid[y][x]
+            color = LIVE_COLOR if game_grid[y][x] == 1 else DEAD_COLOR
+            grid.set_color(x, y, color)
+            console.print(f"Toggled cell ({x},{y}) to {'Live' if game_grid[y][x] == 1 else 'Dead'}")
+        else:
+            console.print(f"WARN: Click outside grid bounds ({x},{y})")
+
+def handle_module_error(module_name: str, error_message: str):
+    """Generic error handler for modules."""
+    logging.error(f"Error from {module_name}: {error_message}")
+    if console:
+        try:
+            console.print(f"ERROR [{module_name}]: {error_message}")
+        except Exception:
+            pass # Avoid errors during error reporting
 
 # ==================================
 # == Simulation Thread Logic      ==
@@ -249,8 +268,16 @@ if __name__ == "__main__":
 
         # Create Sidekick modules
         console = Console(instance_id="gol_console")
+        console.on_error(lambda err: handle_module_error("Console", err))
+
         grid = Grid(num_columns=GRID_WIDTH, num_rows=GRID_HEIGHT, instance_id="gol_grid")
-        controls = Control(instance_id="gol_controls", on_message=control_handler)
+        grid.on_click(handle_grid_click) # Register grid click handler
+        grid.on_error(lambda err: handle_module_error("Grid", err))
+
+        controls = Control(instance_id="gol_controls")
+        controls.on_click(handle_control_click) # Register control click handler
+        controls.on_error(lambda err: handle_module_error("Control", err))
+
 
         console.print("Welcome to Conway's Game of Life!")
         console.print(f"Grid Size: {GRID_WIDTH}x{GRID_HEIGHT}. Delay: {SIM_DELAY}s")
@@ -261,7 +288,7 @@ if __name__ == "__main__":
         controls.add_button(control_id='step_btn', text='Step')
         controls.add_button(control_id='random_btn', text='Randomize')
         controls.add_button(control_id='clear_btn', text='Clear')
-        console.print("Controls added.")
+        console.print("Controls added. Click on grid cells to toggle.")
 
         # Initialize and draw the initial grid state
         initialize_grid(GRID_WIDTH, GRID_HEIGHT, randomize=True)
@@ -285,6 +312,9 @@ if __name__ == "__main__":
         logging.info("Ctrl+C detected. Exiting...")
     except Exception as e:
         logging.exception(f"An unexpected error occurred: {e}")
+        if console:
+             try: console.print(f"FATAL ERROR: {e}")
+             except: pass # Ignore errors during final error reporting
     finally:
         # Attempt to stop the simulation cleanly if it was running
         with run_lock:
