@@ -1,13 +1,13 @@
 // Sidekick/webapp/src/modules/control/ControlComponent.tsx
 import React, { useState, useCallback, useEffect } from 'react';
-import { ControlState, ControlNotifyPayload } from './types';
-import { SentMessage, ModuleNotifyMessage } from '../../types';
+import { ControlState, ControlEventPayload } from './types';
+import { SentMessage, ModuleEventMessage } from '../../types';
 import './ControlComponent.css';
 
 interface ControlComponentProps {
     id: string;
     state: ControlState;
-    onInteraction: (message: SentMessage) => void;
+    onInteraction?: (message: SentMessage) => void;
 }
 
 const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onInteraction }) => {
@@ -74,25 +74,35 @@ const ControlComponent: React.FC<ControlComponentProps> = ({ id, state, onIntera
 
     // Handler for button clicks (no change needed)
     const handleButtonClick = useCallback((controlId: string) => {
+        if (!onInteraction) {
+            console.warn(`ControlComponent ${id}: onInteraction not provided, cannot send button click.`);
+            return;
+        }
         console.log(`Control ${id}: Button ${controlId} clicked.`);
-        const payload: ControlNotifyPayload = {
-            event: 'click',
-            controlId: controlId,
-        };
-        const message: ModuleNotifyMessage = { id: 0, module: 'control', method: 'notify', src: id, payload };
+        const payload: ControlEventPayload = { event: 'click', controlId: controlId };
+        const message: ModuleEventMessage = { id: 0, module: 'control', type: 'event', src: id, payload };
         onInteraction(message);
     }, [id, onInteraction]);
 
-    // Handler for submitting text input value
     const handleTextSubmit = useCallback((controlId: string) => {
+        if (!onInteraction) {
+            console.warn(`ControlComponent ${id}: onInteraction not provided, cannot send text input.`);
+            return;
+        }
         const value = inputValues[controlId] || '';
         console.log(`Control ${id}: Input ${controlId} submitted with value: "${value}"`);
-        const payload: ControlNotifyPayload = {
+        const payload: ControlEventPayload = {
             event: 'inputText',
             controlId: controlId,
             value: value,
         };
-        const message: ModuleNotifyMessage = { id: 0, module: 'control', method: 'notify', src: id, payload };
+        const message: ModuleEventMessage = {
+            id: 0,
+            module: 'control',
+            type: 'event',
+            src: id,
+            payload,
+        };
         onInteraction(message);
     }, [id, onInteraction, inputValues]);
 

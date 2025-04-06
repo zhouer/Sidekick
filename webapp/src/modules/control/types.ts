@@ -34,7 +34,7 @@ export interface ControlUpdatePayload {
     };
 }
 
-export interface ControlNotifyPayload {
+export interface ControlEventPayload {
     event: "click" | "inputText"; // Type of interaction event
     controlId: string;            // ID of the control that triggered the event
     value?: string;               // Submitted value (only for "inputText" event from textInput)

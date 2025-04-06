@@ -34,7 +34,7 @@ class BaseModule:
                    already exists in Sidekick and attaches to it without sending 'spawn'.
             payload: The initial payload for the 'spawn' command (only used if spawn=True).
                      Keys should generally be camelCase.
-            on_message: Optional callback for 'notify' messages from the frontend module.
+            on_message: Optional callback for 'event' or 'error' messages from the frontend module.
                         Receives the full message dictionary.
         """
         connection.activate_connection() # Ensure connection attempt is triggered
@@ -56,19 +56,19 @@ class BaseModule:
             self._send_command("spawn", payload or {})
         # else: Assuming instance exists, just track it locally
 
-    def _send_command(self, method: str, payload: Optional[Dict[str, Any]] = None):
+    def _send_command(self, msg_type: str, payload: Optional[Dict[str, Any]] = None):
         """
         Constructs and sends a command message to the Sidekick frontend for this instance.
         Uses connection.send_message which handles buffering.
 
         Args:
-            method: The command method ("spawn", "update", "remove").
+            msg_type: The message type ("spawn", "update", "remove").
             payload: The data payload (keys should be camelCase). None if no payload.
         """
         message: Dict[str, Any] = {
             "id": 0, # Reserved
             "module": self.module_type,
-            "method": method,
+            "type": msg_type,
             "target": self.target_id,
         }
         # Include payload only if it's not None

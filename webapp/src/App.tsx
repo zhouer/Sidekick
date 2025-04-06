@@ -3,15 +3,15 @@ import React, { useCallback, useReducer, Reducer, useState } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { moduleRegistry } from './modules/moduleRegistry';
 import {
-    ReceivedMessage, // Use the specific union type
-    SentMessage,     // Use the specific union type
+    ReceivedMessage, // Union type for messages from Hero
+    SentMessage,     // Union type for messages to Hero
     ModuleInstance,
     ModuleDefinition,
     SystemAnnounceMessage,
     GlobalClearMessage,
     ModuleControlMessage,
     HeroPeerInfo,
-    ModuleNotifyMessage,
+    ModuleEventMessage,
     ModuleErrorMessage
 } from './types';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -46,13 +46,14 @@ const rootReducer: Reducer<AppState, AppAction> = (state, action): AppState => {
             const message = action.message;
 
             // --- Handle System Announce ---
-            if (message.module === 'system' && message.method === 'announce') {
+            if (message.module === 'system' && message.type === 'announce') {
                 const payload = (message as SystemAnnounceMessage).payload;
                 if (payload && payload.role === 'hero') {
                     // Update hero status (overwrite previous hero info for simplicity)
                     console.log(`Reducer: Received Hero announce (${payload.peerId}, Status: ${payload.status})`);
                     const newHeroStatus: HeroPeerInfo | null = payload.status === 'online' ? {
                         peerId: payload.peerId,
+                        role: payload.role,
                         version: payload.version,
                         status: payload.status,
                         timestamp: payload.timestamp,
@@ -68,7 +69,7 @@ const rootReducer: Reducer<AppState, AppAction> = (state, action): AppState => {
             }
 
             // --- Handle Global Clear ---
-            if (message.module === 'global' && message.method === 'clearAll') {
+            if (message.module === 'global' && message.type === 'clearAll') { // Use message.type
                 console.log("Reducer: Received global/clearAll command.");
                 // Only update if modules actually exist
                 if (state.modulesById.size > 0 || state.moduleOrder.length > 0) {
@@ -79,13 +80,13 @@ const rootReducer: Reducer<AppState, AppAction> = (state, action): AppState => {
 
             // --- Handle Module Control Messages ---
             // Type guard to ensure it's a ModuleControlMessage before proceeding
-            if (message.method === 'spawn' || message.method === 'update' || message.method === 'remove') {
+            if (message.type === 'spawn' || message.type === 'update' || message.type === 'remove') {
                 const moduleMessage = message as ModuleControlMessage;
-                const { module: moduleType, method, target, payload } = moduleMessage;
+                const { module: moduleType, type: msgType, target, payload } = moduleMessage;
 
                 const moduleDefinition = moduleRegistry.get(moduleType);
 
-                switch (method) {
+                switch (msgType) {
                     case 'spawn': {
                         if (state.modulesById.has(target)) { console.warn(`Reducer: Spawn failed - Duplicate ID "${target}".`); return state; }
                         if (!moduleDefinition) { console.warn(`Reducer: Spawn failed - Unknown module type "${moduleType}".`); return state; }
@@ -125,11 +126,11 @@ const rootReducer: Reducer<AppState, AppAction> = (state, action): AppState => {
                         console.log(`Reducer: Removed module "${target}". Order:`, newModuleOrder);
                         return { ...state, modulesById: newModulesById, moduleOrder: newModuleOrder };
                     }
-                    // No default needed as method is constrained by type guard
+                    // No default needed as msgType is constrained by type guard
                 }
             }
 
-            // Fallback for unhandled message types (should ideally not happen with strict typing)
+            // Fallback for unhandled message types
             console.warn('Reducer: Unhandled message type received:', message);
             return state;
         }
@@ -160,7 +161,7 @@ function App() {
     // Callback for useWebSocket hook
     const handleWebSocketMessage = useCallback((messageData: any) => {
         // Basic validation
-        if (typeof messageData === 'object' && messageData !== null && messageData.module && messageData.method) {
+        if (typeof messageData === 'object' && messageData !== null && messageData.module && messageData.type) {
             dispatch({ type: 'PROCESS_MESSAGE', message: messageData as ReceivedMessage });
         } else {
             console.error("App: Received invalid message structure from WebSocket:", messageData);
@@ -173,15 +174,15 @@ function App() {
     // Callback passed to interactive modules
     const handleModuleInteraction = useCallback((interactionMessage: SentMessage) => {
         // Check for properties common to messages that should be sent
-        if (interactionMessage && interactionMessage.module && interactionMessage.method) {
+        if (interactionMessage && interactionMessage.module && interactionMessage.type) {
             // Check if it's a type that *should* have 'src' before validating 'src'
-            if ((interactionMessage.method === 'notify' || interactionMessage.method === 'error')) {
-                // Now it's safe to check for src on ModuleNotifyMessage or ModuleErrorMessage
-                const notifyOrErrorMsg = interactionMessage as ModuleNotifyMessage | ModuleErrorMessage;
-                if (notifyOrErrorMsg.src) {
-                    sendMessage(notifyOrErrorMsg);
+            if ((interactionMessage.type === 'event' || interactionMessage.type === 'error')) {
+                // Now it's safe to check for src on ModuleEventMessage or ModuleErrorMessage
+                const eventOrErrorMsg = interactionMessage as ModuleEventMessage | ModuleErrorMessage;
+                if (eventOrErrorMsg.src) {
+                    sendMessage(eventOrErrorMsg);
                 } else {
-                    console.error("App: Invalid notify/error message missing 'src':", interactionMessage);
+                    console.error("App: Invalid event/error message missing 'src':", interactionMessage);
                 }
             } else if (interactionMessage.module === 'system') {
                 // Allow sending system messages (though usually only done by useWebSocket hook)

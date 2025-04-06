@@ -6,9 +6,9 @@ This document specifies the communication protocol used within the Sidekick ecos
 
 The protocol enables:
 *   **Peer Discovery & Status:** Allows connected components (Peers) to announce their presence, role, version, and status (`online`/`offline`). This allows peers to know when others are ready to receive messages.
-*   **Global Operations:** Provides methods for system-wide actions, such as clearing all module instances.
+*   **Global Operations:** Provides types for system-wide actions, such as clearing all module instances.
 *   **Module Control:** Enables the Hero to create, update, and remove visual modules in the Sidekick UI.
-*   **Module Feedback:** Allows Sidekick to send user interaction notifications and error reports back to the Hero.
+*   **Module Feedback:** Allows Sidekick to send user interaction events and error reports back to the Hero.
 
 ## 2. Transport Layer
 
@@ -25,10 +25,10 @@ All messages exchanged within the Sidekick ecosystem share a common JSON structu
 {
   "id": number,       // Reserved. Defaults to 0.
   "module": string,   // Target/Source module type (e.g., "grid", "system", "global").
-  "method": string,   // The action or message type (e.g., "spawn", "announce", "clearAll").
+  "type": string,     // The message type or action (e.g., "spawn", "announce", "clearAll", "event").
   "target"?: string,  // Identifier of the target module instance (for module control).
   "src"?: string,      // Identifier of the source module instance (for module feedback).
-  "payload": object | null // Method-specific data. Keys MUST be camelCase.
+  "payload": object | null // Type-specific data. Keys MUST be camelCase.
 }
 ```
 
@@ -36,16 +36,16 @@ All messages exchanged within the Sidekick ecosystem share a common JSON structu
 
 *   `id` (Integer): Reserved. Defaults to `0`.
 *   `module` (String): Identifies the type of module or system component involved (e.g., `grid`, `system`, `global`).
-*   `method` (String): Specifies the action or message type.
+*   `type` (String): Specifies the message type or action (e.g., `spawn`, `update`, `remove`, `announce`, `event`, `error`, `clearAll`).
 *   `target` (String, Optional): **Present** for module control messages (`spawn`, `update`, `remove`) sent from Hero. Identifies the specific module instance in Sidekick being controlled. **Omitted** otherwise.
-*   `src` (String, Optional): **Present** for module feedback messages (`notify`, `error`) sent from Sidekick. Identifies the specific module instance in Sidekick that generated the message. **Omitted** otherwise.
-*   `payload` (Object | Null): Contains method-specific data structures detailed in subsequent sections. **Null or omitted** for methods like `global/clearAll`. Keys within this object **MUST** be `camelCase`.
+*   `src` (String, Optional): **Present** for module feedback messages (`event`, `error`) sent from Sidekick. Identifies the specific module instance in Sidekick that generated the message. **Omitted** otherwise.
+*   `payload` (Object | Null): Contains type-specific data structures detailed in subsequent sections. **Null or omitted** for types like `global/clearAll`. Keys within this object **MUST** be `camelCase`.
 
 ## 4. Connection Lifecycle & Peer Discovery (`system` module)
 
-Peers (Hero or Sidekick instances) use the `system` module and `announce` method to manage their online status and discover other connected peers. Receiving an `online` announcement indicates that the announcing peer is connected and ready to process messages according to its role.
+Peers (Hero or Sidekick instances) use the `system` module and `announce` type to manage their online status and discover other connected peers. Receiving an `online` announcement indicates that the announcing peer is connected and ready to process messages according to its role.
 
-### 4.1 Method: `announce`
+### 4.1 Type: `announce`
 
 *   **Direction:** Peer -> Server / Other Peers
 *   **Purpose:** Announce connection status (`online`/`offline`), role, and version. Signals readiness to other peers.
@@ -68,7 +68,7 @@ Sent by a peer upon successful connection (`status: "online"`) and optionally up
 ### 4.3 Connection Flow & Disconnection Handling
 
 1.  **Connection:** A peer (Hero or Sidekick) connects to the Server via WebSocket.
-2.  **Online Announcement:** Upon successful connection, the peer immediately sends an `announce` message with `status: "online"`.
+2.  **Online Announcement:** Upon successful connection, the peer immediately sends an `announce` message (`type: "announce"`) with `status: "online"`.
 3.  **Server Broadcast & History:**
     *   The Server records the new peer's information.
     *   The Server **broadcasts** this `online` announcement to all *other* currently connected peers. Peers can now recognize this new peer is ready (e.g., Hero knows Sidekick is ready).
@@ -76,7 +76,7 @@ Sent by a peer upon successful connection (`status: "online"`) and optionally up
 4.  **Peer Records:** Each peer receiving an `announce` message should record the information about the other peer.
 5.  **Hero Message Buffering (Client Implementation):** A Hero peer SHOULD buffer non-`system` messages until it receives an `online` announcement from at least one Sidekick peer.
 6.  **Normal Disconnection:**
-    *   A peer SHOULD send an `announce` message with `status: "offline"` before closing the connection.
+    *   A peer SHOULD send an `announce` message (`type: "announce"`) with `status: "offline"` before closing the connection.
     *   The Server broadcasts this `offline` message.
     *   Peers update the status locally.
 7.  **Abnormal Disconnection:**
@@ -88,16 +88,16 @@ Sent by a peer upon successful connection (`status: "online"`) and optionally up
 
 Operations that affect the overall state of a peer, not tied to a specific module instance.
 
-### 5.1 Method: `clearAll`
+### 5.1 Type: `clearAll`
 
 *   **Direction:** Hero -> Sidekick (via Server)
 *   **Purpose:** Instructs the receiving Sidekick peer to remove all its active module instances and reset its state.
 *   **`target` / `src`:** Omitted.
 *   **`payload`:** Null or omitted.
 
-## 6. Core Module Interaction Methods
+## 6. Core Module Interaction Message Types
 
-These methods facilitate the primary purpose of Sidekick: controlling and receiving feedback from visual modules. These methods (except potentially `error`) SHOULD only be sent by Hero after confirming Sidekick is online (via `system/announce`).
+These message types facilitate the primary purpose of Sidekick: controlling and receiving feedback from visual modules. These types (except potentially `error`) SHOULD only be sent by Hero after confirming Sidekick is online (via `system/announce`).
 
 ### 6.1 Hero -> Sidekick (via Server) - Module Control
 
@@ -107,12 +107,12 @@ These methods facilitate the primary purpose of Sidekick: controlling and receiv
 
 ### 6.2 Sidekick -> Hero (via Server) - Module Feedback
 
-*   **`notify`**: Informs Hero about user actions or module events within Sidekick. `src` is required. Payload contains event details.
+*   **`event`**: Informs Hero about user actions or module events within Sidekick. `src` is required. Payload contains event details. (Formerly `notify`)
 *   **`error`**: Reports an error encountered by Sidekick related to a specific module. `src` is required. Payload contains error message.
 
 ## 7. Module-Specific Payloads (`payload` structure)
 
-This section details the expected structure of the `payload` object for different *module interaction* `method` combinations (`spawn`, `update`, `notify`, etc.). **Reminder:** All keys within `payload` and its nested objects (`options`, `config`, `valueRepresentation`, etc.) **MUST** use `camelCase`. *(Payloads for `system/announce` and `global/clearAll` are defined in Sections 4.2 and 5.1 respectively)*.
+This section details the expected structure of the `payload` object for different *module interaction* message `type` combinations (`spawn`, `update`, `event`, etc.). **Reminder:** All keys within `payload` and its nested objects (`options`, `config`, `valueRepresentation`, etc.) **MUST** use `camelCase`. *(Payloads for `system/announce` and `global/clearAll` are defined in Sections 4.2 and 5.1 respectively)*.
 
 ### 7.1 Module: `grid`
 
@@ -126,7 +126,7 @@ This section details the expected structure of the `payload` object for differen
 *   **`update` Payload:**
     *   Set Cell: `{ "action": "setCell", "options": { "x": number, "y": number, "color"?: string | null, "text"?: string | null } }`
     *   Clear Grid: `{ "action": "clear" }`
-*   **`notify` Payload:**
+*   **`event` Payload:**
     ```json
     { "event": "click", "x": number, "y": number }
     ```
@@ -143,7 +143,7 @@ This section details the expected structure of the `payload` object for differen
 *   **`update` Payload:**
     *   Append Text: `{ "action": "append", "options": { "text": string } }`
     *   Clear Console: `{ "action": "clear" }`
-*   **`notify` Payload:** (Sent when user submits text via input area)
+*   **`event` Payload:** (Sent when user submits text via input area)
     ```json
     { "event": "inputText", "value": string }
     ```
@@ -198,7 +198,7 @@ This section details the expected structure of the `payload` object for differen
         }
         ```
     *   Remove Control: `{ "action": "remove", "controlId": string }`
-*   **`notify` Payload:** (Sent on user interaction)
+*   **`event` Payload:** (Sent on user interaction)
     *   Button Click: ` { "event": "click", "controlId": string }`
     *   Text Input Submit: `{ "event": "inputText", "controlId": string, "value": string }`
 
@@ -229,7 +229,7 @@ interface VizRepresentation {
 
 ## 9. Error Handling
 
-Sidekick -> Hero `error` messages use the standard structure with `method: "error"`, `module` (e.g., `grid`), and `src` (instance ID). The `payload` typically contains:
+Sidekick -> Hero `error` messages use the standard structure with `type: "error"`, `module` (e.g., `grid`), and `src` (instance ID). The `payload` typically contains:
 
 ```json
 { "message": string }

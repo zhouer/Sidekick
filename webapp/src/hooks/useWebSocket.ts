@@ -1,22 +1,49 @@
 // Sidekick/webapp/src/hooks/useWebSocket.ts
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { AnnouncePayload, SentMessage, SystemAnnounceMessageToSend } from '../types';
+import { SentMessage, SystemAnnounceMessage } from '../types';
 
-// Use the URL injected by Vite's define config
-// Fallback needed only if run outside Vite build context (e.g., tests)
-const WS_URL = (typeof __WS_URL__ !== 'undefined') ? __WS_URL__ : 'ws://localhost:5163';
+// --- Constants ---
+const WS_URL = __WS_URL__ || 'ws://localhost:5163'; // Default WebSocket server URL (injected by Vite)
+const RECONNECT_DELAY = 1000; // Initial reconnect delay in milliseconds (1 seconds)
+const MAX_RECONNECT_ATTEMPTS = 10; // Max attempts before giving up
+const RECONNECT_BACKOFF_FACTOR = 1.5; // Multiplier for exponential backoff
+const MAX_RECONNECT_DELAY = 30000; // Maximum delay between reconnect attempts (30 seconds)
 
-export function useWebSocket(onMessage: (message: any) => void) {
-    const [isConnected, setIsConnected] = useState<boolean>(false);
-    const webSocketRef = useRef<WebSocket | null>(null);
+// --- Types ---
+/** Possible connection statuses for the WebSocket hook. */
+type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'reconnecting';
+
+/**
+ * Custom React hook to manage a persistent WebSocket connection with automatic reconnection.
+ *
+ * @param onMessageCallback - A callback function that will be invoked with parsed incoming WebSocket messages.
+ * @returns An object containing:
+ *  - `isConnected` (boolean): Whether the WebSocket is currently connected.
+ *  - `status` (ConnectionStatus): The current detailed connection status.
+ *  - `sendMessage` (function): A stable function to send messages over the WebSocket.
+ */
+export function useWebSocket(onMessageCallback: (message: any) => void) {
+    // --- State ---
+    /** Current connection state (true if OPEN, false otherwise). */
+    const [isConnected, setIsConnected] = useState(false);
+    /** Detailed connection status string. */
+    const [status, setStatus] = useState<ConnectionStatus>('disconnected');
+
+    // --- Refs ---
+    /** Holds the current WebSocket instance. Null if not connected/connecting. */
+    const ws = useRef<WebSocket | null>(null);
+    /** Tracks the number of consecutive reconnect attempts. */
+    const reconnectAttempts = useRef(0);
+    /** Stores the ID of the scheduled reconnect timer (returned by setTimeout). */
+    const reconnectTimeoutId = useRef<number | null>(null);
+    /** Stores the unique peer ID for this Sidekick client instance. */
     const peerIdRef = useRef<string | null>(null);
-    const onMessageRef = useRef(onMessage);
+    /** Flag to indicate if disconnection was initiated manually by the client. */
+    const manualDisconnect = useRef(false);
 
-    useEffect(() => {
-        onMessageRef.current = onMessage;
-    }, [onMessage]);
-
+    // --- Effects ---
+    /** Generate a unique Peer ID for this client instance on initial mount. */
     useEffect(() => {
         if (!peerIdRef.current) {
             peerIdRef.current = `sidekick-${uuidv4()}`;
@@ -24,109 +51,249 @@ export function useWebSocket(onMessage: (message: any) => void) {
         }
     }, []);
 
-    // --- Refactored sendAnnounce to be internal ---
-    const internalSendMessage = useCallback((message: object) => {
-        if (!webSocketRef.current || webSocketRef.current.readyState !== WebSocket.OPEN) {
-            console.warn(`[useWebSocket] Cannot send message, WebSocket not open. State: ${webSocketRef.current?.readyState}`);
-            return false; // Indicate send failure
+    /** Effect to attempt initial connection on mount and handle cleanup on unmount. */
+    useEffect(() => {
+        manualDisconnect.current = false; // Ensure flag is reset on mount
+        console.log("[useWebSocket] Initial connection effect triggered.");
+        connect(); // Attempt initial connection
+
+        // Cleanup function: Called when the component unmounts.
+        return () => {
+            console.log("[useWebSocket] Unmounting component, disconnecting...");
+            disconnect(); // Perform manual disconnect and cleanup
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Run only once on mount (connect/disconnect are stable due to useCallback)
+
+    /** Effect to reset the manual disconnect flag if the connection successfully establishes later. */
+    useEffect(() => {
+        if (status === 'connected') {
+            manualDisconnect.current = false;
         }
-        try {
-            const messageString = JSON.stringify(message);
-            webSocketRef.current.send(messageString);
-            return true; // Indicate send success
-        } catch (error) {
-            console.error("[useWebSocket] Failed to stringify or send message:", message, error);
-            return false; // Indicate send failure
+    }, [status]);
+
+    // --- Callback Functions (Memoized) ---
+
+    /**
+     * Stable function to send messages over the WebSocket connection.
+     * Handles JSON stringification and checks connection state.
+     * @param message - The message object to send (should conform to SentMessage or be a generic object).
+     * @param description - Optional description for logging purposes.
+     */
+    const sendMessage = useCallback((message: SentMessage | object, description: string = "") => {
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            try {
+                const messageString = JSON.stringify(message);
+                ws.current.send(messageString);
+                const msgType = (message as any)?.type || 'unknown'; // Extract type for logging
+                const desc = description ? ` (${description})` : '';
+                console.log(`[useWebSocket] Sent message (type: ${msgType})${desc}:`, message);
+            } catch (e) {
+                console.error(`[useWebSocket] Error sending message:`, message, e);
+            }
+        } else {
+            console.warn('[useWebSocket] Cannot send message, WebSocket is not connected or open.', { readyState: ws.current?.readyState }, message);
         }
     }, []); // No dependencies, uses refs
 
-    const sendAnnounce = useCallback((status: AnnouncePayload['status']) => {
-        if (!peerIdRef.current) {
-            console.error("[useWebSocket] Cannot send announce, peerId not generated.");
-            return;
-        }
-        const payload: AnnouncePayload = {
-            peerId: peerIdRef.current,
-            role: "sidekick", status: status, version: __APP_VERSION__, timestamp: Date.now()
-        };
-        const message: SystemAnnounceMessageToSend = { id: 0, module: "system", method: "announce", payload: payload };
-        if (internalSendMessage(message)) {
-            console.log(`[useWebSocket] Sent announce: ${status}`);
-        }
-    }, [internalSendMessage]); // Depends on stable internalSendMessage
-
-    // --- Connection useEffect ---
-    useEffect(() => {
-        // If a WebSocket connection already exists, don't create a new one
-        // (This check helps prevent duplicates if cleanup is somehow delayed)
-        if (webSocketRef.current) {
-            console.warn('[useWebSocket] Connection attempt skipped, WebSocket ref already exists.');
-            return;
-        }
-
-        console.log('[useWebSocket] useEffect: Attempting to connect...');
-        const ws = new WebSocket(WS_URL);
-        webSocketRef.current = ws; // Assign immediately
-
-        ws.onopen = () => {
-            console.log('[useWebSocket] WebSocket connection established.');
-            setIsConnected(true);
-            sendAnnounce("online");
-        };
-
-        ws.onmessage = (event) => {
-            console.debug('[useWebSocket] Raw message received:', event.data);
-            try {
-                const messageData = JSON.parse(event.data);
-                onMessageRef.current(messageData);
-            } catch (error) {
-                console.error('[useWebSocket] Failed to parse incoming message:', event.data, error);
+    /**
+     * Schedules the next reconnection attempt with exponential backoff.
+     * Clears any existing reconnect timer.
+     */
+    const scheduleReconnect = useCallback(() => {
+        // Abort if manually disconnected or max attempts reached
+        if (manualDisconnect.current || reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS) {
+            if (!manualDisconnect.current) {
+                console.error(`[useWebSocket] Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Giving up.`);
+                setStatus('disconnected'); // Ensure final status is disconnected
             }
-        };
+            return;
+        }
 
-        ws.onerror = (error) => {
-            console.error('[useWebSocket] WebSocket error:', error);
-            // Error often precedes close, let onclose handle state update
-        };
+        reconnectAttempts.current += 1;
 
-        ws.onclose = (event) => {
-            // Check ref *before* logging to avoid logging closure of an old instance
-            if (webSocketRef.current === ws) {
-                console.log(`[useWebSocket] WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason || 'No reason given'}`);
-                setIsConnected(false);
-                webSocketRef.current = null; // Clear the ref *here*
+        // Calculate delay with exponential backoff, capped at MAX_RECONNECT_DELAY
+        const delay = Math.min(
+            MAX_RECONNECT_DELAY,
+            RECONNECT_DELAY * Math.pow(RECONNECT_BACKOFF_FACTOR, reconnectAttempts.current - 1)
+        );
+
+        console.log(`[useWebSocket] Scheduling reconnect attempt ${reconnectAttempts.current} in ${delay.toFixed(0)}ms...`);
+
+        // Clear previous timer if it exists
+        if (reconnectTimeoutId.current !== null) {
+            clearTimeout(reconnectTimeoutId.current);
+        }
+
+        // Schedule the connection attempt
+        reconnectTimeoutId.current = window.setTimeout(() => {
+            // Double-check we weren't manually disconnected while waiting
+            if (!manualDisconnect.current) {
+                console.log(`[useWebSocket] Attempting reconnect #${reconnectAttempts.current}...`);
+                setStatus('reconnecting'); // Set status before calling connect
+                connect();
             } else {
-                console.log(`[useWebSocket] Close event received for an old/mismatched WebSocket instance.`);
+                console.log("[useWebSocket] Reconnect timer fired, but manual disconnect was requested. Aborting reconnect.");
+            }
+        }, delay);
+    }, []); // Depends on `connect` which is defined below
+
+    /**
+     * Initiates the WebSocket connection process.
+     * Sets up event listeners (onopen, onclose, onerror, onmessage).
+     */
+    const connect = useCallback(() => {
+        // Prevent connection if already connected/connecting or manually disconnected
+        if (ws.current || manualDisconnect.current) {
+            console.log(`[useWebSocket] Connect aborted. Current WebSocket: ${ws.current ? 'exists' : 'null'}, ReadyState: ${ws.current?.readyState}, Manual disconnect: ${manualDisconnect.current}`);
+            return;
+        }
+
+        // Clear pending reconnect timer *before* creating new socket
+        if (reconnectTimeoutId.current !== null) {
+            clearTimeout(reconnectTimeoutId.current);
+            reconnectTimeoutId.current = null;
+            console.log("[useWebSocket] Cleared pending reconnect timer before new connection attempt.");
+        }
+
+        console.log(`[useWebSocket] Attempting to connect to ${WS_URL}...`);
+        setStatus('connecting'); // Update status
+
+        // Create the new WebSocket instance
+        const socket = new WebSocket(WS_URL);
+        ws.current = socket; // Store reference immediately
+
+        // --- WebSocket Event Handlers ---
+
+        socket.onopen = () => {
+            // Guard against stale connection events: Ensure this event is for the *current* socket instance.
+            if (ws.current !== socket) {
+                console.warn("[useWebSocket] onopen: Stale connection attempt succeeded, closing it.");
+                socket.close();
+                return;
+            }
+            console.log(`[useWebSocket] WebSocket connection established.`);
+            setIsConnected(true);
+            setStatus('connected');
+            reconnectAttempts.current = 0; // Reset reconnect counter on success
+
+            // Send initial "announce online" message
+            if (peerIdRef.current) {
+                const announceMsg: SystemAnnounceMessage = {
+                    id: 0, module: "system", type: "announce",
+                    payload: { peerId: peerIdRef.current, role: "sidekick", status: "online", version: __APP_VERSION__, timestamp: Date.now() }
+                };
+                sendMessage(announceMsg, 'announce online');
+            } else {
+                console.error("[useWebSocket] Cannot send announce - Peer ID not generated.");
             }
         };
 
-        // --- Cleanup function ---
-        return () => {
-            console.log('[useWebSocket] useEffect: Cleanup running...');
-            const wsToClose = webSocketRef.current; // Capture ref at cleanup time
-            webSocketRef.current = null; // **Crucially, clear the ref immediately**
-            setIsConnected(false); // Update state immediately
-
-            if (wsToClose) {
-                console.log('[useWebSocket] useEffect: Closing WebSocket connection...');
-                wsToClose.onopen = null; // Remove handlers to prevent calls after cleanup
-                wsToClose.onmessage = null;
-                wsToClose.onerror = null;
-                wsToClose.onclose = null; // Especially important!
-                if (wsToClose.readyState === WebSocket.OPEN || wsToClose.readyState === WebSocket.CONNECTING) {
-                    wsToClose.close(1000, "Client cleanup"); // Close with normal code
+        socket.onclose = (event) => {
+            console.warn(`[useWebSocket] WebSocket connection closed. Code: ${event.code}, Reason: ${event.reason}, Clean: ${event.wasClean}`);
+            // Only process close event if it pertains to the current WebSocket instance
+            if (ws.current === socket) {
+                ws.current = null; // Clear the current WebSocket reference
+                setIsConnected(false);
+                // Trigger reconnect only if the disconnection was not manually initiated
+                if (!manualDisconnect.current) {
+                    setStatus('reconnecting');
+                    scheduleReconnect(); // Schedule the next attempt
+                } else {
+                    setStatus('disconnected'); // Stay disconnected if manual
+                    console.log("[useWebSocket] Manual disconnect confirmed by onclose event.");
                 }
             } else {
-                console.log('[useWebSocket] useEffect: Cleanup - No active WebSocket instance to close.');
+                console.log("[useWebSocket] onclose: Ignoring event from a stale connection.");
             }
         };
-        // }, [sendAnnounce]); // Keep dependency as sendAnnounce is stable due to useCallback([])
-    }, [sendAnnounce, internalSendMessage]); // Include internalSendMessage as well, though it's also stable
 
-    // Public sendMessage function (no change needed here)
-    const sendMessage = useCallback((message: SentMessage) => {
-        internalSendMessage(message);
-    }, [internalSendMessage]);
+        socket.onerror = (error) => {
+            console.error('[useWebSocket] WebSocket error:', error);
+            // Check if the error is for the current socket instance
+            if (ws.current === socket) {
+                // Update status to reflect error, onclose will handle reconnect scheduling
+                setStatus('reconnecting');
+            } else {
+                console.log("[useWebSocket] onerror: Ignoring error from a stale connection.");
+            }
+        };
 
-    return { isConnected, sendMessage };
+        socket.onmessage = (event) => {
+            // Ignore messages from stale connections
+            if (ws.current !== socket) {
+                console.warn("[useWebSocket] onmessage: Ignoring message from a stale connection.");
+                return;
+            }
+            try {
+                const message = JSON.parse(event.data);
+                // Forward the parsed message to the provided callback
+                onMessageCallback(message);
+            } catch (e) {
+                console.error('[useWebSocket] Error parsing incoming JSON message:', event.data, e);
+            }
+        };
+        // Dependencies: onMessageCallback, sendMessage, scheduleReconnect
+        // scheduleReconnect depends on connect, creating a potential cycle if not handled carefully.
+        // However, since they are memoized with useCallback and depend mostly on refs or stable functions,
+        // this should be safe. Listing them explicitly clarifies intent.
+    }, [onMessageCallback, sendMessage, scheduleReconnect]);
+
+    /**
+     * Manually closes the WebSocket connection and prevents automatic reconnection.
+     * Attempts to send a final "announce offline" message.
+     */
+    const disconnect = useCallback(() => {
+        if (manualDisconnect.current) {
+            console.log("[useWebSocket] Manual disconnect already in progress or completed.");
+            return; // Avoid redundant actions
+        }
+        console.log('[useWebSocket] Manual disconnect requested.');
+        manualDisconnect.current = true; // Set flag FIRST to prevent race conditions
+        setStatus('disconnected'); // Update status immediately
+
+        // Clear any pending reconnect timer
+        if (reconnectTimeoutId.current !== null) {
+            clearTimeout(reconnectTimeoutId.current);
+            reconnectTimeoutId.current = null;
+            console.log("[useWebSocket] Cleared pending reconnect on manual disconnect.");
+        }
+
+        const socketToClose = ws.current; // Capture current socket reference
+        ws.current = null; // Clear the ref immediately
+
+        if (socketToClose) {
+            // Attempt best-effort offline announcement only if connected or connecting
+            if (peerIdRef.current && (socketToClose.readyState === WebSocket.OPEN || socketToClose.readyState === WebSocket.CONNECTING)) {
+                const announceMsg: SystemAnnounceMessage = {
+                    id: 0, module: "system", type: "announce",
+                    payload: { peerId: peerIdRef.current, role: "sidekick", status: "offline", version: __APP_VERSION__, timestamp: Date.now() }
+                };
+                // Use the captured socket reference to send, as ws.current is now null
+                try {
+                    // Only send if OPEN, might fail if CONNECTING
+                    if (socketToClose.readyState === WebSocket.OPEN) {
+                        socketToClose.send(JSON.stringify(announceMsg));
+                        console.log("[useWebSocket] Sent announce offline (manual disconnect).");
+                    } else {
+                        console.warn("[useWebSocket] Cannot send announce offline during manual disconnect, socket not OPEN.");
+                    }
+                } catch (e) {
+                    console.error("[useWebSocket] Failed to send announce offline on manual disconnect:", e);
+                }
+            }
+            console.log("[useWebSocket] Closing WebSocket connection manually...");
+            socketToClose.close(1000, "Client disconnected manually"); // Use normal closure code
+        } else {
+            console.log("[useWebSocket] No active WebSocket connection to close manually.");
+        }
+
+        // Ensure state reflects disconnection
+        setIsConnected(false);
+        reconnectAttempts.current = 0; // Reset attempts as we are stopping
+
+    }, [sendMessage]); // Depends on sendMessage for announce
+
+    // --- Return Hook API ---
+    return { isConnected, status, sendMessage };
 }

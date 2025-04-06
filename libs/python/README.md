@@ -15,7 +15,7 @@ It abstracts the underlying WebSocket communication and message formatting, offe
 *   **Re-attachment Support:** Module constructors include a `spawn: bool` parameter (default `True`). Setting `spawn=False` allows the Python object to represent and interact with an existing module instance in Sidekick (identified by `instance_id`) without sending a `spawn` command.
 *   **`ObservableValue`:** A general-purpose wrapper to track changes in Python values (primitives or containers). Notifies subscribers with detailed change information.
 *   **Automatic WebSocket Management:** Handles connection (`ws://localhost:5163` default), peer announcements, keep-alive (Ping/Pong), listener thread, connection status tracking, and `atexit` cleanup.
-*   **Callback Handling:** Supports receiving notifications (`notify`) from interactive modules (`Grid`, `Console`, `Control`) via user-provided `on_message` callbacks.
+*   **Callback Handling:** Supports receiving events (`event`) and errors (`error`) from interactive modules (`Grid`, `Console`, `Control`) via user-provided `on_message` callbacks.
 *   **Structured Data Visualization (`Viz`):** Provides detailed, expandable views of Python data structures, reacting to granular changes from `ObservableValue`.
 *   **Basic 2D Drawing (`Canvas`):** Allows drawing lines, rectangles, and circles.
 *   **Dynamic UI Controls (`Control`):** Add buttons and text inputs dynamically, receiving interaction events.
@@ -65,7 +65,7 @@ pip install sidekick-py
         *   If `CONNECTED_READY`, the message is sent directly.
     *   **Buffer Flushing:** When the status transitions to `CONNECTED_READY` (first Sidekick online), the `_flush_message_buffer()` function is called automatically (after potential `clear_on_connect`), sending all buffered messages in FIFO order.
 *   **Keep-Alive:** Uses WebSocket Ping/Pong frames for reliable connection maintenance.
-*   **Listener Thread (`_listen_for_messages`):** Runs in the background, receiving messages, parsing JSON, handling `system/announce` to update Sidekick status and trigger readiness, and dispatching `notify`/`error` messages to registered module handlers.
+*   **Listener Thread (`_listen_for_messages`):** Runs in the background, receiving messages, parsing JSON, handling `system/announce` to update Sidekick status and trigger readiness, and dispatching `event`/`error` messages to registered module handlers.
 *   **Message Dispatch:** Uses a dictionary (`_message_handlers`) mapping `instance_id` (`src` field in message) to user-provided `on_message` callbacks.
 *   **Cleanup (`atexit`):** Registers `close_connection` to run on script exit for graceful shutdown attempts.
 
@@ -82,12 +82,12 @@ pip install sidekick-py
 ### 4.3. Communication Protocol & Payloads
 
 *   Communication uses JSON messages over WebSocket, relayed by a Server.
-*   Messages follow the structure: `{ id, module, method, target?, src?, payload? }`.
+*   Messages follow the structure: `{ id, module, type, target?, src?, payload? }`. (Note: `type` replaces `method`)
 *   **Payload Keys:** The `payload` object **MUST use `camelCase` keys**.
-*   **Key Methods & Modules:**
+*   **Key Message Types & Modules:**
     *   `system/announce`: Used for peer discovery and status (see 4.1). `target`/`src` omitted.
     *   `global/clearAll`: Used to clear all Sidekick modules. Sent via `sidekick.clear_all()` or automatically via `clear_on_connect`. `target`/`src`/`payload` omitted.
-    *   Module methods (`spawn`, `update`, `remove`, `notify`, `error`) operate on specific module instances (`target` or `src` provided). Payloads typically use `action`/`options` structure.
+    *   Module interaction types (`spawn`, `update`, `remove`, `event`, `error`) operate on specific module instances (`target` or `src` provided). Payloads typically use `action`/`options` structure.
 *   Refer to `protocol.md` for detailed payload structures for each module.
 
 ### 4.4. `ObservableValue` (`observable_value.py`)
@@ -120,12 +120,14 @@ pip install sidekick-py
 
 *   `Grid(num_columns: int = 16, num_rows: int = 16, instance_id: Optional[str] = None, spawn: bool = True, on_message: Optional[Callable] = None)`
     *   `spawn=False` requires `instance_id`.
+    *   `on_message`: Callback receives `event` (`type: "event"`) or `error` (`type: "error"`) messages.
 *   Methods: `.set_cell()`, `.set_color()`, `.set_text()`, `.clear()`, `.remove()`.
 
 ### 5.4. `sidekick.Console`
 
 *   `Console(instance_id: Optional[str] = None, spawn: bool = True, initial_text: str = "", show_input: bool = False, on_message: Optional[Callable] = None)`
     *   `spawn=False` requires `instance_id`. `initial_text` and `show_input` ignored if `spawn=False`.
+    *   `on_message`: Callback receives `event` (`type: "event"`) or `error` (`type: "error"`) messages.
 *   Methods: `.print()`, `.log()`, `.clear()`, `.remove()`.
 
 ### 5.5. `sidekick.Viz`
@@ -144,6 +146,7 @@ pip install sidekick-py
 
 *   `Control(instance_id: Optional[str] = None, spawn: bool = True, on_message: Optional[Callable] = None)`
     *   `spawn=False` requires `instance_id`.
+    *   `on_message`: Callback receives `event` (`type: "event"`) or `error` (`type: "error"`) messages.
 *   Methods: `.add_button()`, `.add_text_input()`, `.remove_control()`, `.remove()`.
 
 ## 6. Development Notes
@@ -168,5 +171,5 @@ pip install sidekick-py
     *   Did you provide a valid `instance_id`? Error `instance_id is required...`
     *   Does the instance actually exist in Sidekick with that ID? Sidekick might have cleared it.
     *   Was Sidekick cleared unexpectedly (e.g., via `clear_on_connect` or manual `clear_all`)?
-*   **Callbacks Not Firing:** Check `on_message` registration. Check DEBUG logs for incoming `notify` messages. Verify event name matches expectation (e.g., `inputText` for Console/Control).
+*   **Callbacks Not Firing:** Check `on_message` registration. Check DEBUG logs for incoming `event` or `error` messages. Verify event name in payload matches expectation (e.g., `inputText` for Console/Control).
 *   **Viz/Canvas/Control Issues:** Remember potential buffering delays. Refer to previous notes on `commandId`, `ObservableValue` etc.

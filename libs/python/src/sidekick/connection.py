@@ -98,7 +98,7 @@ def _send_system_announce(status: str):
             message = {
                 "id": 0,
                 "module": "system",
-                "method": "announce",
+                "type": "announce",
                 "payload": announce_payload
             }
             _send_raw(ws, message)
@@ -176,11 +176,11 @@ def _listen_for_messages():
                  if _connection_status == ConnectionStatus.DISCONNECTED: break # Check again after potential delay
 
                  module = message_data.get('module')
-                 method = message_data.get('method')
+                 msg_type = message_data.get('type')
                  payload = message_data.get('payload')
 
                  # --- Handle System Announce ---
-                 if module == 'system' and method == 'announce' and payload:
+                 if module == 'system' and msg_type == 'announce' and payload: # Check 'type'
                       peer_id = payload.get('peerId')
                       role = payload.get('role')
                       status = payload.get('status')
@@ -196,30 +196,26 @@ def _listen_for_messages():
                                      _sidekick_peers_online.discard(peer_id)
                                      logger.info(f"Sidekick peer offline: {peer_id}")
                                      if not _sidekick_peers_online and _connection_status == ConnectionStatus.CONNECTED_READY:
-                                          # If *last* sidekick goes offline, revert state? Maybe not necessary, just don't send new non-system msgs.
-                                          # Simpler: keep READY, send_message will just work. If user wants buffering again, they need disconnect/reconnect.
-                                          # OR: Revert to WAITING state if that logic is desired. Let's keep READY for now.
-                                          # _connection_status = ConnectionStatus.CONNECTED_WAITING_SIDEKICK
-                                          # logger.info("Last Sidekick offline, reverting status to CONNECTED_WAITING_SIDEKICK")
-                                          pass # Keep READY, send_message logic handles if send is possible
+                                          # Keep READY state for simplicity for now
+                                          pass
 
-                 # --- Handle Module Notify/Error ---
-                 elif method in ['notify', 'error']:
+                 # --- Handle Module Event/Error ---
+                 elif msg_type in ['event', 'error']:
                       instance_id = message_data.get('src')
                       if instance_id and instance_id in _message_handlers:
                            handler = _message_handlers[instance_id]
                            try:
-                                logger.debug(f"Listener: Invoking handler for instance '{instance_id}'.")
-                                handler(message_data) # Call handler outside lock? No, state update might need lock. Ok with RLock.
+                                logger.debug(f"Listener: Invoking handler for instance '{instance_id}' (type: {msg_type}).")
+                                handler(message_data) # Call handler
                            except Exception as e:
                                 logger.exception(f"Listener: Error executing handler for instance '{instance_id}': {e}")
                       elif instance_id:
                            logger.debug(f"Listener: No handler registered for instance '{instance_id}'.")
                       else:
-                           logger.debug(f"Listener: Received {method} message without 'src': {message_data}")
+                           logger.debug(f"Listener: Received {msg_type} message without 'src': {message_data}")
 
                  else:
-                      logger.debug(f"Listener: Received unhandled message: {message_data}")
+                      logger.debug(f"Listener: Received unhandled message type '{msg_type}' for module '{module}': {message_data}")
 
         except websocket.WebSocketConnectionClosedException:
             if _connection_status != ConnectionStatus.DISCONNECTED:
@@ -344,6 +340,7 @@ def send_message(message_dict: Dict[str, Any]):
     Handles buffering for non-system messages if Sidekick is not yet online.
     """
     module = message_dict.get("module")
+    msg_type = message_dict.get("type")
 
     with _connection_lock:
         current_status = _connection_status
@@ -355,7 +352,7 @@ def send_message(message_dict: Dict[str, Any]):
 
         if should_buffer:
             _message_buffer.append(message_dict)
-            logger.debug(f"Buffering message ({module}/{message_dict.get('method')}): {len(_message_buffer)} in buffer.")
+            logger.debug(f"Buffering message ({module}/{msg_type}): {len(_message_buffer)} in buffer.")
             # If disconnected/connecting, ensure connection attempt is triggered
             if current_status == ConnectionStatus.DISCONNECTED:
                  _ensure_connection()
@@ -373,7 +370,7 @@ def send_message(message_dict: Dict[str, Any]):
              # Should only reach here for system messages if buffering isn't applied to them
              if module == "system": logger.warning(f"Cannot send system message, connection status is {current_status}.")
              # If it's not a system message, it should have been buffered above. This is a fallback log.
-             else: logger.warning(f"Message ({module}) dropped, connection status is {current_status}.")
+             else: logger.warning(f"Message ({module}/{msg_type}) dropped, connection status is {current_status}.")
         # else: # Should cover all states
 
 def clear_all():
@@ -382,9 +379,9 @@ def clear_all():
     message = {
         "id": 0,
         "module": "global",
-        "method": "clearAll",
+        "type": "clearAll",
     }
-    # Use the public send_message to handle buffering if needed (though global ops might bypass buffer eventually)
+    # Use the public send_message to handle buffering if needed
     send_message(message)
 
 def close_connection(log_info=True):
@@ -410,7 +407,7 @@ def close_connection(log_info=True):
         if ws_temp and ws_temp.connected:
              if _clear_on_disconnect:
                   logger.debug("Attempting to send global/clearAll on disconnect (best-effort).")
-                  clear_all_msg = {"id": 0, "module": "global", "method": "clearAll"}
+                  clear_all_msg = {"id": 0, "module": "global", "type": "clearAll"}
                   try: _send_raw(ws_temp, clear_all_msg)
                   except Exception: logger.warning("Failed to send clearAll during disconnect.")
 

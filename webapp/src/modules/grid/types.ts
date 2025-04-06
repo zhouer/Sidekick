@@ -28,7 +28,7 @@ export interface GridUpdatePayload {
     };
 }
 
-export interface GridNotifyPayload {
+export interface GridEventPayload {
     event: 'click';
     x: number;
     y: number;

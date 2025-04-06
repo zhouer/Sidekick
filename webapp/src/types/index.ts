@@ -1,106 +1,119 @@
 // Sidekick/webapp/src/types/index.ts
 
-// --- Peer Information ---
+// Represents a peer role
 export type PeerRole = "hero" | "sidekick";
 export type PeerStatus = "online" | "offline";
 
+// Payload for system/announce message
 export interface AnnouncePayload {
     peerId: string;
     role: PeerRole;
     status: PeerStatus;
     version: string;
-    timestamp: number;
+    timestamp: number; // Unix epoch milliseconds
+}
+
+// Information about a connected Hero peer
+export interface HeroPeerInfo extends AnnouncePayload {
+    role: "hero"; // Ensure role is specifically 'hero'
 }
 
 // --- Base Message Structure ---
 interface BaseMessage {
     id: number; // Reserved
-    module: string;
-    method: string;
-    payload?: object | null;
+    module: string; // Target/Source module type (e.g., "grid", "system", "global")
+    payload?: any; // Type-specific payload, MUST use camelCase keys
 }
 
-// --- Specific Message Types ---
+// --- Messages Sent FROM Hero TO Sidekick ---
+// (via Server)
 
-// Messages received FROM Hero (or Server)
+// Base type for messages sent from Hero
+interface BaseHeroMessage extends BaseMessage {
+    target?: string; // Target instance ID (required for module control)
+    src?: never;
+}
+
+// System Announce message (sent by Hero or Sidekick, received by Sidekick/Hero)
 export interface SystemAnnounceMessage extends BaseMessage {
     module: "system";
-    method: "announce";
+    type: "announce"; // Changed from method
     payload: AnnouncePayload;
-    // target/src are omitted
+    target?: never; // System messages don't target specific instances
+    src?: never;
 }
 
-export interface GlobalClearMessage extends BaseMessage {
+// Global Clear All message (Hero -> Sidekick)
+export interface GlobalClearMessage extends BaseHeroMessage {
     module: "global";
-    method: "clearAll";
-    // target/src/payload are omitted
+    type: "clearAll"; // Changed from method
+    payload?: null; // Payload is null or omitted
+    target?: never; // Global ops don't target specific instances
+    src?: never;
 }
 
-export interface ModuleControlMessage extends BaseMessage {
-    module: string; // e.g., "grid", "console", "viz", etc. (NOT "system" or "global")
-    method: "spawn" | "update" | "remove";
+// Module Control messages (Hero -> Sidekick)
+export interface ModuleControlMessage extends BaseHeroMessage {
+    module: "grid" | "console" | "viz" | "canvas" | "control"; // Add other modules here
+    type: "spawn" | "update" | "remove"; // Changed from method
     target: string; // Target instance ID is required
-    payload?: object | null; // Payload structure depends on module/method
-    // src is omitted
+    payload: any; // Module-specific payload structure (defined in module types/*)
 }
 
-// Union type for all messages potentially received by Sidekick
-export type ReceivedMessage = SystemAnnounceMessage | GlobalClearMessage | ModuleControlMessage;
+// Union type for all messages received BY Sidekick FROM Hero
+export type ReceivedMessage =
+    | SystemAnnounceMessage // Can also receive announce from other Sidekick instances (via server)
+    | GlobalClearMessage
+    | ModuleControlMessage;
 
-// Messages sent FROM Sidekick
-export interface SystemAnnounceMessageToSend extends BaseMessage {
-    module: "system";
-    method: "announce";
-    payload: AnnouncePayload;
-    // target/src are omitted
+// --- Messages Sent FROM Sidekick TO Hero ---
+// (via Server)
+
+// Base type for messages sent from Sidekick
+interface BaseSidekickMessage extends BaseMessage {
+    src?: string; // Source instance ID (required for event/error)
+    target?: never; // Sidekick never targets specific Hero instances
 }
-export interface ModuleNotifyMessage extends BaseMessage {
-    module: string; // e.g., "grid", "console", "control"
-    method: "notify";
+
+// Module Event message (Sidekick -> Hero) - formerly Notify
+export interface ModuleEventMessage extends BaseSidekickMessage {
+    module: string;
+    type: "event";
     src: string; // Source instance ID is required
-    payload: object; // Payload structure depends on module/event
-    // target is omitted
+    payload: any; // Module-specific event payload (defined in module types/*, e.g., { event: 'click', x: number, y: number })
 }
 
-export interface ModuleErrorMessage extends BaseMessage {
-    module: string; // e.g., "grid"
-    method: "error";
-    src: string; // Source instance ID is required
-    payload: { message: string };
-    // target is omitted
+// Module Error message (Sidekick -> Hero)
+export interface ModuleErrorMessage extends BaseSidekickMessage {
+    module: string; // Any module type can potentially send an error
+    type: "error";
+    src: string; // Source instance ID is required (or potentially module type if instance not found)
+    payload: {
+        message: string; // Error description
+    };
 }
 
-// Union type for all messages potentially sent by Sidekick
-export type SentMessage = SystemAnnounceMessageToSend | ModuleNotifyMessage | ModuleErrorMessage;
+// Union type for all messages sent BY Sidekick TO Hero
+export type SentMessage =
+    | SystemAnnounceMessage // Sidekick also announces itself
+    | ModuleEventMessage
+    | ModuleErrorMessage;
 
-// --- Module Instance State ---
-// Represents a single active module instance in the UI
-export interface ModuleInstance<TState = any> {
+// --- Internal Sidekick Application Types ---
+
+// Represents a single module instance within the Sidekick UI state
+export interface ModuleInstance<TState = any> { // TState is the module-specific state type
     id: string;
-    type: string; // Module type string (e.g., "grid")
-    state: TState; // Module-specific state object
+    type: string; // e.g., "grid", "console"
+    state: TState;
 }
 
-// --- Module Definition (for Registry) ---
-// Defines the contract for registering a module type
-export interface ModuleDefinition<TState = any, TPayload = any> {
+// Defines the contract for a visual module plugin
+export interface ModuleDefinition<TState = any, TSpawnPayload = any, TUpdatePayload = any> {
     type: string; // Unique module type identifier
-    component: React.FC<any>; // The React component to render the module
-    // Pure function to create the initial state for a new instance
-    getInitialState: (instanceId: string, payload: TPayload | null) => TState;
-    // Pure function to calculate the next state based on an update payload
-    // Must return a new object reference if the state changes.
-    updateState: (currentState: TState, payload: TPayload) => TState;
-    // Does this module component require the 'onInteraction' prop?
-    isInteractive?: boolean;
-    // Optional display name for UI purposes
-    displayName?: string;
-}
-
-// --- Hero Peer Status (for AppState) ---
-export interface HeroPeerInfo {
-    peerId: string;
-    version: string;
-    status: PeerStatus;
-    timestamp: number;
+    component: React.ComponentType<{ id: string; state: TState; onInteraction?: (message: SentMessage) => void }>; // The React component to render
+    getInitialState: (instanceId: string, payload: TSpawnPayload) => TState; // Creates initial state from spawn payload
+    updateState: (currentState: TState, payload: TUpdatePayload) => TState; // Pure function to update state based on payload
+    isInteractive?: boolean; // Does this module need the onInteraction callback?
+    displayName?: string; // User-friendly name for display
 }

@@ -1,17 +1,16 @@
 // Sidekick/webapp/src/modules/console/ConsoleComponent.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ConsoleState, ConsoleNotifyPayload } from './types';
-import { SentMessage, ModuleNotifyMessage } from '../../types';
+import { ConsoleState, ConsoleEventPayload } from './types';
+import { SentMessage, ModuleEventMessage } from '../../types';
 import './ConsoleComponent.css';
 
 interface ConsoleComponentProps {
     id: string;
     state: ConsoleState;
-    onInteraction: (message: SentMessage) => void;
+    onInteraction?: (message: SentMessage) => void;
 }
 
 const ConsoleComponent: React.FC<ConsoleComponentProps> = ({ id, state, onInteraction }) => {
-    // Destructure lines and showInput from state
     const { lines, showInput } = state;
     const outputRef = useRef<HTMLDivElement>(null);
     const [inputValue, setInputValue] = useState('');
@@ -19,19 +18,29 @@ const ConsoleComponent: React.FC<ConsoleComponentProps> = ({ id, state, onIntera
     useEffect(() => {
         const outputDiv = outputRef.current;
         if (outputDiv) {
-            // Set scrollTop to the total scrollable height to scroll to bottom
             outputDiv.scrollTop = outputDiv.scrollHeight;
         }
-    }, [lines]); // Trigger only when lines change
+    }, [lines]);
 
     const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         setInputValue(event.target.value);
     };
 
     const sendInput = useCallback(() => {
+        if (!onInteraction) {
+            console.warn(`ConsoleComponent ${id}: onInteraction not provided, cannot send input.`);
+            return;
+        }
         if (!inputValue.trim()) return;
-        const payload: ConsoleNotifyPayload = { event: 'inputText', value: inputValue };
-        const message: ModuleNotifyMessage = { id: 0, module: 'console', method: 'notify', src: id, payload: payload };
+
+        const payload: ConsoleEventPayload = { event: 'inputText', value: inputValue };
+        const message: ModuleEventMessage = {
+            id: 0,
+            module: 'console',
+            type: 'event',
+            src: id,
+            payload: payload
+        };
         onInteraction(message);
         setInputValue('');
     }, [inputValue, id, onInteraction]);
@@ -44,8 +53,7 @@ const ConsoleComponent: React.FC<ConsoleComponentProps> = ({ id, state, onIntera
 
     return (
         <div>
-            {/* Output Area - Add the ref here */}
-            <div className="console-output" ref={outputRef}> {/* <-- Assign ref */}
+            <div className="console-output" ref={outputRef}>
                 {lines.map((line, index) => (
                     <div key={index} className="console-line">
                         {line.split('\n').map((part, partIndex) => (
@@ -58,7 +66,6 @@ const ConsoleComponent: React.FC<ConsoleComponentProps> = ({ id, state, onIntera
                 ))}
             </div>
 
-            {/* Conditionally render Input Area based on showInput state */}
             {showInput && (
                 <div className="console-input-area">
                     <input

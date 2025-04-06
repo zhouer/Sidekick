@@ -1,13 +1,13 @@
 // Sidekick/webapp/src/modules/grid/GridComponent.tsx
 import React from 'react';
-import { GridState, GridNotifyPayload } from './types'; // Import GridNotifyPayload
-import { SentMessage, ModuleNotifyMessage } from '../../types';
+import { GridState, GridEventPayload } from './types';
+import { SentMessage, ModuleEventMessage } from '../../types';
 import './GridComponent.css';
 
 interface GridComponentProps {
     id: string; // Instance ID
     state: GridState;
-    onInteraction: (message: SentMessage) => void; // Callback to send message back
+    onInteraction?: (message: SentMessage) => void;
 }
 
 const GridComponent: React.FC<GridComponentProps> = ({ id, state, onInteraction }) => {
@@ -15,45 +15,45 @@ const GridComponent: React.FC<GridComponentProps> = ({ id, state, onInteraction 
     const { numColumns, numRows, cells } = state;
 
     const handleCellClick = (x: number, y: number) => {
-        // Define the payload according to GridNotifyPayload
-        const payload: GridNotifyPayload = {
-            event: 'click',
-            x,
-            y,
-        };
-        // Create the message structure
-        const message: ModuleNotifyMessage = {
-            id: 0, // or generate unique id if needed
-            module: 'grid',
-            method: 'notify',
-            src: id, // The ID of this grid instance
-            payload: payload, // Use the typed payload
-        };
-        onInteraction(message);
+        if (onInteraction) {
+            const payload: GridEventPayload = {
+                event: 'click',
+                x,
+                y,
+            };
+            const message: ModuleEventMessage = {
+                id: 0,
+                module: 'grid',
+                type: 'event',
+                src: id,
+                payload: payload,
+            };
+            onInteraction(message);
+        } else {
+            console.warn(`GridComponent ${id}: onInteraction not provided, cannot send click event.`);
+        }
     };
 
     const renderGrid = () => {
         const rows = [];
-        // Use numRows for the outer loop
         for (let y = 0; y < numRows; y++) {
             const rowCells = [];
-            // Use numColumns for the inner loop
             for (let x = 0; x < numColumns; x++) {
                 const key = `${x},${y}`;
                 const cellData = cells[key];
                 const style: React.CSSProperties = {
-                    backgroundColor: cellData?.color || 'white', // Default background
+                    backgroundColor: cellData?.color || 'white',
                 };
                 rowCells.push(
                     <div
                         key={key}
                         className="grid-cell"
                         style={style}
-                        onClick={() => handleCellClick(x, y)} // Add click handler
-                        role="gridcell" // Add ARIA role
-                        aria-label={`Cell (${x}, ${y})`} // Add ARIA label
+                        onClick={() => handleCellClick(x, y)}
+                        role="gridcell"
+                        aria-label={`Cell (${x}, ${y})`}
                     >
-                        {cellData?.text || ''} {/* Display text if available */}
+                        {cellData?.text || ''}
                     </div>
                 );
             }
@@ -62,7 +62,6 @@ const GridComponent: React.FC<GridComponentProps> = ({ id, state, onInteraction 
         return rows;
     };
 
-    // Add ARIA roles for accessibility
     return (
         <div className="grid-canvas" role="grid" aria-colcount={numColumns} aria-rowcount={numRows}>
             {renderGrid()}

@@ -38,7 +38,8 @@ function broadcastMessage(wss: WebSocketServer, senderWs: WebSocket, message: ob
         }
     });
     if (description) {
-        console.log(`[WSS][Broadcast] Broadcasted ${description} to ${recipients} recipients.`);
+        const msgType = (typeof message === 'object' && message !== null) ? (message as any).type : 'unknown';
+        console.log(`[WSS][Broadcast] Broadcasted ${description} (type: ${msgType}) to ${recipients} recipients.`);
     }
 }
 
@@ -54,7 +55,8 @@ function sendToClient(clientWs: WebSocket, message: object | string, description
             if (description) {
                 const recipientInfo = connectedPeers.get(clientWs); // Try to get peerId
                 const recipientId = recipientInfo ? recipientInfo.peerId : 'the target client';
-                console.log(`[WSS][Send] Sent ${description} to ${recipientId}.`);
+                const msgType = (typeof message === 'object' && message !== null) ? (message as any).type : 'unknown';
+                console.log(`[WSS][Send] Sent ${description} (type: ${msgType}) to ${recipientId}.`);
             }
         } catch (e) {
             const recipientInfo = connectedPeers.get(clientWs);
@@ -102,8 +104,8 @@ export default function websocketServerPlugin(options: WebSocketPluginOptions): 
                     // --- Message Parsing and Basic Validation ---
                     try {
                         message = JSON.parse(rawData);
-                        if (typeof message !== 'object' || message === null || !message.module || !message.method) {
-                            throw new Error('Invalid message structure: missing module or method');
+                        if (typeof message !== 'object' || message === null || !message.module || !message.type) {
+                            throw new Error('Invalid message structure: missing module or type');
                         }
                         // Log parsed message content for clarity
                         console.log(`[WSS][Recv] From ${remoteAddress}:${remotePort}: ${JSON.stringify(message)}`);
@@ -114,7 +116,7 @@ export default function websocketServerPlugin(options: WebSocketPluginOptions): 
                     }
 
                     // --- Handle System Announce Messages ---
-                    if (message.module === 'system' && message.method === 'announce') {
+                    if (message.module === 'system' && message.type === 'announce') {
                         const payload = message.payload as AnnouncePayload;
                         // Payload validation
                         if (!payload || typeof payload !== 'object' || !payload.peerId || !payload.role || !payload.status || !payload.version || typeof payload.timestamp !== 'number') {
@@ -141,7 +143,7 @@ export default function websocketServerPlugin(options: WebSocketPluginOptions): 
                             if (historyAnnouncements.length > 0) {
                                 console.log(`[WSS][History] Sending ${historyAnnouncements.length} online peer announcements to ${peerId}`);
                                 historyAnnouncements.forEach(histAnnounce => {
-                                    const historyMsg = { id: 0, module: 'system', method: 'announce', payload: histAnnounce };
+                                    const historyMsg = { id: 0, module: 'system', type: 'announce', payload: histAnnounce };
                                     sendToClient(ws, historyMsg, `history announce for ${histAnnounce.peerId}`);
                                 });
                             } else {
@@ -183,7 +185,7 @@ export default function websocketServerPlugin(options: WebSocketPluginOptions): 
                     } else {
                         // --- Broadcast Other Message Types ---
                         // Relay module/global messages without deep inspection
-                        const messageDescription = `${message.module}/${message.method}`;
+                        const messageDescription = `${message.module}/${message.type}`; // Use message.type
                         // Log broadcast with peer ID if available
                         const senderInfo = connectedPeers.get(ws);
                         const senderId = senderInfo ? senderInfo.peerId : `${remoteAddress}:${remotePort}`;
@@ -222,7 +224,7 @@ export default function websocketServerPlugin(options: WebSocketPluginOptions): 
                                 version,
                                 timestamp: Date.now()
                             };
-                            const offlineMsg = { id: 0, module: 'system', method: 'announce', payload: offlinePayload };
+                            const offlineMsg = { id: 0, module: 'system', type: 'announce', payload: offlinePayload };
 
                             // Update central state
                             lastAnnouncements.set(peerId, offlinePayload);
