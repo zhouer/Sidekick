@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
+*.vsix
 
 __pycache__
 *.egg-info
@@ -19,6 +20,7 @@ __pycache__
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+!.vscode/launch.json
 .idea
 .DS_Store
 *.suo
@@ -26,3 +28,6 @@ __pycache__
 *.njsproj
 *.sln
 *.sw?
+
+extension/out
+extension/dist

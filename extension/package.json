@@ -1,0 +1,63 @@
+{
+  "name": "sidekick-coding",
+  "displayName": "Sidekick - Your Visual Coding Buddy",
+  "description": "Provides a visual panel to interact with your code.",
+  "version": "0.0.1",
+  "publisher": "sidekick-coding",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Visualization",
+    "Education"
+  ],
+  "activationEvents": [
+    "onCommand:sidekick.show"
+  ],
+  "main": "out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "sidekick.show",
+        "title": "Show Sidekick Panel"
+      }
+    ],
+    "configuration": {
+      "title": "Sidekick",
+      "properties": {
+        "sidekick.websocket.port": {
+          "type": "number",
+          "default": 5163,
+          "description": "Port for the Sidekick WebSocket server."
+        },
+        "sidekick.websocket.host": {
+          "type": "string",
+          "default": "localhost",
+          "description": "Host address for the Sidekick WebSocket server."
+        }
+      }
+    }
+  },
+  "icon": "images/sidekick.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zhouer/Sidekick.git"
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/vscode": "^1.75.0",
+    "@types/ws": "^8.18.1",
+    "esbuild": "^0.25.2",
+    "eslint": "^9.24.0",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "ws": "^8.18.1"
+  }
+}
