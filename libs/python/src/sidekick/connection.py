@@ -500,11 +500,20 @@ def close_connection(log_info=True):
         _buffer_flushed_and_ready_condition.notify_all()
         _ready_event.clear() # Ensure ready state is false
 
-
         # --- Mark as disconnected ---
         _connection_status = ConnectionStatus.DISCONNECTED
         _sidekick_peers_online.clear()
-        _message_buffer.clear() # Clear buffer on disconnect
+
+        # Check *before* clearing the buffer or closing the socket
+        buffered_count = len(_message_buffer)
+        if buffered_count > 0:
+            warning_message = f"[Sidekick Warning] Script finished, but {buffered_count} message(s) were still buffered."
+            warning_message += "\n                 Visual updates in Sidekick might be incomplete or missing."
+            warning_message += "\n                 For short scripts, add 'sidekick.flush_messages(timeout=5.0)' at the end."
+            warning_message += "\n                 For interactive scripts, use 'sidekick.run_forever()' to keep the script alive."
+            logger.warning(warning_message)
+
+        _message_buffer.clear() # Clear buffer after checking
 
         # --- Best-effort cleanup messages ---
         ws_temp = _ws_connection
