@@ -43,7 +43,6 @@ Sidekick uses a simple Python library (`sidekick-py`) to control the visual elem
 
     ```python
     import sidekick
-    import time
 
     # 1. Create a Grid module instance
     grid = sidekick.Grid()
@@ -58,8 +57,7 @@ Sidekick uses a simple Python library (`sidekick-py`) to control the visual elem
 
     # 4. Keep the script running to listen for clicks!
     #    Without this, the script would end, and clicks wouldn't be handled.
-    while True:
-        time.sleep(1)
+    sidekick.run_forever()
     ```
 
 6.  **Run the Script:** Open a terminal within VS Code (or use your system terminal) and run the script:

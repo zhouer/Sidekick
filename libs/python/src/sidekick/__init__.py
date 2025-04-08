@@ -14,7 +14,12 @@ from .connection import (
     close_connection,
     activate_connection,
     clear_all,
-    register_global_message_handler
+    register_global_message_handler,
+    ensure_ready,
+    run_forever,
+    flush_messages,
+    shutdown,
+    logger
 )
 
 # --- Core observable class ---
@@ -38,6 +43,10 @@ __all__ = [
     'activate_connection',
     'clear_all',
     'register_global_message_handler',
+    'ensure_ready',
+    'run_forever',
+    'flush_messages',
+    'shutdown',
     # Observable
     'ObservableValue',
     # Modules

@@ -4,43 +4,34 @@
 
 This library provides the Python interface ("Hero") for interacting with the Sidekick Visual Coding Buddy frontend UI. It allows Python scripts to easily create, update, interact with, and remove visual modules like grids, consoles, variable visualizers, drawing canvases, and UI controls within the Sidekick UI, typically via a mediating WebSocket Server.
 
-The library abstracts the underlying WebSocket communication and JSON message formatting, offering an intuitive object-oriented API. Key features include:
+The library abstracts the underlying WebSocket communication and JSON message formatting, offering an intuitive object-oriented API. It handles connection management, peer discovery, message buffering, event handling, and provides mechanisms for controlling the script's lifecycle and synchronizing with the Sidekick frontend state.
 
-*   **Simplified Event Handling:** Register specific callbacks (e.g., `on_click`, `on_input_text`) directly on module instances.
-*   **Reliable Communication:** Automatic connection management, peer discovery, message buffering, and keep-alive mechanisms.
-*   **Flexible Instantiation:** Create new UI modules or attach to existing ones (`spawn=False`).
-*   **Reactive Visualization:** Integration with `ObservableValue` for automatic UI updates in the `Viz` module.
-*   **Global Message Observation:** Optional handler to inspect all incoming messages.
-
-## 2. Features
+## 2. Key Features
 
 *   **Object-Oriented API:** Control visual modules (`Grid`, `Console`, `Viz`, `Canvas`, `Control`) via Python classes and methods (using standard Python `snake_case`).
 *   **Simplified Event Handling:**
-    *   Interactive modules (`Grid`, `Console`, `Control`) offer specific event registration methods (e.g., `module_instance.on_click(...)`, `module_instance.on_input_text(...)`).
-    *   All modules provide an `on_error(callback)` method to handle errors reported by the frontend for that specific instance.
-    *   Removes the need for users to manually parse raw `event` or `error` messages in most cases.
-*   **Global Message Handling:** Provides `sidekick.register_global_message_handler(handler)` for observing *all* incoming messages for advanced logging, debugging, or handling custom message types.
-*   **Peer Discovery & Status:** Automatically announces itself (`system/announce` with `role: "hero"`) upon connection and listens for Sidekick (`role: "sidekick"`) announcements to manage interaction readiness (`CONNECTED_READY` state).
-*   **Message Buffering:** Automatically queues module-specific commands (`spawn`, `update`, `remove`) and global commands (`clearAll`) if the connection is not yet `CONNECTED_READY` (i.e., Sidekick hasn't announced itself online). The buffer is flushed automatically when the connection becomes ready.
-*   **Automatic State Clearing:** Configurable options (`clear_on_connect`, `clear_on_disconnect`) via `sidekick.set_config()` to manage the Sidekick UI state automatically upon connection or disconnection.
-*   **Re-attachment Support:** Module constructors include `spawn: bool` (default `True`). Setting `spawn=False` allows the Python object to represent and interact with an existing module instance in Sidekick (identified by `instance_id`) without sending a `spawn` command.
-*   **`ObservableValue`:** A general-purpose wrapper (`sidekick.ObservableValue`) to track changes in Python values (primitives or containers like lists, dicts, sets). It automatically notifies subscribers (like the `Viz` module) with detailed change information upon mutation or `.set()` calls.
-*   **Automatic WebSocket Management:** Handles connection establishment (default `ws://localhost:5163`), peer announcements, keep-alive (Ping/Pong), background listener thread, connection state tracking (`ConnectionStatus`), and attempts graceful cleanup on script exit (`atexit`).
-*   **Structured Data Visualization (`Viz`):** Provides detailed, expandable views of Python data structures, reacting automatically to granular changes in `ObservableValue` instances shown via `viz.show()`.
-*   **Basic 2D Drawing (`Canvas`):** Allows programmatic drawing of lines, rectangles, and circles with basic configuration options. Uses command IDs for reliable processing.
-*   **Dynamic UI Controls (`Control`):** Dynamically add buttons and text inputs to the UI and receive interaction events via specific callbacks (`on_click`, `on_input_text`).
+    *   Register specific callbacks (e.g., `on_click`, `on_input_text`) directly on module instances.
+    *   All modules provide an `on_error(callback)` method.
+*   **Automatic Connection Management:**
+    *   Lazy connection establishment (connects on first use).
+    *   Manages WebSocket connection state (`DISCONNECTED`, `CONNECTING`, `CONNECTED_WAITING_SIDEKICK`, `CONNECTED_READY`).
+    *   Handles keep-alive (Ping/Pong) via `websocket-client`.
+    *   Runs a background listener thread (daemon) for incoming messages with timeouts for clean shutdown.
+    *   Attempts graceful shutdown on normal script exit via `atexit`.
+*   **Peer Discovery & Status:** Automatically announces itself (`system/announce` with `role: "hero"`) and listens for Sidekick (`role: "sidekick"`) announcements to determine readiness (`CONNECTED_READY` state).
+*   **Message Buffering:** Automatically queues outgoing commands if Sidekick is not yet `CONNECTED_READY`. The buffer is flushed when Sidekick becomes ready.
+*   **Configuration:** Set WebSocket URL and automatic clearing behavior (`clear_on_connect`, `clear_on_disconnect`).
+*   **Re-attachment Support:** Module constructors support `spawn=False` to attach to existing UI elements.
+*   **Reactive Visualization (`ObservableValue`):** A wrapper class to track changes in Python objects, enabling automatic, granular updates in the `Viz` module.
+*   **Lifecycle Control:**
+    *   `run_forever()`: Keeps the script running to process events indefinitely.
+    *   `shutdown()`: Signals `run_forever` to exit and cleans up the connection.
+*   **Synchronization Primitives:**
+    *   `ensure_ready()`: Blocks until Sidekick connection is established and ready.
+    *   `flush_messages()`: Blocks until Sidekick is ready and all buffered messages have been sent.
+*   **Global Message Handling:** Option to register a handler to inspect all incoming messages.
 
 ## 3. Installation
-
-**Development:**
-
-Install from the project root (`Sidekick/`) directory:
-
-```bash
-pip install -e libs/python
-```
-
-This links the installed package to your source code, so changes are immediately reflected.
 
 **Standard Installation (from PyPI):**
 
@@ -48,215 +39,218 @@ This links the installed package to your source code, so changes are immediately
 pip install sidekick-py
 ```
 
+**Development Installation (from project root):**
+
+Install editable mode to link the installed package to your source code:
+
+```bash
+pip install -e libs/python
+```
+
 ## 4. Core Concepts
 
 ### 4.1. Connection Management (`connection.py`)
 
 *   **Singleton & State Machine:** Manages a single, shared WebSocket connection using a state machine (`ConnectionStatus`: `DISCONNECTED`, `CONNECTING`, `CONNECTED_WAITING_SIDEKICK`, `CONNECTED_READY`). Thread-safety is managed using an `RLock`.
-*   **Lazy Connection:** The connection attempt is automatically triggered when the first module is instantiated or when `sidekick.activate_connection()` is explicitly called.
-*   **Configuration (`set_url`, `set_config`):** These global functions **must** be called *before* the first connection attempt is made (i.e., before the first module is created or `activate_connection` is called).
+*   **Lazy Connection:** The connection attempt is automatically triggered only when the first module is instantiated or when `sidekick.activate_connection()` is explicitly called.
+*   **Configuration (`set_url`, `set_config`):** These global functions **must** be called *before* the first connection attempt is made.
     *   `set_url(url: str)`: Sets the WebSocket server URL (defaults to `ws://localhost:5163`).
     *   `set_config(clear_on_connect: bool = True, clear_on_disconnect: bool = False)`:
-        *   `clear_on_connect`: If True, automatically sends a `global/clearAll` message *after* the connection status becomes `CONNECTED_READY` (first Sidekick peer announces online).
-        *   `clear_on_disconnect`: If True, attempts (best-effort) to send `global/clearAll` followed by a `system/announce offline` message during the `close_connection` process. Not guaranteed if the connection is already lost or the script terminates abruptly.
-*   **Peer Announcement (`system/announce`):**
-    *   **Sending:** Upon successful WebSocket connection, generates a unique `peerId` (`hero-<uuid>`) and immediately sends a `system/announce` message with `role: "hero"`, `status: "online"`, and the library `version`. Attempts to send an `offline` announcement on graceful disconnect (`close_connection`).
-    *   **Receiving:** The listener thread parses incoming `system/announce` messages. It maintains a set of online Sidekick `peerId`s (`_sidekick_peers_online`). When the first Sidekick announces `online`, the connection status transitions to `CONNECTED_READY`.
-*   **Message Buffering (`_message_buffer`):**
-    *   A `deque` stores outgoing messages (except `system/announce`).
-    *   When `send_message()` is called for non-system messages:
-        *   If status is not `CONNECTED_READY`, the message is added to the buffer.
-        *   If status is `CONNECTED_READY`, the message is sent immediately.
-    *   **Buffer Flushing:** When the status transitions to `CONNECTED_READY`, `_flush_message_buffer()` sends all buffered messages in FIFO order (after potentially sending `clear_on_connect`).
-*   **Keep-Alive:** Uses WebSocket Ping/Pong frames (configured via internal constants `_PING_INTERVAL`, `_PING_TIMEOUT`) for reliable connection maintenance and failure detection.
-*   **Listener Thread (`_listen_for_messages`):** Runs in the background to receive messages.
-    *   Parses incoming JSON messages.
-    *   Handles `system/announce` to update Sidekick status and trigger readiness/buffer flushing.
-    *   **Message Dispatching:**
-        1.  If a `_global_message_handler` is registered (via `register_global_message_handler`), it's called first with the raw incoming message dictionary.
-        2.  If the message has a `src` field (identifying the source module instance, typically for `event` or `error` messages), it looks up the *internal* handler function registered for that `instance_id` (via `_message_handlers`).
-        3.  It calls the found internal handler (which belongs to the specific `BaseModule` subclass instance).
-*   **Handler Registration:**
-    *   `register_message_handler(instance_id, handler)`: **Internal use.** Called by `BaseModule.__init__` to register the module instance's `_internal_message_handler`.
-    *   `unregister_message_handler(instance_id)`: **Internal use.** Called by `BaseModule.remove` and `__del__`.
-    *   `register_global_message_handler(handler)`: **Public API.** Registers or unregisters a single global function to receive all messages.
-*   **Cleanup (`atexit`):** Registers `close_connection` to run on normal script exit for graceful shutdown attempts.
+        *   `clear_on_connect`: If True, sends `global/clearAll` *after* the connection becomes `CONNECTED_READY`.
+        *   `clear_on_disconnect`: If True, attempts (best-effort) to send `global/clearAll` during the `close_connection` process.
+*   **Listener Thread (`_listen_for_messages`):**
+    *   Runs as a background daemon thread to receive messages.
+    *   Uses a timeout on `websocket.recv()` to ensure it can periodically check for stop signals, allowing for clean shutdowns.
+    *   Handles `system/announce` messages to update peer status.
+    *   Dispatches incoming `event` and `error` messages to the appropriate module instance handler.
+    *   Calls the optional global message handler.
+*   **Threading Events & Conditions:** Uses `threading.Event` (`_stop_event`, `_ready_event`, `_shutdown_event`) and `threading.Condition` (`_buffer_flushed_and_ready_condition`) internally to coordinate thread startup, shutdown, readiness checks, and message flushing.
+*   **Shutdown Process (`close_connection`, `shutdown`, `atexit`):**
+    *   `close_connection` is the core cleanup function. It signals the listener thread to stop (`_stop_event.set()`), closes the WebSocket, and cleans up resources.
+    *   `shutdown` signals `run_forever` to exit (`_shutdown_event.set()`) and then calls `close_connection`.
+    *   `atexit.register(shutdown)` ensures that on normal Python interpreter exit, the `shutdown` process is attempted, allowing the listener thread to terminate gracefully and the program to exit cleanly.
 
-### 4.2. Base Module (`base_module.py`)
+### 4.2. Peer Discovery & Message Buffering
 
-*   Provides common functionality for all module classes (`Grid`, `Console`, `Viz`, etc.).
-*   **Constructor `__init__(module_type, instance_id=None, spawn=True, payload=None)`:**
-    *   Takes `spawn: bool` parameter:
-        *   `spawn=True` (Default): Creates a *new* visual instance in Sidekick. `instance_id` is optional (auto-generated if `None`). Sends a `spawn` command message (buffered if needed) with the `payload`.
-        *   `spawn=False`: Re-attachment mode. Assumes the visual instance *already exists* in Sidekick. **`instance_id` becomes mandatory**. No `spawn` command is sent. `payload` is ignored.
-    *   Activates the connection (`connection.activate_connection()`).
-    *   Generates or validates `target_id`.
-    *   Registers its own `self._internal_message_handler` with the connection manager using its `target_id`.
-    *   **Does NOT take an `on_message` argument anymore.**
-*   **Internal Message Handler (`_internal_message_handler(self, message)`)**
-    *   This method is called by `connection.py` when a message for this specific instance (`src` matches `target_id`) is received.
-    *   The base implementation in `BaseModule` specifically handles messages with `type: "error"`. It extracts the error message from the payload and calls the user-registered `_error_callback` (if any).
-    *   **Subclasses (like `Grid`, `Console`, `Control`) MUST override this method.** Their overridden method should:
-        1.  Check if the message `type` is `"event"`.
-        2.  Parse the `payload` to determine the specific event (e.g., `payload['event'] == 'click'`).
-        3.  Extract relevant data from the payload (e.g., `payload['x']`, `payload['y']`, `payload['value']`, `payload['controlId']`).
-        4.  Call the corresponding specific user callback (e.g., `self._click_callback(x, y)`).
-        5.  **Crucially, call `super()._internal_message_handler(message)`** to allow the base class to handle potential `error` messages or other common types in the future.
-*   **Error Callback (`on_error(self, callback)`)**
-    *   Public method available on all module instances.
-    *   Allows users to register a function (`Callable[[str], None]`) that will be called if an `error` message is received from the frontend specifically for this module instance. The callback receives the error message string.
-*   **Sending Commands (`_send_command`, `_send_update`)**
-    *   Internal helper methods to construct messages (`spawn`, `update`, `remove`) with the correct `module`, `type`, and `target` ID.
-    *   They use `connection.send_message`, which handles buffering automatically.
-    *   **Payloads constructed here MUST use `camelCase` keys.**
-*   **Removal (`remove()`)**
-    *   Sends the `remove` command to Sidekick.
-    *   Unregisters the instance's internal message handler from the connection manager.
-    *   Resets any local callbacks (`_error_callback`, and calls `_reset_specific_callbacks` for subclasses).
+*   **Announcements:** On connection, Hero sends `system/announce` (`role: "hero", status: "online"`). It listens for `system/announce` from Sidekick peers (`role: "sidekick"`).
+*   **Ready State:** When the first Sidekick peer announces `online`, the connection status transitions to `CONNECTED_READY`. The `_ready_event` is set.
+*   **Buffering:** Messages sent via module methods (e.g., `grid.set_cell`) before the status is `CONNECTED_READY` are queued in an internal buffer (`_message_buffer`).
+*   **Flushing:** When the status becomes `CONNECTED_READY`, the buffer is automatically flushed, sending queued messages. The `_buffer_flushed_and_ready_condition` is notified when the buffer becomes empty while in the ready state.
 
-### 4.3. Communication Protocol & Payloads
+### 4.3. Message Handling & Callbacks
 
-*   Communication uses JSON messages over WebSocket, typically relayed by a Server.
-*   Messages follow the structure: `{ id: int, module: str, type: str, target?: str, src?: str, payload?: object | null }`. (See `protocol.md` for full details).
-*   **Payload Keys:** All keys within the `payload` object and any nested objects within it **MUST use `camelCase`**. This is enforced by the protocol and expected by the Sidekick frontend. The Python library is responsible for ensuring outgoing messages adhere to this.
-*   **Key Message Types & Modules:**
-    *   `system/announce`: Used for peer discovery and status (handled internally by `connection.py`). `target`/`src` omitted.
-    *   `global/clearAll`: Used to clear all Sidekick modules. Sent via `sidekick.clear_all()` or automatically via `clear_on_connect`. `target`/`src`/`payload` omitted.
-    *   Module interaction types (`spawn`, `update`, `remove`) sent from Hero to Sidekick. Require `target` field identifying the module instance. `payload` structure depends on `module` and `type`.
-    *   Module feedback types (`event`, `error`) sent from Sidekick to Hero. Require `src` field identifying the module instance. `payload` structure depends on `module` and `type`.
-*   Refer to `protocol.md` for detailed payload structures for each module/type combination.
+*   **Dispatch:** Incoming messages are first passed to the optional global handler. Messages with a `src` field (indicating the source module instance) are then routed to the `_internal_message_handler` method of the corresponding Python module object (e.g., a specific `Grid` instance).
+*   **Internal Handler:** `BaseModule._internal_message_handler` handles `error` messages by calling the `on_error` callback. Module subclasses override this method to handle specific `event` messages (e.g., `type: "event", payload: {"event": "click", ...}`) and invoke the relevant user callback (e.g., `on_click`).
+*   **Specific Callbacks:** Users interact with events primarily through methods like `grid.on_click(my_handler)`, `console.on_input_text(my_handler)`, etc., abstracting the message parsing.
 
-### 4.4. `ObservableValue` (`observable_value.py`)
+### 4.4. Module Interaction (`BaseModule`, `spawn`)
 
-*   A wrapper class for Python values (primitives, lists, dicts, sets).
-*   Intercepts common mutable operations (`append`, `__setitem__`, `add`, `update`, `clear`, etc.) or explicit `.set()` calls.
-*   Notifies subscribed callbacks with detailed `change_details` dictionary upon changes.
-*   Essential for the reactive updates in the `Viz` module. When an `ObservableValue` instance is passed to `viz.show()`, the `Viz` module subscribes to it and sends granular updates to the frontend upon notification.
+*   **Base Class:** `BaseModule` provides common functionality: ID management, connection activation, sending commands (`_send_command`, `_send_update`), `remove()` method, and `on_error` registration.
+*   **Instance ID (`instance_id`):** Uniquely identifies a module instance between Hero and Sidekick. Can be auto-generated or specified.
+*   **`spawn=True` (Default):** Creates a *new* visual instance in Sidekick by sending a `spawn` command.
+*   **`spawn=False`:** Attaches the Python object to an *existing* visual instance in Sidekick (requires `instance_id`). No `spawn` command is sent.
+*   **Payloads:** Internal methods ensure outgoing message payloads use `camelCase` keys as required by the protocol.
 
-### 4.5. `Viz` Module Integration (`viz.py`)
+### 4.5. Reactivity (`ObservableValue`, `Viz`)
 
-*   `viz.show(name, value)` sends an initial `update` (`action: "set"`) message with the full representation of the `value`.
-*   If `value` is an `ObservableValue`, `viz.show` subscribes to it.
-*   When the `ObservableValue` notifies `Viz` of a change (via internal callback `_handle_observable_update`), `Viz` translates the `change_details` into a granular `update` message (`action: "setitem"`, `action: "append"`, etc.) for Sidekick. This message includes the `variableName`, `path` to the change, and `camelCase` representations (`valueRepresentation`, `keyRepresentation`, `length`).
+*   **`ObservableValue`:** A wrapper class for Python values. It intercepts common mutation methods (e.g., `append`, `__setitem__`, `add`, `set`) and notifies subscribed callbacks with detailed change information.
+*   **`Viz` Integration:**
+    *   `viz.show(name, value)`: Displays a variable. If `value` is an `ObservableValue`, `Viz` subscribes to it.
+    *   `_handle_observable_update`: Internal callback in `Viz` triggered by `ObservableValue` changes. It translates the change details into granular `update` messages (e.g., `action: "setitem"`) for Sidekick, enabling efficient UI updates.
+
+### 4.6. Lifecycle Control (`run_forever`, `shutdown`)
+
+*   **`run_forever()`:** Call this if your script needs to stay alive to react to events (like button clicks or console input) after the main setup code has finished. It blocks the main thread until `shutdown()` is called or Ctrl+C is pressed.
+*   **`shutdown()`:** Explicitly stops the `run_forever` loop (if running) and initiates the connection closing process. Safe to call multiple times or even if `run_forever` wasn't used. Automatically called on normal program exit via `atexit`.
+
+### 4.7. Synchronization (`ensure_ready`, `flush_messages`)
+
+*   **`ensure_ready(timeout=None)`:** Blocks execution until the connection has reached the `CONNECTED_READY` state (meaning at least one Sidekick frontend is connected and has announced itself). Useful at the start of a script to wait for Sidekick before sending commands.
+*   **`flush_messages(timeout=None)`:** Blocks execution until the connection is `CONNECTED_READY` *and* the internal outgoing message buffer is empty. Useful at the end of a short-lived script to increase the likelihood that Sidekick received all sent commands before the script exits (without needing `time.sleep` or `run_forever`).
 
 ## 5. API Reference
 
-*(Note: All methods sending messages construct payloads with **`camelCase` keys**. Non-`system` messages are buffered until Sidekick is online.)*
+*(Note: All methods sending messages construct payloads with `camelCase` keys as required by the protocol. Non-system messages are buffered until the connection is `CONNECTED_READY`.)*
 
 ### 5.1. Top-Level Functions (`sidekick` namespace)
 
-*   `sidekick.set_url(url: str)`: Sets the WebSocket Server URL. **Call before connecting.**
-*   `sidekick.set_config(clear_on_connect: bool = True, clear_on_disconnect: bool = False)`: Configures automatic clearing behavior. **Call before connecting.**
-*   `sidekick.clear_all()`: Sends `global/clearAll` message to Sidekick (buffered if connection not ready).
-*   `sidekick.close_connection()`: Manually closes the WebSocket connection and attempts cleanup.
-*   `sidekick.activate_connection()`: Ensures the connection attempt is initiated. Called automatically by module constructors but can be called manually. Safe to call multiple times.
-*   `sidekick.register_global_message_handler(handler: Optional[Callable[[Dict[str, Any]], None]])`:
-    Registers or unregisters a single handler function that will be called with *every* message received from Sidekick. The handler receives the raw message dictionary. Use `None` to unregister.
+*   `sidekick.set_url(url: str)`
+    *   Sets the WebSocket Server URL (e.g., `"ws://localhost:5163"`).
+    *   **Must be called before the first connection attempt.**
+*   `sidekick.set_config(clear_on_connect: bool = True, clear_on_disconnect: bool = False)`
+    *   Configures automatic clearing behavior.
+    *   `clear_on_connect`: Sends `global/clearAll` when Sidekick becomes ready.
+    *   `clear_on_disconnect`: Attempts to send `global/clearAll` on disconnect.
+    *   **Must be called before the first connection attempt.**
+*   `sidekick.activate_connection()`
+    *   Ensures the connection attempt is initiated if currently disconnected.
+    *   Called automatically by module constructors. Safe to call multiple times.
+*   `sidekick.clear_all()`
+    *   Sends a `global/clearAll` message to Sidekick (buffered if connection not ready).
+*   `sidekick.close_connection(log_info=True)`
+    *   Manually initiates the closing of the WebSocket connection and cleanup. Consider using `shutdown()` instead for consistency with `atexit` and `run_forever`.
+*   `sidekick.shutdown()`
+    *   Initiates the clean shutdown process: signals `run_forever` to exit (if running), stops the listener thread, and closes the WebSocket connection.
+    *   This is the recommended way to programmatically stop the connection. Automatically called by `atexit`.
+*   `sidekick.run_forever()`
+    *   Blocks the main thread, keeping the script alive to process incoming events.
+    *   Exits when `shutdown()` is called or Ctrl+C is pressed.
+*   `sidekick.ensure_ready(timeout: Optional[float] = None) -> bool`
+    *   Blocks until the connection status is `CONNECTED_READY` or the timeout (in seconds) expires.
+    *   Returns `True` if ready, `False` on timeout or disconnection.
+*   `sidekick.flush_messages(timeout: Optional[float] = None) -> bool`
+    *   Blocks until the connection is `CONNECTED_READY` and the outgoing message buffer is empty, or the timeout (in seconds) expires.
+    *   Returns `True` if flushed while ready, `False` on timeout or disconnection.
+*   `sidekick.register_global_message_handler(handler: Optional[Callable[[Dict[str, Any]], None]])`
+    *   Registers or unregisters a single handler function that will be called with *every* message dictionary received from Sidekick. Use `None` to unregister.
 
 ### 5.2. `sidekick.ObservableValue`
 
 *   `ObservableValue(initial_value: Any)`
-*   Methods: `.get()`, `.set(new_value)`, `.subscribe(callback)`, `.unsubscribe(callback)`.
-*   Also intercepts and notifies on standard mutable container methods like `.append()`, `.__setitem__()`, `.add()`, `.update()`, `.pop()`, `.remove()`, `.clear()`, `.__delitem__()`, `.insert()`, `.discard()`.
+    *   Wraps a Python value to enable change tracking.
+*   **Methods:**
+    *   `.get() -> Any`: Returns the current wrapped value.
+    *   `.set(new_value: Any)`: Sets a new value, triggering a "set" notification.
+    *   `.subscribe(callback: Callable[[Dict[str, Any]], None]) -> Callable[[], None]`: Registers a callback for change notifications. Returns an unsubscribe function.
+    *   `.unsubscribe(callback: Callable[[Dict[str, Any]], None])`: Removes a specific callback.
+*   **Intercepted Methods (trigger notifications):** `.append()`, `.insert()`, `.pop()`, `.remove()`, `.clear()`, `.__setitem__()`, `.__delitem__()`, `.update()` (for dicts), `.add()`, `.discard()` (for sets).
+*   **Other Dunder Methods:** Delegates common methods like `__getattr__`, `__repr__`, `__str__`, `__eq__`, `__len__`, `__getitem__`, `__iter__`, `__contains__` to the wrapped value.
 
 ### 5.3. `sidekick.Grid`
 
 *   `Grid(num_columns: int = 16, num_rows: int = 16, instance_id: Optional[str] = None, spawn: bool = True)`
+    *   Represents a grid module.
     *   `spawn=False` requires `instance_id`.
 *   **Methods:**
-    *   `.set_cell(x: int, y: int, color: Optional[str] = None, text: Optional[str] = None)`
-    *   `.set_color(x: int, y: int, color: Optional[str])`
-    *   `.set_text(x: int, y: int, text: Optional[str])`
-    *   `.clear()`
-    *   `.remove()`
+    *   `.set_cell(x: int, y: int, color: Optional[str] = None, text: Optional[str] = None)`: Sets cell state (column `x`, row `y`).
+    *   `.set_color(x: int, y: int, color: Optional[str])`: Sets only the cell color.
+    *   `.set_text(x: int, y: int, text: Optional[str])`: Sets only the cell text.
+    *   `.clear()`: Clears the entire grid.
+    *   `.remove()`: Removes this grid instance from Sidekick.
 *   **Event Handlers:**
-    *   `.on_click(callback: Optional[Callable[[int, int], None]])`: Registers a function called when a cell is clicked. Callback receives `x` (column index) and `y` (row index). Pass `None` to unregister.
-    *   `.on_error(callback: Optional[Callable[[str], None]])`: Registers a function called when an error related to this grid instance is received from Sidekick. Callback receives the error message string. Pass `None` to unregister.
+    *   `.on_click(callback: Optional[Callable[[int, int], None]])`: Registers a function called with `x`, `y` when a cell is clicked. Pass `None` to unregister.
+    *   `.on_error(callback: Optional[Callable[[str], None]])`: Registers a function called with an error message string specific to this instance. Pass `None` to unregister.
 
 ### 5.4. `sidekick.Console`
 
 *   `Console(instance_id: Optional[str] = None, spawn: bool = True, initial_text: str = "", show_input: bool = False)`
+    *   Represents a console module.
     *   `spawn=False` requires `instance_id`; `initial_text` and `show_input` are ignored.
 *   **Methods:**
-    *   `.print(*args: Any, sep: str = ' ', end: str = '')`
-    *   `.log(message: Any)`
-    *   `.clear()`
-    *   `.remove()`
+    *   `.print(*args: Any, sep: str = ' ', end: str = '')`: Prints text to the console.
+    *   `.log(message: Any)`: Shortcut for `.print(message)`.
+    *   `.clear()`: Clears the console text.
+    *   `.remove()`: Removes this console instance from Sidekick.
 *   **Event Handlers:**
-    *   `.on_input_text(callback: Optional[Callable[[str], None]])`: Registers a function called when text is submitted via the input field (requires `show_input=True`). Callback receives the submitted text string. Pass `None` to unregister.
-    *   `.on_error(callback: Optional[Callable[[str], None]])`: Registers a function called when an error related to this console instance is received. Callback receives the error message string. Pass `None` to unregister.
+    *   `.on_input_text(callback: Optional[Callable[[str], None]])`: Registers a function called with the submitted text (requires `show_input=True`). Pass `None` to unregister.
+    *   `.on_error(callback: Optional[Callable[[str], None]])`: Registers a function for instance-specific errors. Pass `None` to unregister.
 
 ### 5.5. `sidekick.Viz`
 
 *   `Viz(instance_id: Optional[str] = None, spawn: bool = True)`
+    *   Represents a variable visualizer module.
     *   `spawn=False` requires `instance_id`.
 *   **Methods:**
-    *   `.show(name: str, value: Any)`: Displays a variable. Automatically subscribes if `value` is an `ObservableValue`.
-    *   `.remove_variable(name: str)`: Removes a variable from the display.
-    *   `.remove()`: Removes the entire Viz panel instance.
+    *   `.show(name: str, value: Any)`: Displays/updates a variable. Subscribes automatically if `value` is an `ObservableValue`.
+    *   `.remove_variable(name: str)`: Removes a variable display. Unsubscribes if applicable.
+    *   `.remove()`: Removes this viz instance from Sidekick. Unsubscribes all tracked observables.
 *   **Event Handlers:**
-    *   `.on_error(callback: Optional[Callable[[str], None]])`: Registers a function called when an error related to this Viz instance is received. Callback receives the error message string. Pass `None` to unregister. *(Note: Viz currently doesn't emit user interaction events like 'click'.)*
+    *   `.on_error(callback: Optional[Callable[[str], None]])`: Registers a function for instance-specific errors. Pass `None` to unregister. *(Note: Viz currently doesn't emit user interaction events like 'click'.)*
 
 ### 5.6. `sidekick.Canvas`
 
 *   `Canvas(width: int, height: int, instance_id: Optional[str] = None, spawn: bool = True, bg_color: Optional[str] = None)`
+    *   Represents a 2D drawing canvas module.
     *   `spawn=False` requires `instance_id`; `width`, `height`, `bg_color` are ignored.
 *   **Methods:**
-    *   `.clear(color: Optional[str] = None)`
-    *   `.config(stroke_style: Optional[str] = None, fill_style: Optional[str] = None, line_width: Optional[int] = None)`
-    *   `.draw_line(x1: int, y1: int, x2: int, y2: int)`
-    *   `.draw_rect(x: int, y: int, width: int, height: int, filled: bool = False)`
-    *   `.draw_circle(cx: int, cy: int, radius: int, filled: bool = False)`
-    *   `.remove()`
+    *   `.clear(color: Optional[str] = None)`: Clears the canvas, optionally filling with a color.
+    *   `.config(stroke_style: Optional[str] = None, fill_style: Optional[str] = None, line_width: Optional[int] = None)`: Configures drawing styles.
+    *   `.draw_line(x1: int, y1: int, x2: int, y2: int)`: Draws a line.
+    *   `.draw_rect(x: int, y: int, width: int, height: int, filled: bool = False)`: Draws a rectangle (outline or filled).
+    *   `.draw_circle(cx: int, cy: int, radius: int, filled: bool = False)`: Draws a circle (outline or filled).
+    *   `.remove()`: Removes this canvas instance from Sidekick.
 *   **Event Handlers:**
-    *   `.on_error(callback: Optional[Callable[[str], None]])`: Registers a function called when an error related to this Canvas instance is received. Callback receives the error message string. Pass `None` to unregister. *(Note: Canvas currently doesn't emit user interaction events.)*
+    *   `.on_error(callback: Optional[Callable[[str], None]])`: Registers a function for instance-specific errors. Pass `None` to unregister. *(Note: Canvas currently doesn't emit user interaction events.)*
 
 ### 5.7. `sidekick.Control`
 
 *   `Control(instance_id: Optional[str] = None, spawn: bool = True)`
+    *   Represents a UI control panel module.
     *   `spawn=False` requires `instance_id`.
 *   **Methods:**
-    *   `.add_button(control_id: str, text: str)`
-    *   `.add_text_input(control_id: str, placeholder: str = "", initial_value: str = "", button_text: str = "Submit")`
-    *   `.remove_control(control_id: str)`
-    *   `.remove()`
+    *   `.add_button(control_id: str, text: str)`: Adds a button.
+    *   `.add_text_input(control_id: str, placeholder: str = "", initial_value: str = "", button_text: str = "Submit")`: Adds a text input field with a submit button.
+    *   `.remove_control(control_id: str)`: Removes a specific button or text input by its ID.
+    *   `.remove()`: Removes this control panel instance from Sidekick.
 *   **Event Handlers:**
-    *   `.on_click(callback: Optional[Callable[[str], None]])`: Registers a function called when a button control created by this instance is clicked. Callback receives the `controlId` of the clicked button. Pass `None` to unregister.
-    *   `.on_input_text(callback: Optional[Callable[[str, str], None]])`: Registers a function called when a text input control created by this instance is submitted. Callback receives the `controlId` and the submitted `value` string. Pass `None` to unregister.
-    *   `.on_error(callback: Optional[Callable[[str], None]])`: Registers a function called when an error related to this Control panel instance is received. Callback receives the error message string. Pass `None` to unregister.
+    *   `.on_click(callback: Optional[Callable[[str], None]])`: Registers a function called with the `controlId` when a button is clicked. Pass `None` to unregister.
+    *   `.on_input_text(callback: Optional[Callable[[str, str], None]])`: Registers a function called with `controlId` and `value` when a text input is submitted. Pass `None` to unregister.
+    *   `.on_error(callback: Optional[Callable[[str], None]])`: Registers a function for instance-specific errors. Pass `None` to unregister.
 
 ## 6. Development Notes
 
-*   **Structure:** The core connection and dispatch logic resides in `connection.py` and `base_module.py`. Individual module classes (`grid.py`, `console.py`, etc.) inherit from `BaseModule` and implement specific methods and event handling.
+*   **Payload Keys:** Remember that all keys in the `payload` dictionary sent to Sidekick **MUST use `camelCase`**. This is handled internally by the library's methods.
 *   **Dependencies:** Requires the `websocket-client` library (`pip install websocket-client`).
-*   **Payload Keys:** Remember that all keys in the `payload` dictionary sent to Sidekick **MUST use `camelCase`**. This is handled internally by the library's methods, but be aware if constructing messages manually.
-*   **Buffering:** Module/global commands are automatically buffered if Sidekick is not yet online. Check DEBUG logs (`SidekickConn` logger) to observe buffering and flushing.
-*   **Re-attachment:** Use `spawn=False` with the correct `instance_id` to control existing Sidekick elements. Ensure Sidekick's state persistence aligns with this usage and consider the effect of `clear_on_connect`.
-*   **Event Handling:** Use the specific `on_click`, `on_input_text`, `on_error` methods provided by module instances for clear and simple event handling. Use `register_global_message_handler` primarily for debugging or advanced scenarios.
+*   **Threading:** The library uses a background daemon thread for receiving messages. Be mindful of thread safety if accessing shared state from module callbacks.
+*   **Shutdown:** Use `sidekick.shutdown()` for explicit cleanup or rely on `atexit` for normal program termination. Ensure long-running scripts use `sidekick.run_forever()` or manage their own main loop.
 
 ## 7. Troubleshooting
 
 *   **Connection Errors:**
-    *   Check if the Sidekick WebSocket server (often part of the VS Code extension or run via `npm run dev` in `webapp`) is running.
-    *   Verify the URL (`ws://localhost:5163` by default) is correct using `sidekick.set_url()` *before* creating modules.
+    *   Check if the Sidekick WebSocket server is running (often part of the VS Code extension or run via `npm run dev` in `webapp`).
+    *   Verify the URL (`ws://localhost:5163` by default) using `sidekick.set_url()` *before* creating modules.
     *   Check firewalls.
-    *   Inspect the `SidekickConn` DEBUG logs for detailed connection attempts and errors.
-*   **Messages Not Appearing in Sidekick (Module Commands):**
-    *   Check `SidekickConn` logs. Are messages being buffered (`Buffering message...`)?
-    *   Did Sidekick announce itself online (`Sidekick peer online...`, `System is READY.`)?
-    *   Was the buffer flushed (`Flushing message buffer...`)?
-    *   Inspect the WebSocket messages in your browser's Developer Tools (Network -> WS tab) within Sidekick. Verify the message structure (`module`, `type`, `target`) and **ensure the `payload` keys are `camelCase`**.
-    *   Check the Sidekick browser console for errors when processing the message (e.g., payload validation errors in `*Logic.ts`).
-*   **Callbacks Not Firing (`on_click`, `on_input_text`, `on_error`):**
-    *   **Registration:** Ensure you called the correct registration method (e.g., `my_grid.on_click(my_handler)`) on the specific module instance.
-    *   **Message Reception:** Check `SidekickConn` DEBUG logs. Is the corresponding `event` or `error` message being received from Sidekick? Verify the `src` field matches your `instance_id`.
-    *   **Event Type:** For `event` messages, check the `payload['event']` field in the log matches the expected type (e.g., `"click"`, `"inputText"`).
-    *   **Callback Execution:** Add logging *inside* your callback function to confirm it's being entered. Check for exceptions occurring within your callback function (these will be logged by SidekickConn).
-*   **`clear_on_connect` / `clear_on_disconnect` Issues:** Ensure `set_config` is called *before* connection. Note that `clear_on_disconnect` is best-effort.
-*   **Errors Using `spawn=False`:**
-    *   Did you provide the correct, non-None `instance_id`?
-    *   Does the instance actually exist in Sidekick with that ID? It might have been cleared (manually or via `clear_on_connect`).
-*   **Viz Module Not Updating Reactively:**
-    *   Ensure the value passed to `viz.show()` is an `sidekick.ObservableValue` instance.
-    *   Ensure mutations are happening *through* the `ObservableValue` wrapper methods (e.g., `obs_list.append(item)`, `obs_dict[key] = value`, `obs_value.set(new_val)`), not by modifying internal data directly.
-    *   Check logs for subscription messages and update processing in `Viz` and `connection`.
+    *   Enable DEBUG logging (`logging.getLogger("SidekickConn").setLevel(logging.DEBUG)`) for detailed connection logs.
+*   **Module Commands Not Appearing:**
+    *   Check DEBUG logs. Are messages buffered? Did Sidekick become `CONNECTED_READY`? Was the buffer flushed?
+    *   Inspect WebSocket messages in the Sidekick frontend (Browser DevTools > Network > WS). Verify message structure (`module`, `type`, `target`) and **ensure `payload` keys are `camelCase`**.
+    *   Check the Sidekick browser console for errors processing the message.
+*   **Callbacks Not Firing:**
+    *   Ensure the correct registration method was called on the module instance.
+    *   Check DEBUG logs: Is the `event` or `error` message being received from Sidekick? Does the `src` match the `instance_id`? Does the `payload['event']` match expectations?
+    *   Add logging inside your callback function. Check for exceptions within your callback (these are caught and logged by `SidekickConn`).
+*   **Script Doesn't Exit:** Ensure you are not calling `sidekick.run_forever()` unless intended. If using event callbacks that should keep the script alive, use `run_forever()` and `shutdown()`. Check for other non-daemon threads or blocking operations in your code.
+*   **`ensure_ready` / `flush_messages` Timeout:** This usually means Sidekick did not connect or announce itself online within the timeout period. Check Sidekick server status and network connectivity. Increase the timeout if necessary for slow startups.
+*   **`Viz` Not Updating Reactively:**
+    *   Ensure the value passed to `viz.show()` is an `sidekick.ObservableValue`.
+    *   Mutations must happen *through* the `ObservableValue` wrapper methods (e.g., `obs_list.append(item)`, `obs_dict[key] = value`, `obs_value.set(new_val)`).
