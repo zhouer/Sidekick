@@ -1,39 +1,37 @@
-# Sidekick/libs/python/src/sidekick/observable_value.py
 import collections.abc
 from typing import Any, List, Set, Dict, Callable, Optional, Union, Tuple
+from . import logger
 
 # Define type aliases for clarity
 SubscriptionCallback = Callable[[Dict[str, Any]], None]
 UnsubscribeFunction = Callable[[], None]
 
 class ObservableValue:
-    """
-    Wraps a Python value, allowing external subscribers to be notified
-    with details about how the internal value changes.
+    """Wraps a Python value to notify subscribers about changes.
 
-    This class intercepts common mutable operations on lists, dicts, and sets
-    (like append, __setitem__, add, update, etc.) and triggers notifications
-    to subscribed callbacks. Direct attribute modification on the wrapped object
-    does *not* trigger notifications automatically.
+    Use this class to wrap lists, dictionaries, or sets that you want to
+    display using the `sidekick.Viz` module. When you modify the wrapped
+    object using the `ObservableValue`'s methods (like `.append()`,
+    `.[key] = value`, `.add()`, `.set()`), it automatically notifies the `Viz`
+    module, which can then update the display in Sidekick efficiently, often
+    highlighting the exact change.
 
-    Notifications are sent as a dictionary (`change_details`) containing keys like:
-        - 'type': The operation type (e.g., "set", "setitem", "append").
-        - 'path': List representing the index/key path to the change.
-        - 'value': The new value or added/inserted element.
-        - 'key': The dictionary key involved (for dict operations).
-        - 'old_value': The previous value, if available.
-        - 'length': The new length of the container, if applicable.
+    Directly modifying attributes of the *wrapped* object itself (if it's a
+    custom object) will *not* trigger notifications. You need to use the
+    `ObservableValue` methods or call `.set()` on the `ObservableValue` itself
+    if the entire wrapped value needs to be replaced.
 
-    Primarily used by the `sidekick.Viz` module to enable reactive UI updates.
+    Notifications include details like the type of change ("setitem", "append"),
+    the path to the change (e.g., index or key), and the new value.
     """
     _obs_internal_attrs = ('_value', '_subscribers', '_obs_value_id')
 
     def __init__(self, initial_value: Any):
-        """
-        Initializes the ObservableValue with an initial value.
+        """Initializes the ObservableValue with a value to wrap.
 
         Args:
-            initial_value: The Python value to wrap and observe.
+            initial_value: The Python value (e.g., list, dict, set, primitive)
+                to wrap and observe.
         """
         self._value: Any = initial_value
         self._subscribers: Set[SubscriptionCallback] = set()
@@ -41,14 +39,18 @@ class ObservableValue:
         self._obs_value_id: str = f"obs_{id(self)}"
 
     def subscribe(self, callback: SubscriptionCallback) -> UnsubscribeFunction:
-        """
-        Registers a callback function to receive change notifications.
+        """Registers a function to be called when the wrapped value changes.
+
+        This is primarily used internally by the `sidekick.Viz` module. You usually
+        don't need to call this directly.
 
         Args:
-            callback: A function that accepts a single argument (the change_details dictionary).
+            callback (SubscriptionCallback): A function that accepts one argument,
+                a dictionary containing details about the change.
 
         Returns:
-            A function that can be called to unsubscribe this specific callback.
+            UnsubscribeFunction: A function that can be called with no arguments
+                to remove this specific callback.
 
         Raises:
             TypeError: If the provided callback is not callable.
@@ -61,11 +63,11 @@ class ObservableValue:
         return unsubscribe
 
     def unsubscribe(self, callback: SubscriptionCallback):
-        """Removes a previously registered callback function."""
+        """Removes a previously registered callback function. (Internal use)"""
         self._subscribers.discard(callback)
 
     def _notify(self, change_details: Dict[str, Any]):
-        """Internal method to call all registered subscribers with change details."""
+        """Internal method to call all subscribers with change details."""
         if not self._subscribers: return # No subscribers, nothing to do
 
         # Ensure common keys exist, even if None, for consistent structure
@@ -82,23 +84,41 @@ class ObservableValue:
                 callback(change_details)
             except Exception as e:
                 # Log error but continue notifying other subscribers
-                connection.logger.exception(f"Error in ObservableValue subscriber {callback}: {e}")
+                logger.exception(f"Error in ObservableValue subscriber {callback}: {e}")
 
     def get(self) -> Any:
-        """Returns the current internal value."""
+        """Returns the current underlying value being wrapped.
+
+        Examples:
+            >>> obs_list = ObservableValue([1, 2])
+            >>> print(obs_list.get())
+            [1, 2]
+
+        Returns:
+            Any: The current wrapped value.
+        """
         return self._value
 
     def set(self, new_value: Any):
-        """
-        Explicitly sets the internal value and triggers a 'set' notification.
+        """Replaces the entire wrapped value with a new one.
 
-        Notifies subscribers with {'type': 'set', 'path': [], 'value': new_value, 'old_value': ...}.
-        Notification is skipped if the new value is the *exact same object* as the old one.
+        This triggers a "set" notification to subscribers. Use this when you
+        need to replace the whole object (e.g., assign a completely new list
+        or dictionary). If the `new_value` provided is the *exact same object*
+        in memory as the current one, no notification is sent.
 
         Args:
-            new_value: The new value to store.
+            new_value: The new value to wrap.
+
+        Examples:
+            >>> obs_data = ObservableValue({"a": 1})
+            >>> viz.show("data", obs_data)
+            >>> # Replace the entire dictionary
+            >>> obs_data.set({"b": 2, "c": 3}) # Sidekick will update the display
+
+        Returns:
+            None
         """
-        # Check identity to prevent notifications if the exact same object is set
         if self._value is not new_value:
             old_value = self._value
             self._value = new_value
@@ -110,6 +130,7 @@ class ObservableValue:
             })
 
     # --- Intercepted Methods for Mutable Containers ---
+    # These methods perform the operation on the wrapped value AND notify.
 
     def append(self, item: Any):
         """Appends an item to the wrapped list/sequence and notifies."""
@@ -124,7 +145,7 @@ class ObservableValue:
         })
 
     def insert(self, index: int, item: Any):
-        """Inserts an item at a specific index in the wrapped list/sequence and notifies."""
+        """Inserts an item at an index in the wrapped list/sequence and notifies."""
         if not isinstance(self._value, collections.abc.MutableSequence): raise TypeError("insert requires a mutable sequence")
         self._value.insert(index, item)
         self._notify({
@@ -184,7 +205,12 @@ class ObservableValue:
         else: raise TypeError(f"Object of type {type(self._value).__name__} has no clear() method")
 
     def __setitem__(self, key: Any, value: Any):
-        """Sets an item/key in the wrapped container (list, dict) and notifies."""
+        """Sets an item/key in the wrapped container (list, dict) and notifies.
+
+        Use standard Python syntax `obs_list[index] = value` or
+        `obs_dict[key] = value`. This method intercepts the operation to
+        trigger a notification.
+        """
         if not isinstance(self._value, (collections.abc.MutableSequence, collections.abc.MutableMapping)): raise TypeError("__setitem__ requires a mutable sequence or mapping")
         old_value = None
         is_mapping = isinstance(self._value, collections.abc.MutableMapping)
@@ -203,7 +229,10 @@ class ObservableValue:
         })
 
     def __delitem__(self, key: Any):
-        """Deletes an item/key from the wrapped container (list, dict) and notifies."""
+        """Deletes an item/key from the wrapped container (list, dict) and notifies.
+
+        Use standard Python syntax `del obs_list[index]` or `del obs_dict[key]`.
+        """
         if not isinstance(self._value, (collections.abc.MutableSequence, collections.abc.MutableMapping)): raise TypeError("__delitem__ requires a mutable sequence or mapping")
         old_value = self._value[key] # Get value before deleting (will raise KeyError/IndexError if not found) type: ignore
         is_mapping = isinstance(self._value, collections.abc.MutableMapping)
@@ -219,7 +248,12 @@ class ObservableValue:
         })
 
     def update(self, other: Union[Dict, collections.abc.Mapping] = {}, **kwargs):
-        """Updates the wrapped dictionary, triggering individual 'setitem' notifications for each change."""
+        """Updates the wrapped dictionary, triggering notifications for each change.
+
+        Works like the standard dictionary `update()` method but ensures that
+        each key-value pair addition or modification triggers an individual
+        "setitem" notification.
+        """
         if not isinstance(self._value, collections.abc.MutableMapping): raise TypeError("update requires a mutable mapping")
         # Merge sources
         merged_updates = dict(other)
@@ -229,7 +263,7 @@ class ObservableValue:
             self[key] = value # Calls our intercepted __setitem__
 
     def add(self, element: Any):
-        """Adds an element to the wrapped set and notifies if the set changed."""
+        """Adds an element to the wrapped set and notifies if changed."""
         if not isinstance(self._value, collections.abc.MutableSet): raise TypeError("add requires a mutable set")
         # Check if element is already present *before* adding
         if element not in self._value:
@@ -256,8 +290,10 @@ class ObservableValue:
             })
 
     # --- Standard Dunder Methods (Delegation) ---
+    # These methods try to behave like the wrapped value for common operations.
+
     def __getattr__(self, name: str) -> Any:
-        """Delegates attribute access to the wrapped value (default: no notification)."""
+        """Delegates attribute access to the wrapped value."""
         # Prevent accessing internal ObservableValue attributes via delegation
         if name in ObservableValue._obs_internal_attrs:
              raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
@@ -265,7 +301,7 @@ class ObservableValue:
         return getattr(self._value, name)
 
     def __setattr__(self, name: str, value: Any):
-        """Sets internal attributes or delegates to the wrapped value (default: no notification)."""
+        """Sets internal attributes or delegates to the wrapped value."""
         # Handle internal attributes directly
         if name in ObservableValue._obs_internal_attrs:
             object.__setattr__(self, name, value)
@@ -278,42 +314,48 @@ class ObservableValue:
             setattr(self._value, name, value)
 
     def __repr__(self) -> str:
+        """Returns a string representation like `ObservableValue(...)`."""
         return f"ObservableValue({repr(self._value)})"
 
     def __str__(self) -> str:
+        """Returns the string representation of the wrapped value."""
         return str(self._value)
 
     def __eq__(self, other):
-        # Compare based on the wrapped value
+        """Compares the wrapped value for equality."""
         if isinstance(other, ObservableValue):
-             return self._value == other._value
+            return self._value == other._value
         return self._value == other
 
     def __len__(self) -> int:
+        """Returns the length of the wrapped value (if it has one)."""
         # Delegate len() to the wrapped value if supported
         if hasattr(self._value, '__len__'):
             return len(self._value) # type: ignore
         raise TypeError(f"Object of type '{type(self._value).__name__}' has no len()")
 
     def __getitem__(self, key: Any) -> Any:
+        """Allows accessing items/keys of the wrapped value using `[]`."""
         # Delegate getitem[] to the wrapped value if supported
         if isinstance(self._value, (collections.abc.Sequence, collections.abc.Mapping)):
              return self._value[key] # type: ignore
         raise TypeError(f"'{type(self._value).__name__}' object is not subscriptable")
 
     def __iter__(self):
-         # Delegate iteration to the wrapped value if supported
-         if hasattr(self._value, '__iter__'):
-             return iter(self._value) # type: ignore
-         raise TypeError(f"'{type(self._value).__name__}' object is not iterable")
+        """Allows iterating over the wrapped value."""
+        # Delegate iteration to the wrapped value if supported
+        if hasattr(self._value, '__iter__'):
+            return iter(self._value) # type: ignore
+        raise TypeError(f"'{type(self._value).__name__}' object is not iterable")
 
     def __contains__(self, item: Any) -> bool:
-         # Delegate 'in' operator to the wrapped value if supported
-         if hasattr(self._value, '__contains__'):
-             return item in self._value # type: ignore
-         # Fallback: Iterate if possible but no __contains__ (less efficient)
-         if hasattr(self._value, '__iter__'):
+        """Allows using the `in` operator on the wrapped value."""
+        # Delegate 'in' operator to the wrapped value if supported
+        if hasattr(self._value, '__contains__'):
+            return item in self._value # type: ignore
+        # Fallback: Iterate if possible but no __contains__ (less efficient)
+        if hasattr(self._value, '__iter__'):
              for element in self._value: # type: ignore
                  if element == item: return True
              return False
-         raise TypeError(f"Argument of type '{type(self._value).__name__}' is not iterable")
+        raise TypeError(f"Argument of type '{type(self._value).__name__}' is not iterable")

@@ -1,20 +1,22 @@
-# Sidekick/libs/python/src/sidekick/base_module.py
+from . import logger
 from . import connection
 from .utils import generate_unique_id
 from typing import Optional, Dict, Any, Callable
 
 class BaseModule:
-    """
-    Base class for Sidekick Python module interfaces (Grid, Console, Viz, etc.).
+    """Base class for all Sidekick module interface classes (like Grid, Console).
 
-    Handles common functionality like activating the connection, managing instance IDs,
-    registering an internal message handler for errors, and sending commands.
+    This class handles the basic setup needed for any module that interacts
+    with the Sidekick UI. It manages the unique ID for the module instance,
+    ensures the connection to Sidekick is active, and provides common methods
+    like `remove()` and `on_error()`.
 
-    Provides the `spawn` parameter to control whether a new instance is created
-    in Sidekick or if the Python object should attach to an existing instance.
+    You typically won't use `BaseModule` directly. Instead, you'll use specific
+    module classes like `sidekick.Grid` or `sidekick.Console`.
 
-    Subclasses should override `_internal_message_handler` to handle specific
-    'event' messages and call specific callbacks (e.g., `_click_callback`).
+    Attributes:
+        module_type (str): The type name of the module (e.g., "grid", "console").
+        target_id (str): The unique identifier for this specific module instance.
     """
     def __init__(
         self,
@@ -23,19 +25,26 @@ class BaseModule:
         spawn: bool = True,
         payload: Optional[Dict[str, Any]] = None,
     ):
-        """
-        Initializes the base module.
+        """Initializes the base module properties and connection.
+
+        This constructor is called by the subclasses (like Grid, Console).
+        It sets up the unique ID and registers the module instance with the
+        connection manager. If `spawn` is True, it sends a command to create
+        the corresponding UI element in Sidekick.
 
         Args:
-            module_type: The type string of the module (e.g., "grid", "console").
-            instance_id: A unique ID for this instance.
-                         - If `spawn=True`, optional (auto-generated if None).
-                         - If `spawn=False`, required.
-            spawn: If True (default), attempts to create a new instance in Sidekick
-                   by sending a 'spawn' command. If False, assumes the instance
-                   already exists in Sidekick and attaches to it without sending 'spawn'.
-            payload: The initial payload for the 'spawn' command (only used if spawn=True).
-                     Keys should generally be camelCase.
+            module_type (str): The type string of the module (e.g., "grid").
+            instance_id (Optional[str]): A specific ID for this instance.
+                - If `spawn=True`: Optional. A unique ID will be auto-generated if None.
+                - If `spawn=False`: **Required**. Identifies the existing UI element.
+            spawn (bool): If True (default), sends a command to Sidekick to create
+                a new UI element. If False, assumes the UI element already exists
+                and this Python object should connect to it.
+            payload (Optional[Dict[str, Any]]): Data needed to create the UI element
+                (only used if `spawn=True`). Keys should generally be camelCase.
+
+        Raises:
+            ValueError: If `spawn` is False but `instance_id` is not provided.
         """
         connection.activate_connection() # Ensure connection attempt is triggered
         self.module_type = module_type
@@ -46,7 +55,7 @@ class BaseModule:
 
         # Determine the target_id based on spawn and provided instance_id
         self.target_id = instance_id or generate_unique_id(module_type)
-        connection.logger.debug(f"Initializing BaseModule: type='{module_type}', id='{self.target_id}', spawn={spawn}")
+        logger.debug(f"Initializing BaseModule: type='{module_type}', id='{self.target_id}', spawn={spawn}")
 
         # Register the internal handler for this instance
         connection.register_message_handler(self.target_id, self._internal_message_handler)
@@ -57,11 +66,18 @@ class BaseModule:
         # else: Assuming instance exists, just track it locally
 
     def _internal_message_handler(self, message: Dict[str, Any]):
-        """
-        Internal handler for messages received for this specific instance.
-        Registered with the connection manager. Parses message type and payload.
-        Base implementation handles 'error' messages. Subclasses should override
-        this to handle 'event' messages and call super() for error handling.
+        """Internal handler for messages received for this specific instance.
+
+        This method is automatically called by the connection manager when a
+        message arrives from Sidekick intended for this module instance.
+        It checks if the message is an error or an event. Subclasses override
+        this to handle specific events (like clicks).
+
+        Args:
+            message (Dict[str, Any]): The message dictionary received from Sidekick.
+
+        Returns:
+            None
         """
         msg_type = message.get("type")
         payload = message.get("payload")
@@ -70,40 +86,63 @@ class BaseModule:
             error_message = "Unknown error"
             if payload and isinstance(payload.get("message"), str):
                 error_message = payload["message"]
-            connection.logger.error(f"Module '{self.target_id}' received error from Sidekick: {error_message}")
+            logger.error(f"Module '{self.target_id}' received error from Sidekick: {error_message}")
             if self._error_callback:
                 try:
                     self._error_callback(error_message)
                 except Exception as e:
-                    connection.logger.exception(f"Error in {self.module_type} '{self.target_id}' on_error callback: {e}")
+                    logger.exception(f"Error in {self.module_type} '{self.target_id}' on_error callback: {e}")
         elif msg_type == "event":
             # Base implementation doesn't handle specific events, subclasses should.
             pass
         else:
-            connection.logger.warning(f"Module '{self.target_id}' received unhandled message type '{msg_type}': {message}")
+            logger.warning(f"Module '{self.target_id}' received unhandled message type '{msg_type}': {message}")
 
     def on_error(self, callback: Optional[Callable[[str], None]]):
-        """
-        Registers a function to be called when an error message related to this
-        module instance is received from Sidekick.
+        """Registers a function to handle errors specific to this module instance.
+
+        If Sidekick encounters an error related to this specific module instance
+        (e.g., trying to update a cell that doesn't exist), it might send back
+        an error message. This function allows you to define what happens when
+        such an error is received.
 
         Args:
-            callback: A function that accepts a single string argument (the error message),
-                      or None to unregister.
+            callback (Optional[Callable[[str], None]]): A function that takes one
+                argument (the error message string). Pass `None` to remove any
+                existing callback.
+
+        Raises:
+            TypeError: If the provided callback is not callable or None.
+
+        Examples:
+            >>> def handle_grid_error(error_msg):
+            ...     print(f"Oops, grid error: {error_msg}")
+            >>> my_grid.on_error(handle_grid_error)
+            >>> # To remove the handler:
+            >>> my_grid.on_error(None)
+
+        Returns:
+            None
         """
         if callback is not None and not callable(callback):
             raise TypeError("Error callback must be callable or None")
-        connection.logger.info(f"Setting on_error callback for module '{self.target_id}'.")
+        logger.info(f"Setting on_error callback for module '{self.target_id}'.")
         self._error_callback = callback
 
     def _send_command(self, msg_type: str, payload: Optional[Dict[str, Any]] = None):
-        """
-        Constructs and sends a command message to the Sidekick frontend for this instance.
-        Uses connection.send_message which handles buffering.
+        """Constructs and sends a command message to Sidekick for this instance.
+
+        This is an internal helper method used by methods like `set_color` or `clear`.
+        It formats the message according to the Sidekick protocol and uses the
+        connection manager to send it (handling buffering if needed).
 
         Args:
-            msg_type: The message type ("spawn", "update", "remove").
-            payload: The data payload (keys should be camelCase). None if no payload.
+            msg_type (str): The message type (e.g., "spawn", "update", "remove").
+            payload (Optional[Dict[str, Any]]): The data payload for the command.
+                Keys should be camelCase. Defaults to None.
+
+        Returns:
+            None
         """
         message: Dict[str, Any] = {
             "id": 0, # Reserved
@@ -119,15 +158,33 @@ class BaseModule:
         connection.send_message(message)
 
     def _send_update(self, payload: Dict[str, Any]):
-        """Sends an 'update' command with the given payload."""
+        """Sends an 'update' command with the given payload.
+
+        Shortcut for `_send_command("update", payload)`.
+
+        Args:
+            payload (Dict[str, Any]): The payload for the update command.
+
+        Returns:
+            None
+        """
         self._send_command("update", payload)
 
     def remove(self):
+        """Removes this module instance from the Sidekick UI.
+
+        Sends a 'remove' command to Sidekick to delete the corresponding UI
+        element and cleans up internal references and callbacks associated
+        with this Python object.
+
+        Examples:
+            >>> my_grid.remove()
+            >>> my_console.remove()
+
+        Returns:
+            None
         """
-        Sends a 'remove' command to Sidekick for this instance and unregisters
-        the local message handler.
-        """
-        connection.logger.info(f"Requesting removal of module '{self.target_id}'.")
+        logger.info(f"Requesting removal of module '{self.target_id}'.")
         # Always try to unregister handler first
         connection.unregister_message_handler(self.target_id)
         # Reset local callbacks
@@ -138,11 +195,22 @@ class BaseModule:
         self._send_command("remove")
 
     def _reset_specific_callbacks(self):
-        """Placeholder for subclasses to reset their specific event callbacks on remove."""
+        """Internal placeholder for subclasses to reset their specific callbacks.
+
+        Called during the `remove()` process. Subclasses (like Grid, Console)
+        override this to set their specific event callbacks (like `_click_callback`
+        or `_input_text_callback`) back to None.
+
+        Returns:
+            None
+        """
         pass
 
     def __del__(self):
-        """Attempts to unregister the message handler upon garbage collection."""
+        """Attempts to unregister the message handler upon garbage collection.
+
+        This is a cleanup measure, but relying on `remove()` explicitly is safer.
+        """
         try:
             # Check if connection module still exists (might be cleaned up during exit)
             if hasattr(connection, 'unregister_message_handler'):

@@ -1,43 +1,59 @@
 /* Sidekick/webapp/src/modules/grid/GridComponent.css */
 
-.grid-canvas {
-    display: grid;
-    /* grid-template-columns/rows will be set dynamically or based on defaults if needed */
-    /* Example: grid-template-columns: repeat(10, 25px); */
-    /* Example: grid-template-rows: repeat(10, 25px); */
-    border: 1px solid #ccc;
-    width: fit-content; /* Adjust width to content */
-    margin: 0 auto; /* Center the grid canvas */
-    background-color: #fff; /* Ensure background for cells without color */
+/* Container to measure available width */
+.grid-container {
+    width: 100%;
+    max-width: 100%; /* Ensure it doesn't overflow its parent */
+    overflow: hidden; /* Hide potential temporary overflow during resize */
 }
 
-.grid-row {
-    display: flex; /* Keep if using row divs, remove if cells are direct children of grid-canvas */
+.grid-canvas {
+    display: grid;
+    /* grid-template-columns will be set dynamically via inline styles */
+    /* --- Spacing --- */
+    gap: 1px;
+    /* Set the background color of the grid container to create the "line" color */
+    background-color: #ccc; /* This color fills the 1px gap */
+    /* --- Sizing & Centering --- */
+    width: fit-content; /* Adjust width to content */
+    max-width: 100%; /* Prevent grid from exceeding container */
+    margin: 0 auto;    /* Center the grid canvas */
+    border: 1px solid #ccc; /* Add a border around the whole grid */
 }
 
 .grid-cell {
-    width: 25px;   /* Cell width */
-    height: 25px;  /* Cell height */
-    border: 1px solid #eee; /* Light border for cells */
-    box-sizing: border-box; /* Include border in size */
+    /* width/height set dynamically via inline styles */
+    /* border: 1px solid #eee; --- REMOVED - Use gap instead */
+    box-sizing: border-box;
+    background-color: white; /* Default cell background */
+    cursor: pointer;
+    transition: background-color 0.1s ease, transform 0.1s ease;
+
+    /* --- Text / Content Styling --- */
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 10px; /* Small font size for text inside cells */
-    color: #333; /* Default text color */
-    cursor: pointer;
-    transition: background-color 0.1s ease, transform 0.1s ease; /* Smooth transitions */
-    background-color: white; /* Default cell background */
+    overflow: hidden; /* Important: Hide text that doesn't fit */
+    padding: 2px; /* Small padding around text */
 }
 
 .grid-cell:hover {
-    /* Optional: subtle hover effect */
-    /* background-color: #f0f0f0; */
-    transform: scale(1.05);
+    /* Keep hover effect, adjust if needed */
+    /* transform: scale(1.05); */
     z-index: 1; /* Bring to front on hover */
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.3); /* Optional: Add shadow */
 }
 
-/* Text inside cell - potential style */
-.grid-cell span {
-    /* Add styles if needed */
+/* Span inside the cell to hold the text and allow measurement */
+.grid-cell-text {
+    display: inline-block; /* Allows measurement */
+    /* --- Line Breaking Control --- */
+    white-space: normal;   /* Allows wrapping at whitespace */
+    /* --- Text Styling & Alignment --- */
+    text-align: center;
+    line-height: 1.1; /* Adjust for better vertical fit */
+    color: #333;
+    /* font-size will be set dynamically via inline styles */
+    max-width: 100%; /* Ensure text doesn't force cell wider */
+    max-height: 100%;
 }

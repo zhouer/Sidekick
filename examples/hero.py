@@ -76,7 +76,8 @@ def handle_grid_click(x: int, y: int):
     """Handles clicks on the test grid."""
     if not info_console or not test_grid: return
     info_console.log(f"Grid clicked at ({x}, {y})")
-    test_grid.set_cell(x, y, color="yellow", text=f"{x}, {y}") # Update text to show coordinates
+    test_grid.set_color(x, y, "lightyellow") # Change color on click
+    test_grid.set_text(x, y, f"{x}, {y}") # Update text to show coordinates
     # To revert color automatically would require timers or frontend logic.
 
 # -- Control Handlers --
@@ -150,7 +151,8 @@ def populate_grid_demo(grid_instance: sidekick.Grid):
             value = 0.6 + (c / cols) * 0.4
             color = hsv_to_hex(hue % 1.0, saturation, value)
             text = f"{c},{r}"
-            grid_instance.set_cell(c, r, color=color, text=text)
+            grid_instance.set_color(c, r, color=color)
+            grid_instance.set_text(c, r, text=text)
             # Add small delay for visual effect, but can make it slow
             # time.sleep(0.005)
     logger.info("Grid population demo complete.")
@@ -243,13 +245,9 @@ def viz_reactivity_demo(viz_instance: sidekick.Viz):
 if __name__ == "__main__":
     logger.info("--- Starting Comprehensive Sidekick Test ---")
     try:
-        # --- Activate Connection and Register Global Handler ---
-        sidekick.activate_connection()
+        # --- Register Global Handler ---
         sidekick.register_global_message_handler(global_message_handler)
-        logger.info("Connection activated, global handler registered.")
-        logger.info("Waiting for connection to become ready...")
-        # Wait a bit for connection and Sidekick peer announcement
-        time.sleep(1.5)
+        logger.info("Global handler registered.")
 
         # --- Create Modules ---
         logger.info("Creating Sidekick modules...")
@@ -363,6 +361,4 @@ if __name__ == "__main__":
         # Unregister global handler
         sidekick.register_global_message_handler(None)
 
-        # Close connection (also called by atexit)
-        sidekick.close_connection()
         logger.info("--- Comprehensive Sidekick Test Finished ---")

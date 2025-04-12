@@ -124,8 +124,16 @@ This section details the expected structure of the `payload` object for differen
     }
     ```
 *   **`update` Payload:**
-    *   Set Cell: `{ "action": "setCell", "options": { "x": number, "y": number, "color"?: string | null, "text"?: string | null } }`
+    *   Set Cell Color: `{ "action": "setColor", "options": { "x": number, "y": number, "color": string | null } }`
+        *   Sets the background color of the specified cell (`x`, `y`).
+        *   Providing `null` for `color` clears the background color of the cell.
+    *   Set Cell Text: `{ "action": "setText", "options": { "x": number, "y": number, "text": string | null } }`
+        *   Sets the text content of the specified cell (`x`, `y`).
+        *   Providing `null` or an empty string (`""`) for `text` clears the text content of the cell.
+    *   Clear Cell: `{ "action": "clearCell", "options": { "x": number, "y": number } }`
+        *   Clears both the background color and text content of the specified cell (`x`, `y`).
     *   Clear Grid: `{ "action": "clear" }`
+        *   Clears the entire grid, resetting all cells (color and text) to their default state. No `options` needed.
 *   **`event` Payload:**
     ```json
     { "event": "click", "x": number, "y": number }

@@ -21,6 +21,7 @@ The library abstracts the underlying WebSocket communication and JSON message fo
 *   **Peer Discovery & Status:** Automatically announces itself (`system/announce` with `role: "hero"`) and listens for Sidekick (`role: "sidekick"`) announcements to determine readiness (`CONNECTED_READY` state).
 *   **Message Buffering:** Automatically queues outgoing commands if Sidekick is not yet `CONNECTED_READY`. The buffer is flushed when Sidekick becomes ready.
 *   **Configuration:** Set WebSocket URL and automatic clearing behavior (`clear_on_connect`, `clear_on_disconnect`).
+*   **Standard Logging:** Uses Python's built-in `logging` module with the logger name "sidekick". Applications can easily configure handlers to capture library logs.
 *   **Re-attachment Support:** Module constructors support `spawn=False` to attach to existing UI elements.
 *   **Reactive Visualization (`ObservableValue`):** A wrapper class to track changes in Python objects, enabling automatic, granular updates in the `Viz` module.
 *   **Lifecycle Control:**
@@ -74,7 +75,7 @@ pip install -e libs/python
 
 *   **Announcements:** On connection, Hero sends `system/announce` (`role: "hero", status: "online"`). It listens for `system/announce` from Sidekick peers (`role: "sidekick"`).
 *   **Ready State:** When the first Sidekick peer announces `online`, the connection status transitions to `CONNECTED_READY`. The `_ready_event` is set.
-*   **Buffering:** Messages sent via module methods (e.g., `grid.set_cell`) before the status is `CONNECTED_READY` are queued in an internal buffer (`_message_buffer`).
+*   **Buffering:** Messages sent via module methods (e.g., `grid.set_color`) before the status is `CONNECTED_READY` are queued in an internal buffer (`_message_buffer`).
 *   **Flushing:** When the status becomes `CONNECTED_READY`, the buffer is automatically flushed, sending queued messages. The `_buffer_flushed_and_ready_condition` is notified when the buffer becomes empty while in the ready state.
 
 ### 4.3. Message Handling & Callbacks
@@ -110,7 +111,7 @@ pip install -e libs/python
 
 ## 5. API Reference
 
-*(Note: All methods sending messages construct payloads with `camelCase` keys as required by the protocol. Non-system messages are buffered until the connection is `CONNECTED_READY`.)*
+*(Note: All methods sending messages construct payloads with `camelCase` keys as required by the protocol. Non-system messages are buffered until the connection is `CONNECTED_READY`. Docstrings follow reStructuredText format.)*
 
 ### 5.1. Top-Level Functions (`sidekick` namespace)
 
@@ -143,29 +144,31 @@ pip install -e libs/python
     *   Returns `True` if flushed while ready, `False` on timeout or disconnection.
 *   `sidekick.register_global_message_handler(handler: Optional[Callable[[Dict[str, Any]], None]])`
     *   Registers or unregisters a single handler function that will be called with *every* message dictionary received from Sidekick. Use `None` to unregister.
+*   `sidekick.logger`
+    *   The library's main `logging.Logger` instance named "sidekick". Use this with Python's `logging` module to configure log output.
 
 ### 5.2. `sidekick.ObservableValue`
 
 *   `ObservableValue(initial_value: Any)`
-    *   Wraps a Python value to enable change tracking.
+    *   Wraps a Python value to enable change tracking for reactive UI updates with `sidekick.Viz`.
 *   **Methods:**
     *   `.get() -> Any`: Returns the current wrapped value.
-    *   `.set(new_value: Any)`: Sets a new value, triggering a "set" notification.
-    *   `.subscribe(callback: Callable[[Dict[str, Any]], None]) -> Callable[[], None]`: Registers a callback for change notifications. Returns an unsubscribe function.
-    *   `.unsubscribe(callback: Callable[[Dict[str, Any]], None])`: Removes a specific callback.
-*   **Intercepted Methods (trigger notifications):** `.append()`, `.insert()`, `.pop()`, `.remove()`, `.clear()`, `.__setitem__()`, `.__delitem__()`, `.update()` (for dicts), `.add()`, `.discard()` (for sets).
-*   **Other Dunder Methods:** Delegates common methods like `__getattr__`, `__repr__`, `__str__`, `__eq__`, `__len__`, `__getitem__`, `__iter__`, `__contains__` to the wrapped value.
+    *   `.set(new_value: Any)`: Replaces the entire wrapped value, triggering a "set" notification.
+    *   `.subscribe(callback: Callable[[Dict[str, Any]], None]) -> Callable[[], None]`: (Internal use by `Viz`) Registers a callback for change notifications. Returns an unsubscribe function.
+    *   `.unsubscribe(callback: Callable[[Dict[str, Any]], None])`: (Internal use by `Viz`) Removes a specific callback.
+*   **Intercepted Methods (trigger notifications):** `.append()`, `.insert()`, `.pop()`, `.remove()`, `.clear()`, `.__setitem__()`, `.__delitem__()`, `.update()` (for dicts), `.add()`, `.discard()` (for sets). Use these methods on the `ObservableValue` instance to modify the wrapped data and ensure Sidekick is notified.
+*   **Other Dunder Methods:** Delegates common methods like `__getattr__`, `__repr__`, `__str__`, `__eq__`, `__len__`, `__getitem__`, `__iter__`, `__contains__` to the wrapped value for convenience.
 
 ### 5.3. `sidekick.Grid`
 
 *   `Grid(num_columns: int = 16, num_rows: int = 16, instance_id: Optional[str] = None, spawn: bool = True)`
-    *   Represents a grid module.
-    *   `spawn=False` requires `instance_id`.
+    *   Represents an interactive grid module in the Sidekick UI.
+    *   See class docstring for details on `instance_id` and `spawn`.
 *   **Methods:**
-    *   `.set_cell(x: int, y: int, color: Optional[str] = None, text: Optional[str] = None)`: Sets cell state (column `x`, row `y`).
-    *   `.set_color(x: int, y: int, color: Optional[str])`: Sets only the cell color.
-    *   `.set_text(x: int, y: int, text: Optional[str])`: Sets only the cell text.
-    *   `.clear()`: Clears the entire grid.
+    *   `.set_color(x: int, y: int, color: Optional[str])`: Sets only the background color of the cell (`x`, `y`). Pass `None` to clear the color. Does not affect text.
+    *   `.set_text(x: int, y: int, text: Optional[str])`: Sets only the text of the cell (`x`, `y`). Pass `None` or `""` to clear the text. Does not affect color.
+    *   `.clear_cell(x: int, y: int)`: Clears both the background color and text of the specified cell (`x`, `y`).
+    *   `.clear()`: Clears the **entire grid**, resetting all cells.
     *   `.remove()`: Removes this grid instance from Sidekick.
 *   **Event Handlers:**
     *   `.on_click(callback: Optional[Callable[[int, int], None]])`: Registers a function called with `x`, `y` when a cell is clicked. Pass `None` to unregister.
@@ -174,11 +177,11 @@ pip install -e libs/python
 ### 5.4. `sidekick.Console`
 
 *   `Console(instance_id: Optional[str] = None, spawn: bool = True, initial_text: str = "", show_input: bool = False)`
-    *   Represents a console module.
-    *   `spawn=False` requires `instance_id`; `initial_text` and `show_input` are ignored.
+    *   Represents a console module for text output and optional input.
+    *   See class docstring for details on `instance_id`, `spawn`, `initial_text`, `show_input`.
 *   **Methods:**
-    *   `.print(*args: Any, sep: str = ' ', end: str = '')`: Prints text to the console.
-    *   `.log(message: Any)`: Shortcut for `.print(message)`.
+    *   `.print(*args: Any, sep: str = ' ', end: str = '')`: Prints text to the console, similar to Python's `print`.
+    *   `.log(message: Any)`: Shortcut for `.print(message, end='')`.
     *   `.clear()`: Clears the console text.
     *   `.remove()`: Removes this console instance from Sidekick.
 *   **Event Handlers:**
@@ -189,22 +192,22 @@ pip install -e libs/python
 
 *   `Viz(instance_id: Optional[str] = None, spawn: bool = True)`
     *   Represents a variable visualizer module.
-    *   `spawn=False` requires `instance_id`.
+    *   See class docstring for details on `instance_id` and `spawn`.
 *   **Methods:**
     *   `.show(name: str, value: Any)`: Displays/updates a variable. Subscribes automatically if `value` is an `ObservableValue`.
     *   `.remove_variable(name: str)`: Removes a variable display. Unsubscribes if applicable.
     *   `.remove()`: Removes this viz instance from Sidekick. Unsubscribes all tracked observables.
 *   **Event Handlers:**
-    *   `.on_error(callback: Optional[Callable[[str], None]])`: Registers a function for instance-specific errors. Pass `None` to unregister. *(Note: Viz currently doesn't emit user interaction events like 'click'.)*
+    *   `.on_error(callback: Optional[Callable[[str], None]])`: Registers a function for instance-specific errors. Pass `None` to unregister. *(Note: Viz currently doesn't emit user interaction events.)*
 
 ### 5.6. `sidekick.Canvas`
 
 *   `Canvas(width: int, height: int, instance_id: Optional[str] = None, spawn: bool = True, bg_color: Optional[str] = None)`
     *   Represents a 2D drawing canvas module.
-    *   `spawn=False` requires `instance_id`; `width`, `height`, `bg_color` are ignored.
+    *   See class docstring for details on `instance_id`, `spawn`, `bg_color`.
 *   **Methods:**
     *   `.clear(color: Optional[str] = None)`: Clears the canvas, optionally filling with a color.
-    *   `.config(stroke_style: Optional[str] = None, fill_style: Optional[str] = None, line_width: Optional[int] = None)`: Configures drawing styles.
+    *   `.config(stroke_style: Optional[str] = None, fill_style: Optional[str] = None, line_width: Optional[int] = None)`: Configures drawing styles (colors, line width).
     *   `.draw_line(x1: int, y1: int, x2: int, y2: int)`: Draws a line.
     *   `.draw_rect(x: int, y: int, width: int, height: int, filled: bool = False)`: Draws a rectangle (outline or filled).
     *   `.draw_circle(cx: int, cy: int, radius: int, filled: bool = False)`: Draws a circle (outline or filled).
@@ -215,16 +218,16 @@ pip install -e libs/python
 ### 5.7. `sidekick.Control`
 
 *   `Control(instance_id: Optional[str] = None, spawn: bool = True)`
-    *   Represents a UI control panel module.
-    *   `spawn=False` requires `instance_id`.
+    *   Represents a UI control panel module for buttons and inputs.
+    *   See class docstring for details on `instance_id` and `spawn`.
 *   **Methods:**
-    *   `.add_button(control_id: str, text: str)`: Adds a button.
+    *   `.add_button(control_id: str, text: str)`: Adds a button with a unique ID and label.
     *   `.add_text_input(control_id: str, placeholder: str = "", initial_value: str = "", button_text: str = "Submit")`: Adds a text input field with a submit button.
     *   `.remove_control(control_id: str)`: Removes a specific button or text input by its ID.
     *   `.remove()`: Removes this control panel instance from Sidekick.
 *   **Event Handlers:**
-    *   `.on_click(callback: Optional[Callable[[str], None]])`: Registers a function called with the `controlId` when a button is clicked. Pass `None` to unregister.
-    *   `.on_input_text(callback: Optional[Callable[[str, str], None]])`: Registers a function called with `controlId` and `value` when a text input is submitted. Pass `None` to unregister.
+    *   `.on_click(callback: Optional[Callable[[str], None]])`: Registers a function called with the `control_id` when a button is clicked. Pass `None` to unregister.
+    *   `.on_input_text(callback: Optional[Callable[[str, str], None]])`: Registers a function called with `control_id` and `value` when a text input's submit button is clicked. Pass `None` to unregister.
     *   `.on_error(callback: Optional[Callable[[str], None]])`: Registers a function for instance-specific errors. Pass `None` to unregister.
 
 ## 6. Development Notes
@@ -240,17 +243,22 @@ pip install -e libs/python
     *   Check if the Sidekick WebSocket server is running (often part of the VS Code extension or run via `npm run dev` in `webapp`).
     *   Verify the URL (`ws://localhost:5163` by default) using `sidekick.set_url()` *before* creating modules.
     *   Check firewalls.
-    *   Enable DEBUG logging (`logging.getLogger("SidekickConn").setLevel(logging.DEBUG)`) for detailed connection logs.
+    *   **Enable DEBUG logging:** Configure Python's `logging` module for the `"sidekick"` logger to see detailed connection logs.
+        ```python
+        import logging
+        logging.getLogger("sidekick").setLevel(logging.DEBUG)
+        # Make sure you have a handler attached, see section 4.1 example
+        ```
 *   **Module Commands Not Appearing:**
-    *   Check DEBUG logs. Are messages buffered? Did Sidekick become `CONNECTED_READY`? Was the buffer flushed?
-    *   Inspect WebSocket messages in the Sidekick frontend (Browser DevTools > Network > WS). Verify message structure (`module`, `type`, `target`) and **ensure `payload` keys are `camelCase`**.
+    *   Check DEBUG logs (`logging.getLogger("sidekick")`). Are messages buffered? Did Sidekick become `CONNECTED_READY`? Was the buffer flushed?
+    *   Inspect WebSocket messages in the Sidekick frontend (Browser DevTools > Network > WS). Verify message structure (`module`, `type`, `target`) and **ensure `payload` keys are `camelCase`**. Check the `action` name within the payload corresponds to the new protocol (`setColor`, `setText`, `clearCell`, etc.).
     *   Check the Sidekick browser console for errors processing the message.
 *   **Callbacks Not Firing:**
-    *   Ensure the correct registration method was called on the module instance.
+    *   Ensure the correct registration method was called on the module instance (e.g., `console.on_input_text(handler)`).
     *   Check DEBUG logs: Is the `event` or `error` message being received from Sidekick? Does the `src` match the `instance_id`? Does the `payload['event']` match expectations?
-    *   Add logging inside your callback function. Check for exceptions within your callback (these are caught and logged by `SidekickConn`).
+    *   Add logging inside your callback function. Check for exceptions within your callback (these are caught and logged by the library logger if configured).
 *   **Script Doesn't Exit:** Ensure you are not calling `sidekick.run_forever()` unless intended. If using event callbacks that should keep the script alive, use `run_forever()` and `shutdown()`. Check for other non-daemon threads or blocking operations in your code.
-*   **`ensure_ready` / `flush_messages` Timeout:** This usually means Sidekick did not connect or announce itself online within the timeout period. Check Sidekick server status and network connectivity. Increase the timeout if necessary for slow startups.
+*   **`ensure_ready` / `flush_messages` Timeout:** This usually means Sidekick did not connect or announce itself online within the timeout period. Check Sidekick server status and network connectivity. Increase the timeout if necessary for slow startups. Check library DEBUG logs for connection status changes.
 *   **`Viz` Not Updating Reactively:**
     *   Ensure the value passed to `viz.show()` is an `sidekick.ObservableValue`.
-    *   Mutations must happen *through* the `ObservableValue` wrapper methods (e.g., `obs_list.append(item)`, `obs_dict[key] = value`, `obs_value.set(new_val)`).
+    *   Mutations must happen *through* the `ObservableValue` wrapper methods (e.g., `obs_list.append(item)`, `obs_dict[key] = value`, `obs_value.set(new_val)`). Directly modifying the object obtained via `.get()` will not trigger notifications.

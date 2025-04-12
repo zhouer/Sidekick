@@ -5,8 +5,9 @@ import threading
 import logging
 from typing import List, Tuple, Set, Optional, Dict, Any
 
+import sidekick
 # Import Sidekick modules
-from sidekick import Grid, Console, Control, connection # Assuming 'sidekick' is the package name
+from sidekick import Grid, Console, Control # Assuming 'sidekick' is the package name
 
 # --- Configuration ---
 DEFAULT_WIDTH = 35
@@ -422,10 +423,6 @@ if __name__ == "__main__":
     grid_instance = None
     controls_instance = None
     try:
-        connection.activate_connection()
-        logging.info("Attempting to connect to Sidekick...")
-        time.sleep(0.5) # Allow time for connection
-
         console_instance = Console(instance_id="maze_console")
         console = console_instance
         console.on_error(lambda err: handle_module_error("Console", err))
@@ -449,10 +446,7 @@ if __name__ == "__main__":
         console.print("Controls added. Click 'Generate Maze (Prim)' to start.")
 
         logging.info("Main thread waiting. Use Sidekick controls or Ctrl+C to exit.")
-        while True:
-            time.sleep(1) # Keep main thread alive for callbacks & Ctrl+C
-
-    except KeyboardInterrupt: logging.info("Ctrl+C detected. Shutting down...")
+        sidekick.run_forever()
     except Exception as e:
         logging.exception(f"An unexpected error occurred in the main thread: {e}")
         if console:
@@ -464,6 +458,4 @@ if __name__ == "__main__":
         with state_lock: generating = False; solving = False
         logging.info("Generation/Solving flags set to False.")
         # Optional: Join threads if precise cleanup needed, but daemon threads exit anyway
-        # connection close handles unregistering handlers implicitly
-        connection.close_connection(log_info=True)
-        logging.info("Cleanup complete. Script finished.")
+        logging.info("Script finished.")

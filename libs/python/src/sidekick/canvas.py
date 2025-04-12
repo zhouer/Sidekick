@@ -1,23 +1,22 @@
-# Sidekick/libs/python/src/sidekick/canvas.py
+from . import logger
 from . import connection
 from .base_module import BaseModule
 from typing import Optional, Dict, Any, Callable
 
 class Canvas(BaseModule):
-    """
-    Represents a 2D Canvas module instance in the Sidekick UI for basic drawing.
+    """Represents a 2D Canvas module instance in the Sidekick UI for basic drawing.
 
-    This class allows you to programmatically draw shapes like lines, rectangles,
-    and circles onto a canvas displayed in Sidekick. You can also clear the
-    canvas and configure drawing styles (stroke color, fill color, line width).
+    Use this class to create a drawing area in Sidekick and draw simple shapes
+    like lines, rectangles, and circles programmatically from your Python script.
+    You can control the colors and line width for drawing.
 
-    Each drawing operation (`draw_line`, `draw_rect`, etc.) sends a command with
-    a unique ID (`commandId`) to ensure reliable processing and ordering by the
-    Sidekick frontend.
+    Each drawing command (`draw_line`, `draw_rect`, etc.) is sent with a unique
+    internal ID (`commandId`) to help Sidekick process them reliably.
 
-    It supports two modes of initialization:
-    1. Creating a new canvas instance in Sidekick (`spawn=True`).
-    2. Attaching to a pre-existing canvas instance in Sidekick (`spawn=False`).
+    Attributes:
+        target_id (str): The unique identifier for this canvas instance.
+        width (int): The width of the canvas in pixels.
+        height (int): The height of the canvas in pixels.
     """
     def __init__(
         self,
@@ -27,24 +26,37 @@ class Canvas(BaseModule):
         spawn: bool = True,
         bg_color: Optional[str] = None
     ):
-        """
-        Initializes the Canvas object, optionally creating a new canvas in Sidekick.
+        """Initializes the Canvas object, optionally creating a new canvas in Sidekick.
+
+        Sets up the canvas dimensions and prepares it for drawing commands.
 
         Args:
-            width: The width of the canvas in pixels. Must be a positive integer.
-                   Used for validation and required by Sidekick on spawn.
-            height: The height of the canvas in pixels. Must be a positive integer.
-                    Used for validation and required by Sidekick on spawn.
-            instance_id: A unique identifier for this canvas instance.
-                         - If `spawn=True`: Optional. If None, an ID will be generated.
-                         - If `spawn=False`: **Required**. Specifies the ID of the existing
-                           canvas instance in Sidekick to attach to.
-            spawn: If True (default), sends a command to Sidekick to create a new
-                   canvas module instance with the specified dimensions and background.
-                   If False, assumes a canvas with `instance_id` already exists.
-            bg_color: An optional background color string (e.g., 'white', '#f0f0f0')
-                      for the canvas. Only used if `spawn=True`. Defaults to white
-                      on the Sidekick side if not provided.
+            width (int): The desired width of the canvas in pixels. Must be positive.
+            height (int): The desired height of the canvas in pixels. Must be positive.
+            instance_id (Optional[str]): A specific ID for this canvas instance.
+                - If `spawn=True`: Optional. Auto-generated if None.
+                - If `spawn=False`: **Required**. Identifies the existing canvas.
+            spawn (bool): If True (default), creates a new canvas UI element.
+                If False, attaches to an existing canvas element. `width`, `height`,
+                and `bg_color` are ignored if `spawn=False`.
+            bg_color (Optional[str]): A background color string (like 'white',
+                '#f0f0f0', 'rgb(255, 0, 0)') for the canvas. Only used if
+                `spawn=True`. Defaults to a standard background on the Sidekick side
+                if not provided.
+
+        Raises:
+            ValueError: If `width` or `height` are not positive integers, or if
+                        `spawn` is False and `instance_id` is None.
+
+        Examples:
+            >>> # Create a 300x200 canvas with a light gray background
+            >>> canvas = sidekick.Canvas(300, 200, bg_color="#eeeeee")
+            >>>
+            >>> # Attach to an existing canvas named "drawing-area"
+            >>> existing_canvas = sidekick.Canvas(width=1, height=1, # Dummy values needed
+            ...                                 instance_id="drawing-area", spawn=False)
+
+        :seealso: :meth:`clear`, :meth:`config`, :meth:`draw_line`, :meth:`draw_rect`, :meth:`draw_circle`
         """
         if not (isinstance(width, int) and width > 0 and isinstance(height, int) and height > 0):
             raise ValueError("Canvas width and height must be positive integers.")
@@ -66,26 +78,25 @@ class Canvas(BaseModule):
         # Store dimensions locally for potential future use or reference.
         self.width = width
         self.height = height
-        connection.logger.info(f"Canvas '{self.target_id}' initialized (spawn={spawn}, size={width}x{height}).")
+        logger.info(f"Canvas '{self.target_id}' initialized (spawn={spawn}, size={width}x{height}).")
 
     # _internal_message_handler is inherited from BaseModule and handles 'error'
     # Canvas currently doesn't have specific 'event' types to handle.
 
     # on_error is inherited from BaseModule
-    # def on_error(self, callback: Optional[Callable[[str], None]]): inherited
 
     def _send_canvas_command(self, action: str, options: Optional[Dict[str, Any]] = None):
-        """
-        Internal helper to construct and send a canvas update command.
+        """Internal helper to construct and send a canvas update command.
 
-        Automatically retrieves the next command ID from the connection module
-        and includes it in the payload.
+        Automatically includes the next unique command ID required by the protocol.
 
         Args:
-            action: The drawing or configuration action (e.g., "line", "config").
-            options: A dictionary containing parameters specific to the action.
-                     Keys should be camelCase as required by the protocol.
-                     If None, an empty options object will be sent.
+            action (str): The drawing or configuration action (e.g., "line", "rect").
+            options (Optional[Dict[str, Any]]): Action-specific parameters.
+                Keys should be camelCase. Defaults to an empty dictionary.
+
+        Returns:
+            None
         """
         # Ensure options is at least an empty dict if None is passed.
         options_payload = options or {}
@@ -99,12 +110,21 @@ class Canvas(BaseModule):
         self._send_update(update_payload)
 
     def clear(self, color: Optional[str] = None):
-        """
-        Clears the entire canvas in Sidekick, optionally filling it with a specific color.
+        """Clears the entire canvas, optionally filling it with a specific color.
 
         Args:
-            color: Optional color string to fill the cleared canvas. If None,
-                   the canvas usually reverts to its initial background color.
+            color (Optional[str]): A color string (like 'white', '#ff0000') to fill
+                the canvas after clearing. If None, it usually reverts to the
+                initial background or becomes transparent, depending on Sidekick.
+
+        Examples:
+            >>> # Clear the canvas (revert to default background)
+            >>> canvas.clear()
+            >>> # Clear the canvas and make it blue
+            >>> canvas.clear(color="blue")
+
+        Returns:
+            None
         """
         options = {}
         if color is not None:
@@ -117,16 +137,25 @@ class Canvas(BaseModule):
         fill_style: Optional[str] = None,
         line_width: Optional[int] = None
     ):
-        """
-        Configures the drawing context properties in Sidekick for subsequent drawing commands.
+        """Configures the drawing styles for subsequent drawing commands.
 
-        Any parameter set to None will not be included in the command, leaving the
-        corresponding style unchanged in Sidekick.
+        Set the color used for outlines (`stroke_style`), the color for filling
+        shapes (`fill_style`), and the thickness of lines (`line_width`). Any
+        parameter left as `None` will not be changed in Sidekick.
 
         Args:
-            stroke_style: Color used for drawing lines and outlines (e.g., 'black', '#00FF00').
-            fill_style: Color used for filling shapes (e.g., 'blue', '#FFFF00').
-            line_width: Width of lines drawn, in pixels.
+            stroke_style (Optional[str]): Color for lines and outlines (e.g., 'black', '#00FF00').
+            fill_style (Optional[str]): Color for filling shapes (e.g., 'blue', '#FFFF00').
+            line_width (Optional[int]): Width of lines in pixels.
+
+        Examples:
+            >>> # Set drawing color to red, fill color to yellow, line width to 3 pixels
+            >>> canvas.config(stroke_style="red", fill_style="yellow", line_width=3)
+            >>> # Only change the line width to 1
+            >>> canvas.config(line_width=1)
+
+        Returns:
+            None
         """
         options = {}
         # Only include options if they are explicitly provided (not None).
@@ -138,39 +167,55 @@ class Canvas(BaseModule):
         if options:
             self._send_canvas_command("config", options)
         else:
-             connection.logger.debug(f"Canvas '{self.target_id}': config() called with no arguments to change.")
+             logger.debug(f"Canvas '{self.target_id}': config() called with no arguments to change.")
 
     def draw_line(self, x1: int, y1: int, x2: int, y2: int):
-        """
-        Draws a line segment on the canvas in Sidekick.
+        """Draws a line segment on the canvas.
 
-        Uses the current `strokeStyle` and `lineWidth` configured via `config()`.
+        Uses the current `stroke_style` and `line_width` set by `config()`.
 
         Args:
-            x1: Starting x-coordinate.
-            y1: Starting y-coordinate.
-            x2: Ending x-coordinate.
-            y2: Ending y-coordinate.
+            x1 (int): Starting x-coordinate of the line.
+            y1 (int): Starting y-coordinate of the line.
+            x2 (int): Ending x-coordinate of the line.
+            y2 (int): Ending y-coordinate of the line.
+
+        Examples:
+            >>> # Draw a diagonal line from top-left (10,10) to (50,50)
+            >>> canvas.draw_line(10, 10, 50, 50)
+
+        Returns:
+            None
         """
         options = {"x1": x1, "y1": y1, "x2": x2, "y2": y2}
         self._send_canvas_command("line", options)
 
     def draw_rect(self, x: int, y: int, width: int, height: int, filled: bool = False):
-        """
-        Draws a rectangle on the canvas in Sidekick.
+        """Draws a rectangle on the canvas.
 
         Args:
-            x: X-coordinate of the top-left corner.
-            y: Y-coordinate of the top-left corner.
-            width: Width of the rectangle. Should be non-negative.
-            height: Height of the rectangle. Should be non-negative.
-            filled: If True, fills the rectangle using the current `fillStyle`.
-                    If False (default), draws only the outline using the current
-                    `strokeStyle` and `lineWidth`.
+            x (int): X-coordinate of the top-left corner.
+            y (int): Y-coordinate of the top-left corner.
+            width (int): Width of the rectangle. Should be non-negative.
+            height (int): Height of the rectangle. Should be non-negative.
+            filled (bool): If True, fills the rectangle using the current `fill_style`.
+                If False (default), draws only the outline using the current
+                `stroke_style` and `line_width`.
+
+        Examples:
+            >>> # Draw the outline of a 50x30 rectangle at (20, 20)
+            >>> canvas.draw_rect(20, 20, 50, 30)
+            >>>
+            >>> # Draw a filled red rectangle (assuming fill_style is red)
+            >>> canvas.config(fill_style="red")
+            >>> canvas.draw_rect(100, 50, 40, 40, filled=True)
+
+        Returns:
+            None
         """
         if width < 0 or height < 0:
              # Log a warning but allow the command to be sent; Sidekick might handle it.
-             connection.logger.warning(
+             logger.warning(
                  f"Canvas '{self.target_id}': draw_rect called with negative width/height "
                  f"({width}x{height}). Behavior depends on Sidekick implementation."
              )
@@ -178,23 +223,36 @@ class Canvas(BaseModule):
         self._send_canvas_command("rect", options)
 
     def draw_circle(self, cx: int, cy: int, radius: int, filled: bool = False):
-        """
-        Draws a circle on the canvas in Sidekick.
+        """Draws a circle on the canvas.
 
         Args:
-            cx: X-coordinate of the center of the circle.
-            cy: Y-coordinate of the center of the circle.
-            radius: Radius of the circle. Must be positive.
-            filled: If True, fills the circle using the current `fillStyle`.
-                    If False (default), draws only the outline using the current
-                    `strokeStyle` and `lineWidth`.
+            cx (int): X-coordinate of the center of the circle.
+            cy (int): Y-coordinate of the center of the circle.
+            radius (int): Radius of the circle. Must be positive.
+            filled (bool): If True, fills the circle using the current `fill_style`.
+                If False (default), draws only the outline using the current
+                `stroke_style` and `line_width`.
+
+        Raises:
+            ValueError: If `radius` is not positive (logs an error and ignores command).
+
+        Examples:
+            >>> # Draw the outline of a circle with radius 25 centered at (150, 100)
+            >>> canvas.draw_circle(150, 100, 25)
+            >>>
+            >>> # Draw a filled green circle
+            >>> canvas.config(fill_style="green")
+            >>> canvas.draw_circle(50, 50, 20, filled=True)
+
+        Returns:
+            None
         """
         if radius <= 0:
-             connection.logger.error(f"Canvas '{self.target_id}': draw_circle radius must be positive. Ignoring command.")
-             return # Do not send command with invalid radius
+             # Log error and return without sending command for invalid radius
+             logger.error(f"Canvas '{self.target_id}': draw_circle radius must be positive. Ignoring command.")
+             # Raise ValueError to notify the user more directly
+             raise ValueError("Canvas draw_circle radius must be positive.")
         options = {"cx": cx, "cy": cy, "radius": radius, "filled": filled}
         self._send_canvas_command("circle", options)
 
     # The remove() method is inherited from BaseModule.
-    # Calling canvas_instance.remove() will send a 'remove' command to Sidekick
-    # for this canvas instance.

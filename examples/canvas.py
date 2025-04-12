@@ -6,7 +6,7 @@ import logging
 from typing import List, Dict, Any
 
 # Import Sidekick components
-from sidekick import Canvas, connection
+from sidekick import Canvas
 
 # --- Configuration ---
 CANVAS_WIDTH = 800
@@ -88,9 +88,6 @@ def run_stress_test():
 
     canvas: Canvas | None = None # Initialize canvas to None
     try:
-        # Ensure connection is active (good practice)
-        connection.activate_connection()
-
         # Create the canvas instance
         canvas = Canvas(width=CANVAS_WIDTH, height=CANVAS_HEIGHT, bg_color="#202020", instance_id="stress-test-canvas")
         logging.info(f"Canvas '{canvas.target_id}' created.")
@@ -152,8 +149,6 @@ def run_stress_test():
                  elapsed_time = time.monotonic() - start_time
                  avg_fps = frame_count / elapsed_time
                  logging.info(f"Average FPS after {elapsed_time:.1f}s: {avg_fps:.2f}")
-
-
     except KeyboardInterrupt:
         logging.info("KeyboardInterrupt received, stopping stress test.")
     except Exception as e:

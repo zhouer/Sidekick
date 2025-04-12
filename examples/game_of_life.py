@@ -6,8 +6,9 @@ import logging
 from copy import deepcopy
 from typing import List, Dict, Any, Optional
 
+import sidekick
 # Import Sidekick modules
-from sidekick import Grid, Console, Control, connection
+from sidekick import Grid, Console, Control
 
 # --- Configuration ---
 GRID_WIDTH = 30
@@ -260,12 +261,6 @@ def simulation_loop():
 
 if __name__ == "__main__":
     try:
-        # Initialize Sidekick connection first (optional, but good practice)
-        connection.activate_connection()
-        logging.info("Attempting to connect to Sidekick...")
-        # Wait a moment for potential connection
-        time.sleep(0.5)
-
         # Create Sidekick modules
         console = Console(instance_id="gol_console")
         console.on_error(lambda err: handle_module_error("Console", err))
@@ -302,14 +297,7 @@ if __name__ == "__main__":
 
         # Keep the main thread alive to handle callbacks and keyboard interrupt
         console.print("Simulation thread started. Use controls or Ctrl+C to exit.")
-        while True:
-            # The main thread doesn't need to do much here,
-            # as the simulation runs in the background and
-            # callbacks are handled by the connection's listener thread.
-            time.sleep(1)
-
-    except KeyboardInterrupt:
-        logging.info("Ctrl+C detected. Exiting...")
+        sidekick.run_forever()
     except Exception as e:
         logging.exception(f"An unexpected error occurred: {e}")
         if console:
@@ -326,6 +314,4 @@ if __name__ == "__main__":
         # if grid: grid.remove()
         # if console: console.remove()
 
-        # Close the Sidekick connection (also called by atexit)
-        connection.close_connection()
-        logging.info("Sidekick connection closed. Script finished.")
+        logging.info("Script finished.")

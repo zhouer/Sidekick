@@ -1,11 +1,19 @@
-# Sidekick/libs/python/src/sidekick/__init__.py
-
-"""
-Sidekick Visual Coding Buddy - Python Client Library
-"""
+import logging
 
 # --- Version ---
 from ._version import __version__
+
+# --- Logging Setup ---
+# Define the main logger for the library
+logger = logging.getLogger("sidekick")
+
+# Add NullHandler to prevent "No handlers found" warnings if the
+# application doesn't configure logging. This should be done only
+# once per library.
+if not logger.hasHandlers():
+    logger.addHandler(logging.NullHandler())
+# --- End Logging Setup ---
+
 
 # --- Core connection/config functions ---
 from .connection import (
@@ -19,7 +27,6 @@ from .connection import (
     run_forever,
     flush_messages,
     shutdown,
-    logger
 )
 
 # --- Core observable class ---
@@ -55,4 +62,6 @@ __all__ = [
     'Control',
     'Viz',
     'Canvas',
+    # Logger
+    'logger',
 ]

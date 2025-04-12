@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any, List, Tuple
 
 # Import Sidekick modules
 import sidekick
-from sidekick import Console, Canvas, connection
+from sidekick import Console, Canvas
 
 # Import asteval for safe expression evaluation
 try:
@@ -409,11 +409,8 @@ def handle_module_error(module_name: str, error_message: str):
 # --- Main Execution ---
 if __name__ == "__main__":
     try:
-        # Configure and activate Sidekick connection
+        # Configure Sidekick
         sidekick.set_config(clear_on_connect=True)
-        connection.activate_connection()
-        logging.info("Attempting to connect to Sidekick...")
-        time.sleep(0.5) # Allow time for connection
 
         # Create Sidekick modules (Canvas first for visual order)
         canvas = Canvas(
@@ -442,21 +439,14 @@ if __name__ == "__main__":
 
         logging.info("Setup complete. Waiting for user input or Ctrl+C...")
         # Keep main thread alive - execution driven by callbacks
-        while script_running:
-            time.sleep(0.5) # Check script_running flag periodically
-
+        sidekick.run_forever()
     except ConnectionRefusedError:
         logging.error("Connection refused. Is the Sidekick server running?")
         print("[ERROR] Connection refused. Is the Sidekick server (e.g., Vite dev server or VS Code extension) running?")
-    except KeyboardInterrupt:
-        logging.info("Ctrl+C detected. Shutting down...")
     except Exception as e:
         logging.exception("An unexpected error occurred in the main thread:")
         if console:
              try: console.print(f"FATAL ERROR: {e}")
              except: pass
     finally:
-        logging.info("Initiating cleanup...")
-        # No background threads to manage here
-        connection.close_connection()
         logging.info("Cleanup complete.")

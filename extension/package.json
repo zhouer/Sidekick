@@ -2,7 +2,7 @@
   "name": "sidekick-coding",
   "displayName": "Sidekick - Your Visual Coding Buddy",
   "description": "Provides a visual panel to interact with your code.",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "publisher": "sidekick-coding",
   "engines": {
     "vscode": "^1.75.0"

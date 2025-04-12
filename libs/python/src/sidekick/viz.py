@@ -1,19 +1,17 @@
-# Sidekick/libs/python/src/sidekick/viz.py
-import collections.abc
-import time
 import functools
 from typing import Any, Dict, Optional, List, Union, Callable, Set, Tuple
-from . import connection
+from . import logger
 from .base_module import BaseModule
 from .observable_value import ObservableValue, UnsubscribeFunction, SubscriptionCallback
 
 # --- Representation Helper (_get_representation) ---
-# (Keep the existing _get_representation function here - it's complex and correct)
-# (Ensure it uses camelCase keys like 'observableTracked')
+# This complex internal function converts Python data structures into a
+# JSON-serializable format suitable for display in the Sidekick Viz panel.
+# It handles various types, nesting, circular references, and limits depth/items.
 _MAX_DEPTH = 5
 _MAX_ITEMS = 50
 def _get_representation(data: Any, depth: int = 0, visited_ids: Optional[Set[int]] = None) -> Dict[str, Any]:
-    # --- Ensure keys like 'observableTracked' are camelCase ---
+    """Internal helper to create a structured representation of Python data."""
     if visited_ids is None: visited_ids = set()
     current_id = id(data)
     if depth > _MAX_DEPTH: return {'type': 'truncated', 'value': f'<Max Depth {_MAX_DEPTH} Reached>', 'id': f'trunc_{current_id}_{depth}'}
@@ -23,6 +21,7 @@ def _get_representation(data: Any, depth: int = 0, visited_ids: Optional[Set[int
     data_type_name = type(data).__name__
     rep['id'] = f"{data_type_name}_{current_id}_{depth}" # Default ID
     rep['type'] = data_type_name
+    rep['observableTracked'] = False # Default to False, override for ObservableValue
 
     try:
         visited_ids.add(current_id)
@@ -31,7 +30,7 @@ def _get_representation(data: Any, depth: int = 0, visited_ids: Optional[Set[int
             # Generate representation for the internal value
             nested_rep = _get_representation(internal_value, depth, visited_ids) # Pass same depth
             # Mark this node as originating from an ObservableValue
-            nested_rep['observableTracked'] = True # camelCase key
+            nested_rep['observableTracked'] = True
             # Use the observable's own ID if available for stability
             nested_rep['id'] = getattr(data, '_obs_value_id', nested_rep.get('id', f"obs_{current_id}_{depth}"))
             return nested_rep
@@ -84,11 +83,11 @@ def _get_representation(data: Any, depth: int = 0, visited_ids: Optional[Set[int
                 if not rep['value'] and attribute_count == 0 and skipped_attrs == 0 :
                      rep['value'] = repr(data); rep['type'] = f"repr ({data_type_name})"
             except Exception as e_obj:
-                connection.logger.warning(f"Could not fully represent object attributes for {data_type_name}: {e_obj}")
+                logger.warning(f"Could not fully represent object attributes for {data_type_name}: {e_obj}")
                 try: rep['value'] = repr(data); rep['type'] = f"repr ({data_type_name})"
                 except Exception as e_repr_final: rep['value'] = f"<Object of type {data_type_name}, repr failed: {e_repr_final}>"; rep['type'] = 'error'
     except Exception as e:
-        connection.logger.exception(f"Error generating representation for type {data_type_name}")
+        logger.exception(f"Error generating representation for type {data_type_name}")
         rep['type'] = 'error'; rep['value'] = f"<Error representing object: {e}>"
         rep['id'] = rep.get('id', f"error_{current_id}_{depth}")
     finally:
@@ -101,69 +100,59 @@ def _get_representation(data: Any, depth: int = 0, visited_ids: Optional[Set[int
 # --- Viz Module Class ---
 
 class Viz(BaseModule):
-    """
-    Represents the Variable Visualizer module instance in the Sidekick UI.
+    """Represents the Variable Visualizer (Viz) module instance in Sidekick.
 
-    This module allows you to display Python variables and data structures in
-    an interactive, expandable view within Sidekick. It integrates with the
-    `ObservableValue` class to automatically reflect changes made to wrapped
-    mutable objects (lists, dicts, sets) in the UI.
+    Use this class to display Python variables and data structures in an
+    interactive, tree-like view within the Sidekick panel. It's especially powerful
+    when used with :class:`sidekick.ObservableValue`, as it can automatically
+    update the display when the underlying data changes.
 
-    It supports two modes of initialization:
-    1. Creating a new variable visualizer panel instance in Sidekick (`spawn=True`).
-    2. Attaching to a pre-existing panel instance in Sidekick (`spawn=False`).
+    Attributes:
+        target_id (str): The unique identifier for this Viz panel instance.
     """
     def __init__(
         self,
         instance_id: Optional[str] = None,
         spawn: bool = True
     ):
-        """
-        Initializes the Viz object, optionally creating a new viz panel in Sidekick.
+        """Initializes the Viz object, optionally creating a new viz panel.
 
         Args:
-            instance_id: A unique identifier for this viz panel instance.
-                         - If `spawn=True`: Optional. If None, an ID will be generated.
-                         - If `spawn=False`: **Required**. Specifies the ID of the existing
-                           viz panel instance in Sidekick to attach to.
-            spawn: If True (default), sends a command to Sidekick to create a new
-                   viz module instance.
-                   If False, assumes a viz panel with `instance_id` already exists.
+            instance_id (Optional[str]): A specific ID for this viz panel.
+                - If `spawn=True`: Optional. Auto-generated if None.
+                - If `spawn=False`: **Required**. Identifies the existing panel.
+            spawn (bool): If True (default), creates a new, empty viz panel UI
+                element. If False, attaches to an existing panel.
+
+        Examples:
+            >>> # Create a new Viz panel
+            >>> viz = sidekick.Viz()
+            >>>
+            >>> # Attach to an existing panel named "debugger-vars"
+            >>> existing_viz = sidekick.Viz(instance_id="debugger-vars", spawn=False)
+
+        :seealso: :meth:`show`, :meth:`remove_variable`, :class:`sidekick.ObservableValue`
         """
         # Viz spawn payload is currently empty.
         spawn_payload = {} if spawn else None
-
         super().__init__(
             module_type="viz",
             instance_id=instance_id,
             spawn=spawn,
-            payload=spawn_payload,
+            payload=spawn_payload
         )
         # Stores information about shown variables and their potential unsubscribe functions.
-        self._shown_variables: Dict[str, Dict[str, Any]] = {}
-        connection.logger.info(f"Viz panel '{self.target_id}' initialized (spawn={spawn}).")
+        self._shown_variables: Dict[str, Dict[str, Any]] = {} # Tracks shown vars and subscriptions
+        logger.info(f"Viz panel '{self.target_id}' initialized (spawn={spawn}).")
 
-    # _internal_message_handler is inherited from BaseModule and handles 'error'
-    # Viz currently doesn't have specific 'event' types to handle.
-
-    # on_error is inherited from BaseModule
-    # def on_error(self, callback: Optional[Callable[[str], None]]): inherited
-
+    # _internal_message_handler handles 'error' via BaseModule. No specific events currently.
+    # on_error is inherited from BaseModule.
 
     def _handle_observable_update(self, variable_name: str, change_details: Dict[str, Any]):
-        """
-        Internal callback triggered by changes in an observed ObservableValue.
-
-        Formats the change details into an 'update' command payload according
-        to the Sidekick protocol and sends it to the frontend for granular UI updates.
-
-        Args:
-            variable_name: The name of the variable associated with the ObservableValue.
-            change_details: The dictionary provided by ObservableValue describing the change.
-        """
-        connection.logger.debug(f"Viz '{self.target_id}': Received update for '{variable_name}': {change_details}")
+        """Internal callback triggered by changes in an observed ObservableValue."""
+        logger.debug(f"Viz '{self.target_id}': Received update for '{variable_name}': {change_details}")
         try:
-            action_type = change_details.get("type", "unknown") # e.g., "setitem", "append"
+            action_type = change_details.get("type", "unknown")
             path = change_details.get("path", [])
 
             # Construct the 'options' part of the payload, generating representations
@@ -188,9 +177,9 @@ class Viz(BaseModule):
                     try: options["length"] = len(actual_data) if hasattr(actual_data, '__len__') else None
                     except TypeError: options["length"] = None
                 else:
-                     # If the observable was removed concurrently, we might not have it. Log and skip.
-                     connection.logger.warning(f"Viz '{self.target_id}': Observable instance for '{variable_name}' not found during root update. Skipping.")
-                     return
+                    # If the observable was removed concurrently, we might not have it. Log and skip.
+                    logger.warning(f"Viz '{self.target_id}': Observable for '{variable_name}' not found during root update. Skipping.")
+                    return
 
 
             # Construct the full update payload.
@@ -203,43 +192,62 @@ class Viz(BaseModule):
 
         except Exception as e:
             # Log errors during the update processing but don't crash.
-            connection.logger.exception(
-                f"Viz '{self.target_id}': Error processing update "
-                f"for observable '{variable_name}'. Change: {change_details}"
-            )
+            logger.exception(f"Viz '{self.target_id}': Error processing update for observable '{variable_name}'. Change: {change_details}")
 
     def show(self, name: str, value: Any):
-        """
-        Displays or updates a variable in the Viz panel in Sidekick.
+        """Displays or updates a variable in the Viz panel.
 
-        If the `value` is an `ObservableValue`, the Viz module will subscribe to its
-        changes and automatically send granular updates to Sidekick, allowing for
-        efficient and highlighted UI updates.
+        Shows the given `value` associated with the provided `name` in the Sidekick
+        Viz panel. If the `name` already exists, its display is updated.
 
-        If the variable `name` already exists, this call will update its value and
-        re-subscribe if necessary (unsubscribing from the previous value if it was
-        an ObservableValue).
+        If the `value` is an instance of :class:`sidekick.ObservableValue`, the Viz
+        panel will automatically listen for changes within that value (e.g., list
+        appends, dictionary updates) and update the UI accordingly, often highlighting
+        the specific change. This is the key to reactive visualization.
 
         Args:
-            name: The name to display for the variable in the Sidekick UI. Must be a non-empty string.
-            value: The Python variable or value to display. Can be any type, including
-                   an `ObservableValue`.
+            name (str): The name to display for the variable (e.g., "my_list", "game_state").
+                Must be a non-empty string.
+            value (Any): The Python variable or value to display. This can be any
+                standard type (int, str, list, dict, set, etc.), a custom object,
+                or an :class:`sidekick.ObservableValue` wrapping one of these.
+
+        Raises:
+            ValueError: If `name` is empty or not a string.
+
+        Examples:
+            >>> data = {"count": 0, "items": ["a", "b"]}
+            >>> obs_list = sidekick.ObservableValue([10, 20])
+            >>> player_obj = Player("Hero", 100) # Assuming Player is a custom class
+            >>>
+            >>> viz = sidekick.Viz()
+            >>> viz.show("static_data", data)
+            >>> viz.show("reactive_list", obs_list)
+            >>> viz.show("player", player_obj)
+            >>>
+            >>> # Changes to obs_list will automatically update Sidekick
+            >>> obs_list.append(30)
+            >>> obs_list[0] = 5
+
+        Returns:
+            None
         """
         if not isinstance(name, str) or not name:
-            connection.logger.error("Variable name for viz.show() must be a non-empty string.")
-            return
+            logger.error("Variable name for viz.show() must be a non-empty string.")
+            # Raise ValueError for clarity
+            raise ValueError("Variable name for viz.show() must be a non-empty string.")
 
         # --- Subscription Handling ---
         # Unsubscribe from the previous ObservableValue if this variable name is being reused.
         if name in self._shown_variables:
             previous_entry = self._shown_variables[name]
             if previous_entry.get('unsubscribe'):
-                 connection.logger.debug(f"Viz '{self.target_id}': Unsubscribing previous observable for '{name}'.")
+                 logger.debug(f"Viz '{self.target_id}': Unsubscribing previous observable for '{name}'.")
                  try:
                      previous_entry['unsubscribe']()
                  except Exception as e:
                      # Log error during unsubscribe but continue.
-                     connection.logger.error(f"Viz '{self.target_id}': Error during unsubscribe for '{name}': {e}")
+                     logger.error(f"Viz '{self.target_id}': Error during unsubscribe for '{name}': {e}")
 
         unsubscribe_func: Optional[UnsubscribeFunction] = None
         # If the new value is an ObservableValue, subscribe to it.
@@ -248,9 +256,9 @@ class Viz(BaseModule):
             update_callback = functools.partial(self._handle_observable_update, name)
             try:
                 unsubscribe_func = value.subscribe(update_callback)
-                connection.logger.info(f"Viz '{self.target_id}': Subscribed to ObservableValue for variable '{name}'.")
+                logger.info(f"Viz '{self.target_id}': Subscribed to ObservableValue for variable '{name}'.")
             except Exception as e:
-                 connection.logger.error(f"Viz '{self.target_id}': Error subscribing to ObservableValue for '{name}': {e}")
+                 logger.error(f"Viz '{self.target_id}': Error subscribing to ObservableValue for '{name}': {e}")
                  unsubscribe_func = None # Ensure it's None if subscription failed
 
         # Store the value/observable and its unsubscribe function (if any).
@@ -262,7 +270,7 @@ class Viz(BaseModule):
             # Generate the visual representation of the value.
             representation = _get_representation(value)
         except Exception as e_repr:
-            connection.logger.exception(f"Viz '{self.target_id}': Error generating representation for '{name}'")
+            logger.exception(f"Viz '{self.target_id}': Error generating representation for '{name}'")
             # Create an error representation to display in Sidekick.
             representation = {"type": "error", "value": f"<Representation Error: {e_repr}>", "id": f"error_{name}_{id(value)}"}
 
@@ -290,27 +298,34 @@ class Viz(BaseModule):
 
         # Send the initial 'set' update command.
         self._send_update(initial_payload)
-        connection.logger.debug(f"Viz '{self.target_id}': Sent 'set' update for variable '{name}'.")
+        logger.debug(f"Viz '{self.target_id}': Sent 'set' update for variable '{name}'.")
 
     def remove_variable(self, name: str):
-        """
-        Removes a variable from the Viz panel display in Sidekick.
+        """Removes a previously shown variable from the Viz panel display.
 
-        If the removed variable was associated with an `ObservableValue`, its
-        subscription will be automatically cancelled.
+        If the variable was an :class:`sidekick.ObservableValue`, the Viz panel
+        will stop listening for its changes.
 
         Args:
-            name: The name of the variable to remove.
+            name (str): The name of the variable to remove (the same name used in `show()`).
+
+        Examples:
+            >>> viz.show("temporary_var", 123)
+            >>> # ... later ...
+            >>> viz.remove_variable("temporary_var")
+
+        Returns:
+            None
         """
         if name in self._shown_variables:
             entry = self._shown_variables.pop(name) # Remove from local tracking
             # Unsubscribe if an unsubscribe function exists for this variable.
             if entry.get('unsubscribe'):
-                 connection.logger.info(f"Viz '{self.target_id}': Unsubscribing on remove_variable for '{name}'.")
+                 logger.info(f"Viz '{self.target_id}': Unsubscribing on remove_variable for '{name}'.")
                  try:
                      entry['unsubscribe']()
                  except Exception as e:
-                     connection.logger.error(f"Viz '{self.target_id}': Error during unsubscribe for '{name}': {e}")
+                     logger.error(f"Viz '{self.target_id}': Error during unsubscribe for '{name}': {e}")
 
             # Send the 'removeVariable' command to Sidekick.
             remove_payload = {
@@ -319,33 +334,31 @@ class Viz(BaseModule):
                 "options": {} # No specific options needed for removal.
             }
             self._send_update(remove_payload)
-            connection.logger.info(f"Viz '{self.target_id}': Sent remove_variable update for '{name}'.")
+            logger.info(f"Viz '{self.target_id}': Sent remove_variable update for '{name}'.")
         else:
-            connection.logger.warning(f"Viz '{self.target_id}': Variable '{name}' not found for removal.")
+            logger.warning(f"Viz '{self.target_id}': Variable '{name}' not found for removal.")
 
     def remove(self):
-        """
-        Removes the entire Viz panel instance from Sidekick.
+        """Removes the entire Viz panel instance from the Sidekick UI.
 
         This also automatically unsubscribes from any tracked ObservableValues
-        associated with variables previously shown in this panel.
+        associated with variables currently shown in this panel.
         """
-        connection.logger.info(f"Requesting removal of Viz panel '{self.target_id}'.")
+        logger.info(f"Requesting removal of Viz panel '{self.target_id}'.")
         # Unsubscribe from all tracked observables before sending the remove command.
         for name, entry in list(self._shown_variables.items()): # Iterate over a copy
             if entry.get('unsubscribe'):
-                 connection.logger.debug(f"Viz '{self.target_id}': Unsubscribing from '{name}' during panel removal.")
+                 logger.debug(f"Viz '{self.target_id}': Unsubscribing from '{name}' during panel removal.")
                  try:
                      entry['unsubscribe']()
                  except Exception as e:
-                     connection.logger.error(f"Viz '{self.target_id}': Error unsubscribing from '{name}' during remove: {e}")
+                     logger.error(f"Viz '{self.target_id}': Error unsubscribing from '{name}' during remove: {e}")
             # Remove from local tracking as we go.
             del self._shown_variables[name]
 
-        # Call the base class remove method, which sends the 'remove' command for the panel itself.
         super().remove()
 
     def _reset_specific_callbacks(self):
         """Resets Viz-specific state (subscriptions) on removal."""
-        # The main remove() method already handles unsubscribing.
+        # Unsubscribing is handled in the main remove() method for Viz.
         self._shown_variables.clear()

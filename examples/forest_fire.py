@@ -6,8 +6,9 @@ import logging
 from copy import deepcopy
 from typing import List, Tuple, Optional, Dict, Any
 
+import sidekick
 # Import Sidekick modules
-from sidekick import Grid, Console, Control, connection
+from sidekick import Grid, Console, Control
 
 # --- Configuration ---
 GRID_WIDTH = 30
@@ -264,11 +265,6 @@ if __name__ == "__main__":
     grid_instance = None
     controls_instance = None
     try:
-        # --- Initialize Sidekick ---
-        connection.activate_connection()
-        logging.info("Attempting to connect to Sidekick...")
-        time.sleep(0.5) # Allow time for connection
-
         # --- Create Sidekick Modules ---
         console_instance = Console(instance_id="fire_console")
         console = console_instance
@@ -306,13 +302,7 @@ if __name__ == "__main__":
 
         # --- Keep Main Thread Alive ---
         logging.info("Simulation thread started. Main thread waiting. Use controls or Ctrl+C.")
-        while True:
-            # Main thread sleeps, background thread does the work
-            # The connection listener thread handles control callbacks
-            time.sleep(1)
-
-    except KeyboardInterrupt:
-        logging.info("Ctrl+C detected. Shutting down...")
+        sidekick.run_forever()
     except Exception as e:
         logging.exception(f"An unexpected error occurred in the main thread: {e}")
         if console:
@@ -330,6 +320,4 @@ if __name__ == "__main__":
         # if sim_thread and sim_thread.is_alive():
         #    sim_thread.join(timeout=0.5) # Wait briefly
 
-        # Close the Sidekick connection (also called by atexit, but explicit is good)
-        connection.close_connection(log_info=True)
         logging.info("Cleanup complete. Script finished.")
