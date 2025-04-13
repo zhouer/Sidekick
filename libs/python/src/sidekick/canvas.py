@@ -1,3 +1,14 @@
+"""
+Sidekick Canvas Module Interface.
+
+This module provides the `Canvas` class, which allows your Python script
+to interact with a 2D drawing canvas displayed in the Sidekick panel.
+You can use it to draw simple shapes like lines, rectangles, and circles,
+and control their appearance (color, line width).
+
+Think of it like a simple digital whiteboard you can draw on from your code.
+"""
+
 from . import logger
 from . import connection
 from .base_module import BaseModule
@@ -55,8 +66,6 @@ class Canvas(BaseModule):
             >>> # Attach to an existing canvas named "drawing-area"
             >>> existing_canvas = sidekick.Canvas(width=1, height=1, # Dummy values needed
             ...                                 instance_id="drawing-area", spawn=False)
-
-        :seealso: :meth:`clear`, :meth:`config`, :meth:`draw_line`, :meth:`draw_rect`, :meth:`draw_circle`
         """
         if not (isinstance(width, int) and width > 0 and isinstance(height, int) and height > 0):
             raise ValueError("Canvas width and height must be positive integers.")

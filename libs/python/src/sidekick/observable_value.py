@@ -1,3 +1,21 @@
+"""
+Observable Value Wrapper for Reactive Sidekick Visualizations.
+
+This module provides the `ObservableValue` class. Think of it as a special
+container or wrapper around your regular Python data (like lists, dictionaries,
+or sets).
+
+The magic happens when you display an `ObservableValue` using the `sidekick.Viz`
+module. When you modify the data *inside* the `ObservableValue` (using methods
+like `.append()`, `.[key]=value`, `.add()`), the `ObservableValue` automatically
+notifies the `Viz` module in Sidekick about the exact change. This allows
+Sidekick to update the display efficiently and often highlight what just changed,
+making it much easier to see how your data evolves over time.
+
+Use this when you want the variable display in Sidekick (`Viz` module) to
+automatically react to changes in your Python data structures.
+"""
+
 import collections.abc
 from typing import Any, List, Set, Dict, Callable, Optional, Union, Tuple
 from . import logger

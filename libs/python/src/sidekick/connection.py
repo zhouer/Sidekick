@@ -1,3 +1,27 @@
+"""
+Sidekick WebSocket Connection Management.
+
+This module is the "engine room" of the Sidekick Python library. It handles
+all the behind-the-scenes communication with the Sidekick visualization panel,
+usually via a WebSocket connection.
+
+As a user of the `sidekick` library, you typically don't need to interact
+with this module directly. Most of its important functions (like `set_url`,
+`run_forever`, `shutdown`, `ensure_ready`, `flush_messages`) are made
+available directly under the main `sidekick` package (e.g., `sidekick.set_url()`).
+
+Key responsibilities managed here include:
+  - Establishing and maintaining the WebSocket connection.
+  - Running a background thread to listen for messages from Sidekick.
+  - Sending messages (commands) from your Python script to Sidekick.
+  - Buffering messages if the connection isn't ready yet.
+  - Handling system-level messages for discovering peers (Hero/Sidekick).
+  - Managing the connection state (Disconnected, Connecting, Ready).
+  - Providing functions to control the script's lifecycle (`run_forever`)
+    and ensure messages are sent (`flush_messages`).
+  - Cleaning up the connection gracefully (`shutdown`).
+"""
+
 import websocket # Using websocket-client library
 import json
 import threading

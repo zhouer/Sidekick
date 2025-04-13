@@ -1,3 +1,11 @@
+"""
+Internal Utility Functions for the Sidekick Library.
+
+This module contains helper functions used internally by other parts of the
+Sidekick library. Users of the library typically don't need to interact
+with these directly.
+"""
+
 _instance_counter = 0
 
 def generate_unique_id(prefix: str) -> str:

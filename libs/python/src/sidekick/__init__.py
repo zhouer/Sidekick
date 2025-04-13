@@ -1,3 +1,28 @@
+"""
+Sidekick Python Library (`sidekick-py`)
+
+This is the main package for the Sidekick Python library. It allows your Python
+scripts to connect to and control the Sidekick visualization panel, typically
+running inside VS Code.
+
+You can use this library to create interactive visuals like grids, display
+text in a console, inspect variables, draw on a canvas, and add UI controls,
+all updated in real-time as your Python code runs.
+
+Start by importing the `sidekick` package:
+
+    import sidekick
+
+Then, create instances of visual modules like `sidekick.Grid()` or
+`sidekick.Console()`.
+
+Core concepts include:
+  - Creating module instances (e.g., `grid = sidekick.Grid()`).
+  - Updating module state (e.g., `grid.set_color(0, 0, 'red')`).
+  - Handling events from Sidekick (e.g., `grid.on_click(my_handler)`).
+  - Managing the script lifecycle (`sidekick.run_forever()`, `sidekick.shutdown()`).
+"""
+
 import logging
 
 # --- Version ---

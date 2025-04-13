@@ -1,3 +1,15 @@
+"""
+Sidekick Control Module Interface.
+
+This module provides the `Control` class, which allows you to add interactive
+UI elements like buttons and text input fields to the Sidekick panel directly
+from your Python script.
+
+You can use this to:
+  - Create buttons that trigger actions in your Python code when clicked.
+  - Add text fields where users can enter information that your script can then process.
+"""
+
 from typing import Optional, Dict, Any, Callable
 from . import logger
 from .base_module import BaseModule
@@ -35,7 +47,6 @@ class Control(BaseModule):
             >>> # Attach to an existing panel named "main-controls"
             >>> existing_controls = sidekick.Control(instance_id="main-controls", spawn=False)
 
-        :seealso: :meth:`add_button`, :meth:`add_text_input`, :meth:`remove_control`, :meth:`on_click`, :meth:`on_input_text`
         """
         # Control spawn payload is currently empty.
         spawn_payload = {} if spawn else None

@@ -1,3 +1,15 @@
+"""
+Sidekick Grid Module Interface.
+
+This module provides the `Grid` class, allowing you to create and interact
+with a grid of cells displayed in the Sidekick panel.
+
+It's useful for:
+  - Visualizing 2D data structures (like mazes or game boards).
+  - Creating simple pixel-based animations.
+  - Building interactive simulations where users can click on cells.
+"""
+
 from . import logger
 from .base_module import BaseModule
 from typing import Optional, Callable, Dict, Any
@@ -60,7 +72,6 @@ class Grid(BaseModule):
             >>> existing_grid = sidekick.Grid(instance_id="game-board", spawn=False,
             ...                               num_columns=20, num_rows=20) # Still need dimensions
 
-        :seealso: :meth:`set_color`, :meth:`set_text`, :meth:`clear_cell`, :meth:`clear`, :meth:`on_click`
         """
         # Validate dimensions first
         if not (isinstance(num_columns, int) and num_columns > 0):

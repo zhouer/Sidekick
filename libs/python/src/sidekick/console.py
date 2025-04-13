@@ -1,3 +1,15 @@
+"""
+Sidekick Console Module Interface.
+
+This module provides the `Console` class, which represents a text console
+displayed in the Sidekick panel. It's similar to Python's built-in console
+where you use `print()`, but it appears visually within Sidekick.
+
+You can use it to:
+  - Print messages and log information from your script.
+  - Optionally display an input field for the user to type text back to your script.
+"""
+
 from . import logger
 from .base_module import BaseModule
 from typing import Optional, Callable, Dict, Any
@@ -48,7 +60,6 @@ class Console(BaseModule):
             >>> # Create an interactive console with an input field
             >>> interactive_console = sidekick.Console(show_input=True, initial_text="Enter command:")
 
-        :seealso: :meth:`print`, :meth:`log`, :meth:`clear`, :meth:`on_input_text`
         """
         spawn_payload: Dict[str, Any] = {}
         if spawn:

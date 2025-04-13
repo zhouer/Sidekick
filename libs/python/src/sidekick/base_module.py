@@ -1,3 +1,20 @@
+"""
+Base Class for Sidekick Visual Modules.
+
+This module provides the foundational `BaseModule` class, which acts as a
+blueprint for all specific visual modules in the Sidekick library (like Grid,
+Console, etc.).
+
+You typically won't use `BaseModule` directly in your scripts. Instead, you'll
+use the specific module classes (e.g., `sidekick.Grid`). This base class handles
+the common tasks needed for any visual module:
+  - Assigning a unique ID to each module instance.
+  - Ensuring the connection to the Sidekick panel is established.
+  - Sending commands (like 'create', 'update', 'remove') to Sidekick.
+  - Providing a way to remove the visual element (`remove()` method).
+  - Handling errors reported by Sidekick for a specific module (`on_error` callback).
+"""
+
 from . import logger
 from . import connection
 from .utils import generate_unique_id

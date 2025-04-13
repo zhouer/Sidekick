@@ -1,3 +1,19 @@
+"""
+Sidekick Variable Visualizer (Viz) Module Interface.
+
+This module provides the `Viz` class, which allows you to display and inspect
+Python variables, including complex data structures like lists, dictionaries,
+sets, and objects, in an interactive tree-like view within the Sidekick panel.
+
+Its most powerful feature is its integration with `sidekick.ObservableValue`.
+When you show an `ObservableValue`, the Viz panel automatically updates itself
+whenever the value inside the `ObservableValue` changes, providing a reactive
+view of your data.
+
+This module also contains the internal logic (`_get_representation`) used to
+convert Python data into a format suitable for display in Sidekick.
+"""
+
 import functools
 from typing import Any, Dict, Optional, List, Union, Callable, Set, Tuple
 from . import logger
@@ -130,8 +146,6 @@ class Viz(BaseModule):
             >>>
             >>> # Attach to an existing panel named "debugger-vars"
             >>> existing_viz = sidekick.Viz(instance_id="debugger-vars", spawn=False)
-
-        :seealso: :meth:`show`, :meth:`remove_variable`, :class:`sidekick.ObservableValue`
         """
         # Viz spawn payload is currently empty.
         spawn_payload = {} if spawn else None
