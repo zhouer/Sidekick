@@ -1,100 +1,137 @@
 # Sidekick – Your Visual Coding Buddy
 
-## 開發動機與需求背景
+[![PyPI version](https://badge.fury.io/py/sidekick-py.svg)](https://badge.fury.io/py/sidekick-py)
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/sidekick-coding.sidekick-coding?label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=sidekick-coding.sidekick-coding)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-### 簡介
+**See your Python code come alive, right inside VS Code!**
 
-Sidekick 是一款模組化的視覺化編程輔助工具，讓初學者與進階使用者能在完整的開發環境中結合程式設計與視覺輸出。使用者透過程式碼控制畫面中的各種視覺模組（如格子畫布、文字輸出區、圖表、圖像等），即時呈現程式邏輯與執行結果。Sidekick 強調互動性與可擴充性，特別適合用於教學、親子共學、演算法視覺化等場景。
+Sidekick is your friendly visual assistant for programming. It tackles the challenge of abstract code by providing an **interactive panel** directly within your VS Code editor. Watch loops draw patterns, data structures change in real-time, and build simple interfaces without leaving your development environment.
 
-### 開發動機
+Perfect for **learners**, **educators**, **parents teaching coding**, and anyone who benefits from seeing code in action!
 
-- **從 Console 到視覺互動：讓程式看得見**  
-    傳統程式教學多依賴純文字的 Console 輸出，缺乏視覺化呈現與即時反饋，對現代學習者（尤其是年幼的初學者）來說吸引力有限。Sidekick 在 VS Code 的 side panel 中提供視覺化界面，將程式行為轉化為動態的視覺輸出，讓抽象的邏輯變得直觀可見，從而提升學習者的理解力與學習興趣。
+## Installation
 
-- **真實開發環境中的視覺化學習**  
-    Sidekick 整合於完整的 IDE 環境中，VS Code 提供 debug、version control 等進階功能，讓學習者能在視覺化的輔助下逐步適應真實開發流程，為未來的進階程式設計奠定基礎。
+Sidekick requires two components:
 
-### 需求概述
+1.  **The Python Library [`sidekick-py`](https://pypi.org/project/sidekick-py/):**
+    ```bash
+    pip install sidekick-py
+    ```
+2.  **The VS Code Extension:**
+    *   Open VS Code.
+    *   Go to the Extensions view (`Ctrl+Shift+X`).
+    *   Search for "**Sidekick - Visual Coding Buddy**" or use the [link](https://marketplace.visualstudio.com/items?itemName=sidekick-coding.sidekick-coding).
+    *   Click **Install**.
 
-- **跨語言與跨平台的擴充潛力**  
-    Sidekick 的架構設計具高度靈活性，搭配用戶端函式庫達成支援多種程式語言（如 Python、JavaScript），透過自定義的通訊協定，達成程式邏輯與顯示分離，實現跨語言跨平台互通。
+## Quick Start
 
-- **即時雙向通訊**  
-    採用 WebSocket 進行 Hero 與 Sidekick 間的即時雙向訊息交換，除了可接收來自程式的控制指令，也支援使用者操作（如點擊畫面或鍵盤輸入）回傳通知至 Hero。
+Let's make a simple interactive grid!
 
-- **模組化、可擴充的元件系統**  
-    Sidekick 採用模組化設計，初期提供 grid 與 console 模組，未來可透過 plugin 模式擴充 image、chart、html 等更多呈現方式，甚至允許使用者註冊自定模組。
+1.  **Open Sidekick:** In VS Code, press `Ctrl+Shift+P` and search for/run the command `Sidekick: Show Panel`.
+2.  **Save the Code:** Save the following Python code as a file (e.g., `hello_sidekick.py`):
 
-- **模組狀態維持、明確清除機制**  
-    考慮到 Hero 端程式可能頻繁重啟，Sidekick 必須獨立維持狀態，直到明確接收到 `clear` 指令。
+    ```python
+    import sidekick
+    import random
 
-- **模組自主邏輯**
-    每個 module 可以有自己的邏輯與狀態，例如可以自主決定哪些訊息需要送回給 Hero，哪些不需要。較複雜的 module 例如走迷宮、生命遊戲，狀態不需要頻繁在 Hero、Sidekick 之間交流，可由 Sidekick 自主完成。
+    # 1. Create a 5x5 Grid
+    grid = sidekick.Grid(5, 5)
+    grid.set_text(2, 2, "Click!") # Center text
 
-## 系統架構
+    # 2. Define what happens on click
+    def handle_click(x, y):
+        colors = ["#FFADAD", "#FFD6A5", "#FDFFB6", "#CAFFBF", "#9BF6FF", "#A0C4FF", "#BDB2FF", "#FFC6FF"]
+        random_color = random.choice(colors)
+        print(f"Cell ({x},{y}) clicked! Setting color to {random_color}")
+        grid.set_color(x, y, random_color) # Update Sidekick UI
+        grid.set_text(x, y, "") # Clear text on click
 
-### 系統分層與角色
+    # 3. Register the click handler
+    grid.on_click(handle_click)
 
-系統整體分為兩大區塊：Hero 與 Sidekick
+    # 4. Keep the script running to listen for clicks!
+    sidekick.run_forever()
+    ```
 
-- **Hero**
-    使用者撰寫並執行的程式（例如 Python script），負責產生視覺化訊息，透過 Sidekick library 操作 UI。Sidekick library 為封裝底層細節的高階 API，讓使用者透過直觀的物件接口操作視覺化功能，無需接觸底層通訊與模組生成邏輯。
-- **Sidekick**  
-    由 VS Code extension 與內嵌的 React App 組成，接收來自 Hero 的訊息，並根據訊息更新視覺化 UI。
+3.  **Run the Code:** Open a terminal in VS Code (`Ctrl+`\`) and run:
+    ```bash
+    python hello_sidekick.py
+    ```
+4.  **Interact:** Click on the cells in the Sidekick panel within VS Code. You should see the terminal print messages and the cell colors change! Press `Ctrl+C` in the terminal to stop.
 
-### 架構圖
+## Why Sidekick?
 
-```plaintext
- +---------------------------------------+
- |                 Hero                  |
- |            (User Program)             |
- |  +-------------------------------+    |
- |  |        Sidekick Library       |    |
- |  +-------------------------------+    |
- +---------------------------------------+
-                    ^
-                    |  WebSocket + JSON
-                    v
- +---------------------------------------+
- |               Sidekick                |
- |         (VS Code Extension)           |
- |  +-------------------------------+    |
- |  |       WebSocket Server        |    |
- |  +-------------------------------+    |
- |  +-------------------------------+    |
- |  |           React App           |    |
- |  |    (UI + Module Dispatcher)   |    |
- |  +-------------------------------+    |
- +---------------------------------------+
-```
+*   **Instant Visualization:** Stop guessing, start seeing! Visualize algorithms on a `Grid`, draw on a `Canvas`, or track output in a `Console`.
+*   **Interactive Feedback:** Build programs that react! Create `Control` buttons that trigger Python functions, get user input from the `Console`, or respond to `Grid` clicks.
+*   **Simple Python API:** Focus on your logic, not complex UI code. Sidekick provides an intuitive, beginner-friendly Python library (`sidekick-py`).
+*   **Seamless VS Code Integration:** Works where you work. Sidekick lives in the VS Code side panel, keeping your code and its visual output together.
+*   **Live Variable Explorer:** Use `Viz` to inspect variables and data structures. Magically updates when you use `ObservableValue` – watch lists grow and dictionaries change automatically!  
+*   **Modular & Combinable:** Simple building blocks (`Grid`, `Console`, `Viz`, etc.) that you can combine creatively to suit your needs.
 
-### Hero 端 – Sidekick Library
+## The Sidekick Philosophy: Focused & Fun
 
-將所有底層訊息格式、WebSocket 通訊與模組生成細節封裝在 library 中，提供直觀且易用的物件導向接口。
+**Important Note:** Sidekick is **not** designed to be a full-featured UI framework like Qt or Tkinter.
 
-### Sidekick – VS Code Extension
+Instead, Sidekick provides the **essential building blocks** for visual interaction, keeping the focus squarely on **understanding your code's logic and flow**. Its strength lies in its **simplicity** and **low learning curve**.
 
-- 內建 WebSocket Server 並轉傳 Hero 與 React App 之間的訊息
-- 預設監聽 localhost:5163
-- 提供 vscode command 查詢連線用的 URL
+Think of Sidekick modules as powerful, easy-to-use visual tools. Combine them in imaginative ways: build a game board on the `Grid`, show game state in the `Console`, visualize complex data with `Viz`, and add controls with `Control`. **The possibilities are vast, limited only by your creativity!**
 
-### Sidekick – React App
+## Core Concepts & Features
 
-- 採用 React 實作，用於組件化的 UI 建構與狀態管理。
-- 實現模組化的 Module Dispatcher，根據收到的訊息發送給相關的 module 處理。
-- 內建兩個預設模組：
-    - **grid 模組**：呈現 m x n 格子畫布，支援更新各格狀態。
-    - **console 模組**：提供即時文字訊息顯示，模擬傳統 console 輸出。
+Sidekick helps bring your Python code to life visually. Here are the essential features to get you started:
 
-## 通訊機制與訊息格式
+### 1. Core Visualization Modules
 
-### 通訊機制 – WebSocket
+These are the building blocks you create and control from Python:
 
-**即時雙向通訊** 
-    - Hero 與 Sidekick 之間採用 WebSocket 進行雙向、即時訊息傳遞，確保程式運行狀態能夠即時反映在視覺化介面上，使用者的動作也能即時回傳給程式。
+*   **`sidekick.Grid`:** A 2D grid of cells. Perfect for maps, boards, or pixel art. Control cell color (`set_color`), text (`set_text`), and react to clicks (`on_click`).
+*   **`sidekick.Console`:** A text output area, like Python's `print`, but inside Sidekick. Optionally includes a text input field. Use `print()`/`log()` for output and `on_input_text()` for user input.
+*   **`sidekick.Viz`:** An interactive tree view for inspecting variables (lists, dicts, objects). Use `show()` to display. **Crucially, use `sidekick.ObservableValue` to make the display automatically update when your data changes!**
+*   **`sidekick.Canvas`:** A 2D drawing surface. Draw lines (`draw_line`), rectangles (`draw_rect`), circles (`draw_circle`), and configure styles (`config`).
+*   **`sidekick.Control`:** Add UI controls like buttons (`add_button`) and text inputs (`add_text_input`). React to interactions using `on_click()` and `on_input_text()` callbacks.
 
-### 訊息格式 - JSON
+### 2. Interaction via Callbacks
 
-**統一訊息格式**  
-    - Hero 發送訊息至 Sidekick，包含 `id`、`module`、`type`、 `target`、`payload`
-    - Sidekick 發送訊息至 Hero，包含 `id`、`module`、`type`、 `src`、`payload`
+Make your visualizations responsive! Sidekick lets your Python code react to UI events using callback functions:
+
+*   `grid.on_click(callback)`: Run code when a grid cell is clicked.
+*   `console.on_input_text(callback)`: Process text submitted from the console.
+*   `control.on_click(callback)`: Trigger functions when buttons are pressed.
+*   `control.on_input_text(callback)`: Handle text submitted from control inputs.
+*   **Remember:** Your Python script must be running for callbacks to work (see Lifecycle Management).
+
+### 3. Reactive Visualization with `ObservableValue`
+
+Tired of manually updating variable displays? `Viz` works seamlessly with `ObservableValue`:
+
+*   Wrap your lists, dicts, or sets: `obs_list = sidekick.ObservableValue([...])`
+*   Show it: `viz.show("My List", obs_list)`
+*   Modify it *through the wrapper* (`obs_list.append(item)`, `obs_list[0] = new_val`): The `Viz` panel updates automatically! No extra `viz.show()` needed.
+
+### 4. Managing Script Lifecycle
+
+Sidekick needs to talk to a *running* Python script. You need to manage how long your script runs:
+
+*   **`sidekick.run_forever()`:** The most common method. **Keeps your script running indefinitely** to display visuals and handle interactions (callbacks). Place it at the end of your script. Stop with `Ctrl+C` or by calling `sidekick.shutdown()` from a callback.
+*   **`sidekick.flush_messages(timeout=...)`:** For **short, non-interactive scripts**. Waits briefly to ensure Sidekick receives your updates before the script exits. Use this *instead* of `run_forever()` at the end of simple display scripts.
+*   **`sidekick.shutdown()`:** Call this (usually from a callback) to stop `run_forever()` gracefully and close the connection.
+
+## Learn More
+
+*  **See More Examples:** [**Examples Directory**](./examples/)
+*  **Explore the API:** [**Full Python API Reference**](https://zhouer.github.io/sidekick-py-docs/)
+*  **For Developers:**
+    * [System Architecture](./docs/architecture.md)
+    * [Communication Protocol](./docs/protocol.md)
+    * [Python Library Development Guide](./docs/python-development.md)
+    * [WebApp Development Guide](./docs/webapp-development.md)
+    * [Extension Development Guide](./docs/extension-development.md)
+
+## Inspiration & Origins
+
+This project started as a personal tool designed to help teach my own children the fundamentals of coding in a more visual and engaging way. I wanted to bridge the gap between abstract code and tangible results. The core ideas were significantly inspired by the great work and philosophy behind [PyKidos](https://pykidos.github.io/).
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE.md](./LICENSE.md) file for details.
