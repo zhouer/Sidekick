@@ -1,0 +1,413 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>sidekick.grid &mdash; Sidekick Python Library 0.0.3 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=47de8214"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Sidekick Python Library
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">API Reference:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../modules.html">sidekick</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project Links:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/zhouer/Sidekick">GitHub Repository</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/sidekick-py/">PyPI Package</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Sidekick Python Library</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">sidekick.grid</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for sidekick.grid</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Sidekick Grid Module Interface.</span>
+
+<span class="sd">This module provides the `Grid` class, allowing you to create and interact</span>
+<span class="sd">with a grid of cells displayed in the Sidekick panel.</span>
+
+<span class="sd">It&#39;s useful for:</span>
+<span class="sd">  - Visualizing 2D data structures (like mazes or game boards).</span>
+<span class="sd">  - Creating simple pixel-based animations.</span>
+<span class="sd">  - Building interactive simulations where users can click on cells.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">logger</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.base_module</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModule</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Any</span>
+
+<div class="viewcode-block" id="Grid">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.grid.Grid">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Grid</span><span class="p">(</span><span class="n">BaseModule</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Represents an interactive Grid module instance in the Sidekick UI.</span>
+
+<span class="sd">    Use this class to create and manipulate a grid of cells in Sidekick.</span>
+<span class="sd">    You can control the background color and display text within each cell.</span>
+<span class="sd">    It&#39;s useful for visualizing 2D arrays, game boards, or simple animations.</span>
+<span class="sd">    You can also detect when the user clicks on a cell using `on_click`.</span>
+
+<span class="sd">    Coordinate System:</span>
+<span class="sd">        Methods like `set_color`, `set_text`, `clear_cell`, and the `on_click`</span>
+<span class="sd">        callback use `(x, y)` coordinates where:</span>
+<span class="sd">        - `x` is the **column index** (0-based, starting from the left).</span>
+<span class="sd">        - `y` is the **row index** (0-based, starting from the top).</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        target_id (str): The unique identifier for this grid instance.</span>
+<span class="sd">        num_columns (int): The number of columns in the grid.</span>
+<span class="sd">        num_rows (int): The number of rows in the grid.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<div class="viewcode-block" id="Grid.__init__">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.grid.Grid.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">num_columns</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">16</span><span class="p">,</span>
+        <span class="n">num_rows</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">16</span><span class="p">,</span>
+        <span class="n">instance_id</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">spawn</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initializes the Grid object, optionally creating a new grid in Sidekick.</span>
+
+<span class="sd">        Sets up the grid dimensions and prepares it for cell manipulation.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            num_columns (int): The number of columns for the grid. Must be a</span>
+<span class="sd">                positive integer. Defaults to 16.</span>
+<span class="sd">            num_rows (int): The number of rows for the grid. Must be a</span>
+<span class="sd">                positive integer. Defaults to 16.</span>
+<span class="sd">            instance_id (Optional[str]): A specific ID for this grid instance.</span>
+<span class="sd">                - If `spawn=True`: Optional. Auto-generated if None.</span>
+<span class="sd">                - If `spawn=False`: **Required**. Identifies the existing grid.</span>
+<span class="sd">            spawn (bool): If True (default), creates a new grid UI element.</span>
+<span class="sd">                If False, attaches to an existing grid element. `num_columns` and</span>
+<span class="sd">                `num_rows` are used for validation even if `spawn=False`, but the</span>
+<span class="sd">                spawn command itself requires them only when `spawn=True`.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ValueError: If `num_columns` or `num_rows` are not positive integers,</span>
+<span class="sd">                        or if `spawn` is False and `instance_id` is None.</span>
+
+<span class="sd">        Examples:</span>
+<span class="sd">            &gt;&gt;&gt; # Create a default 16x16 grid</span>
+<span class="sd">            &gt;&gt;&gt; grid1 = sidekick.Grid()</span>
+<span class="sd">            &gt;&gt;&gt;</span>
+<span class="sd">            &gt;&gt;&gt; # Create a 10x5 grid</span>
+<span class="sd">            &gt;&gt;&gt; grid2 = sidekick.Grid(num_columns=10, num_rows=5)</span>
+<span class="sd">            &gt;&gt;&gt;</span>
+<span class="sd">            &gt;&gt;&gt; # Attach to an existing grid named &quot;game-board&quot;</span>
+<span class="sd">            &gt;&gt;&gt; existing_grid = sidekick.Grid(instance_id=&quot;game-board&quot;, spawn=False,</span>
+<span class="sd">            ...                               num_columns=20, num_rows=20) # Still need dimensions</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Validate dimensions first</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">num_columns</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">and</span> <span class="n">num_columns</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Grid num_columns must be a positive integer, got </span><span class="si">{</span><span class="n">num_columns</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">num_rows</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">and</span> <span class="n">num_rows</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">):</span>
+             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Grid num_rows must be a positive integer, got </span><span class="si">{</span><span class="n">num_rows</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="n">spawn_payload</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="n">spawn</span><span class="p">:</span>
+             <span class="n">spawn_payload</span><span class="p">[</span><span class="s2">&quot;numColumns&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">num_columns</span>
+             <span class="n">spawn_payload</span><span class="p">[</span><span class="s2">&quot;numRows&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">num_rows</span>
+
+        <span class="c1"># Initialize base module (handles connection, ID, internal handler registration)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">module_type</span><span class="o">=</span><span class="s2">&quot;grid&quot;</span><span class="p">,</span>
+            <span class="n">instance_id</span><span class="o">=</span><span class="n">instance_id</span><span class="p">,</span>
+            <span class="n">spawn</span><span class="o">=</span><span class="n">spawn</span><span class="p">,</span>
+            <span class="n">payload</span><span class="o">=</span><span class="n">spawn_payload</span> <span class="k">if</span> <span class="n">spawn</span> <span class="k">else</span> <span class="kc">None</span>
+        <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">num_columns</span> <span class="o">=</span> <span class="n">num_columns</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">num_rows</span> <span class="o">=</span> <span class="n">num_rows</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_click_callback</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="kc">None</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Grid &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39; initialized (spawn=</span><span class="si">{</span><span class="n">spawn</span><span class="si">}</span><span class="s2">, size=</span><span class="si">{</span><span class="n">num_columns</span><span class="si">}</span><span class="s2">x</span><span class="si">{</span><span class="n">num_rows</span><span class="si">}</span><span class="s2">).&quot;</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_internal_message_handler</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Handles incoming messages for this grid instance, dispatching to callbacks.&quot;&quot;&quot;</span>
+        <span class="n">msg_type</span> <span class="o">=</span> <span class="n">message</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;type&quot;</span><span class="p">)</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="n">message</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;payload&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">msg_type</span> <span class="o">==</span> <span class="s2">&quot;event&quot;</span><span class="p">:</span>
+            <span class="n">event_type</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;event&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">payload</span> <span class="k">else</span> <span class="kc">None</span>
+            <span class="k">if</span> <span class="n">event_type</span> <span class="o">==</span> <span class="s2">&quot;click&quot;</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_click_callback</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">x</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;x&#39;</span><span class="p">)</span>
+                    <span class="n">y</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;y&#39;</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">x</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">y</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">_click_callback</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                         <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Grid &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39; received click event with missing coordinates: </span><span class="si">{</span><span class="n">payload</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error in Grid &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39; on_click callback: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                 <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Grid &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39; received unhandled event type &#39;</span><span class="si">{</span><span class="n">event_type</span><span class="si">}</span><span class="s2">&#39;.&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Call base handler for error messages</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">_internal_message_handler</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Grid.on_click">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.grid.Grid.on_click">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_click</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">callback</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span> <span class="kc">None</span><span class="p">]]):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Registers a function to handle clicks on grid cells.</span>
+
+<span class="sd">        When the user clicks on any cell within this grid in the Sidekick UI,</span>
+<span class="sd">        the function you register here will be called.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            callback (Optional[Callable[[int, int], None]]): A function that takes</span>
+<span class="sd">                two arguments:</span>
+<span class="sd">                1. `x` (int): The column index (0-based) of the clicked cell.</span>
+<span class="sd">                2. `y` (int): The row index (0-based) of the clicked cell.</span>
+<span class="sd">                Pass `None` to remove the current callback.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            TypeError: If the provided callback is not callable or None.</span>
+
+<span class="sd">        Examples:</span>
+<span class="sd">            &gt;&gt;&gt; def cell_clicked(x, y):</span>
+<span class="sd">            ...     print(f&quot;Cell ({x}, {y}) was clicked!&quot;)</span>
+<span class="sd">            ...     # Example: Set clicked cell color to blue</span>
+<span class="sd">            ...     grid.set_color(x, y, &quot;blue&quot;)</span>
+<span class="sd">            &gt;&gt;&gt;</span>
+<span class="sd">            &gt;&gt;&gt; grid = sidekick.Grid(5, 5)</span>
+<span class="sd">            &gt;&gt;&gt; grid.on_click(cell_clicked)</span>
+<span class="sd">            &gt;&gt;&gt; # sidekick.run_forever() # Needed to keep script alive for clicks</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">callback</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">callable</span><span class="p">(</span><span class="n">callback</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Click callback must be callable or None&quot;</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Setting on_click callback for grid &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39;.&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_click_callback</span> <span class="o">=</span> <span class="n">callback</span></div>
+
+
+    <span class="c1"># on_error is inherited from BaseModule</span>
+
+<div class="viewcode-block" id="Grid.set_color">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.grid.Grid.set_color">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_color</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">color</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Sets the background color of a specific cell.</span>
+
+<span class="sd">        Setting the color does not affect the cell&#39;s text content.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            x (int): Column index (0-based).</span>
+<span class="sd">            y (int): Row index (0-based).</span>
+<span class="sd">            color (Optional[str]): The background color to set for the cell.</span>
+<span class="sd">                Use CSS color strings like &#39;red&#39;, &#39;#00ff00&#39;, &#39;rgba(0,0,255,0.5)&#39;.</span>
+<span class="sd">                Pass `None` to clear the background color of the cell, restoring</span>
+<span class="sd">                its default background.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            IndexError: If the provided `x` or `y` coordinates are outside the</span>
+<span class="sd">                        grid&#39;s boundaries (`0 &lt;= x &lt; num_columns`, `0 &lt;= y &lt; num_rows`).</span>
+
+<span class="sd">        Examples:</span>
+<span class="sd">            &gt;&gt;&gt; # Set cell (0, 0) to red background</span>
+<span class="sd">            &gt;&gt;&gt; grid.set_color(0, 0, &quot;red&quot;)</span>
+<span class="sd">            &gt;&gt;&gt; # Clear background color of cell (0, 0)</span>
+<span class="sd">            &gt;&gt;&gt; grid.set_color(0, 0, None)</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">x</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_columns</span><span class="p">):</span>
+             <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Grid &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39;: Column index x=</span><span class="si">{</span><span class="n">x</span><span class="si">}</span><span class="s2"> is out of bounds (0 &lt;= x &lt; </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">num_columns</span><span class="si">}</span><span class="s2">).&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">y</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_rows</span><span class="p">):</span>
+              <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Grid &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39;: Row index y=</span><span class="si">{</span><span class="n">y</span><span class="si">}</span><span class="s2"> is out of bounds (0 &lt;= y &lt; </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">num_rows</span><span class="si">}</span><span class="s2">).&quot;</span><span class="p">)</span>
+
+        <span class="n">options</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;x&quot;</span><span class="p">:</span> <span class="n">x</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">:</span> <span class="n">y</span><span class="p">,</span> <span class="s2">&quot;color&quot;</span><span class="p">:</span> <span class="n">color</span><span class="p">}</span> <span class="c1"># None will be sent as null</span>
+        <span class="n">update_payload</span> <span class="o">=</span> <span class="p">{</span> <span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;setColor&quot;</span><span class="p">,</span> <span class="s2">&quot;options&quot;</span><span class="p">:</span> <span class="n">options</span> <span class="p">}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_send_update</span><span class="p">(</span><span class="n">update_payload</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="Grid.set_text">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.grid.Grid.set_text">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_text</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Sets the text content of a specific cell.</span>
+
+<span class="sd">        Setting the text does not affect the cell&#39;s background color.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            x (int): Column index (0-based).</span>
+<span class="sd">            y (int): Row index (0-based).</span>
+<span class="sd">            text (Optional[str]): The text to display inside the cell.</span>
+<span class="sd">                Pass `None` or an empty string `&quot;&quot;` to clear the text content</span>
+<span class="sd">                of the cell.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            IndexError: If the provided `x` or `y` coordinates are outside the</span>
+<span class="sd">                        grid&#39;s boundaries (`0 &lt;= x &lt; num_columns`, `0 &lt;= y &lt; num_rows`).</span>
+
+<span class="sd">        Examples:</span>
+<span class="sd">            &gt;&gt;&gt; # Set text &quot;Start&quot; in cell (1, 2)</span>
+<span class="sd">            &gt;&gt;&gt; grid.set_text(1, 2, &quot;Start&quot;)</span>
+<span class="sd">            &gt;&gt;&gt; # Clear text in cell (1, 2)</span>
+<span class="sd">            &gt;&gt;&gt; grid.set_text(1, 2, None)</span>
+<span class="sd">            &gt;&gt;&gt; # Also clears text in cell (1, 2)</span>
+<span class="sd">            &gt;&gt;&gt; grid.set_text(1, 2, &quot;&quot;)</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">x</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_columns</span><span class="p">):</span>
+             <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Grid &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39;: Column index x=</span><span class="si">{</span><span class="n">x</span><span class="si">}</span><span class="s2"> is out of bounds (0 &lt;= x &lt; </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">num_columns</span><span class="si">}</span><span class="s2">).&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">y</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_rows</span><span class="p">):</span>
+              <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Grid &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39;: Row index y=</span><span class="si">{</span><span class="n">y</span><span class="si">}</span><span class="s2"> is out of bounds (0 &lt;= y &lt; </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">num_rows</span><span class="si">}</span><span class="s2">).&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Send None as null, &quot;&quot; as empty string (both clear text per protocol)</span>
+        <span class="n">options</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;x&quot;</span><span class="p">:</span> <span class="n">x</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">:</span> <span class="n">y</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">text</span><span class="p">}</span>
+        <span class="n">update_payload</span> <span class="o">=</span> <span class="p">{</span> <span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;setText&quot;</span><span class="p">,</span> <span class="s2">&quot;options&quot;</span><span class="p">:</span> <span class="n">options</span> <span class="p">}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_send_update</span><span class="p">(</span><span class="n">update_payload</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Grid.clear_cell">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.grid.Grid.clear_cell">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clear_cell</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Clears both the background color and text content of a specific cell.</span>
+
+<span class="sd">        Resets the cell to its default visual state.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            x (int): Column index (0-based).</span>
+<span class="sd">            y (int): Row index (0-based).</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            IndexError: If the provided `x` or `y` coordinates are outside the</span>
+<span class="sd">                        grid&#39;s boundaries (`0 &lt;= x &lt; num_columns`, `0 &lt;= y &lt; num_rows`).</span>
+
+<span class="sd">        Examples:</span>
+<span class="sd">            &gt;&gt;&gt; grid.set_color(3, 3, &quot;purple&quot;)</span>
+<span class="sd">            &gt;&gt;&gt; grid.set_text(3, 3, &quot;Value&quot;)</span>
+<span class="sd">            &gt;&gt;&gt; # Clear everything in cell (3, 3)</span>
+<span class="sd">            &gt;&gt;&gt; grid.clear_cell(3, 3)</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">x</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_columns</span><span class="p">):</span>
+             <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Grid &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39;: Column index x=</span><span class="si">{</span><span class="n">x</span><span class="si">}</span><span class="s2"> is out of bounds (0 &lt;= x &lt; </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">num_columns</span><span class="si">}</span><span class="s2">).&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">y</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_rows</span><span class="p">):</span>
+              <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Grid &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39;: Row index y=</span><span class="si">{</span><span class="n">y</span><span class="si">}</span><span class="s2"> is out of bounds (0 &lt;= y &lt; </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">num_rows</span><span class="si">}</span><span class="s2">).&quot;</span><span class="p">)</span>
+
+        <span class="n">options</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;x&quot;</span><span class="p">:</span> <span class="n">x</span><span class="p">,</span> <span class="s2">&quot;y&quot;</span><span class="p">:</span> <span class="n">y</span><span class="p">}</span>
+        <span class="n">update_payload</span> <span class="o">=</span> <span class="p">{</span> <span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;clearCell&quot;</span><span class="p">,</span> <span class="s2">&quot;options&quot;</span><span class="p">:</span> <span class="n">options</span> <span class="p">}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_send_update</span><span class="p">(</span><span class="n">update_payload</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Grid.clear">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.grid.Grid.clear">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clear</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Clears the **entire grid**, resetting all cells to their default state.</span>
+
+<span class="sd">        Removes all colors and text from all cells in the grid. This corresponds</span>
+<span class="sd">        to the `clear` action in the protocol.</span>
+
+<span class="sd">        Examples:</span>
+<span class="sd">            &gt;&gt;&gt; grid.set_color(0, 0, &quot;red&quot;)</span>
+<span class="sd">            &gt;&gt;&gt; grid.set_text(1, 1, &quot;Hi&quot;)</span>
+<span class="sd">            &gt;&gt;&gt; # Clear the whole grid</span>
+<span class="sd">            &gt;&gt;&gt; grid.clear()</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Requesting clear for entire grid &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39;.&quot;</span><span class="p">)</span>
+        <span class="n">clear_payload</span> <span class="o">=</span> <span class="p">{</span> <span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;clear&quot;</span> <span class="p">}</span> <span class="c1"># No options needed for whole grid clear</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_send_update</span><span class="p">(</span><span class="n">clear_payload</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_reset_specific_callbacks</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Resets grid-specific callbacks on removal.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_click_callback</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+    <span class="c1"># remove() is inherited from BaseModule</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Enjan Chou.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

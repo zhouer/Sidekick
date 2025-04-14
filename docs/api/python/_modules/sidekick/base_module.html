@@ -1,0 +1,359 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>sidekick.base_module &mdash; Sidekick Python Library 0.0.3 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=47de8214"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Sidekick Python Library
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">API Reference:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../modules.html">sidekick</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project Links:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/zhouer/Sidekick">GitHub Repository</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/sidekick-py/">PyPI Package</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Sidekick Python Library</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">sidekick.base_module</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for sidekick.base_module</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Base Class for Sidekick Visual Modules.</span>
+
+<span class="sd">This module provides the foundational `BaseModule` class, which acts as a</span>
+<span class="sd">blueprint for all specific visual modules in the Sidekick library (like Grid,</span>
+<span class="sd">Console, etc.).</span>
+
+<span class="sd">You typically won&#39;t use `BaseModule` directly in your scripts. Instead, you&#39;ll</span>
+<span class="sd">use the specific module classes (e.g., `sidekick.Grid`). This base class handles</span>
+<span class="sd">the common tasks needed for any visual module:</span>
+
+<span class="sd">- Assigning a unique ID to each module instance.</span>
+<span class="sd">- Ensuring the connection to the Sidekick panel is established.</span>
+<span class="sd">- Sending commands (like &#39;create&#39;, &#39;update&#39;, &#39;remove&#39;) to Sidekick.</span>
+<span class="sd">- Providing a way to remove the visual element (`remove()` method).</span>
+<span class="sd">- Handling errors reported by Sidekick for a specific module (`on_error` callback).</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">logger</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">connection</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">generate_unique_id</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Callable</span>
+
+<div class="viewcode-block" id="BaseModule">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.base_module.BaseModule">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BaseModule</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Base class for all Sidekick module interface classes (like Grid, Console).</span>
+
+<span class="sd">    This class handles the basic setup needed for any module that interacts</span>
+<span class="sd">    with the Sidekick UI. It manages the unique ID for the module instance,</span>
+<span class="sd">    ensures the connection to Sidekick is active, and provides common methods</span>
+<span class="sd">    like `remove()` and `on_error()`.</span>
+
+<span class="sd">    You typically won&#39;t use `BaseModule` directly. Instead, you&#39;ll use specific</span>
+<span class="sd">    module classes like `sidekick.Grid` or `sidekick.Console`.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        module_type (str): The type name of the module (e.g., &quot;grid&quot;, &quot;console&quot;).</span>
+<span class="sd">        target_id (str): The unique identifier for this specific module instance.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<div class="viewcode-block" id="BaseModule.__init__">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.base_module.BaseModule.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">module_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">instance_id</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">spawn</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="n">payload</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initializes the base module properties and connection.</span>
+
+<span class="sd">        This constructor is called by the subclasses (like Grid, Console).</span>
+<span class="sd">        It sets up the unique ID and registers the module instance with the</span>
+<span class="sd">        connection manager. If `spawn` is True, it sends a command to create</span>
+<span class="sd">        the corresponding UI element in Sidekick.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            module_type (str): The type string of the module (e.g., &quot;grid&quot;).</span>
+<span class="sd">            instance_id (Optional[str]): A specific ID for this instance.</span>
+<span class="sd">                - If `spawn=True`: Optional. A unique ID will be auto-generated if None.</span>
+<span class="sd">                - If `spawn=False`: **Required**. Identifies the existing UI element.</span>
+<span class="sd">            spawn (bool): If True (default), sends a command to Sidekick to create</span>
+<span class="sd">                a new UI element. If False, assumes the UI element already exists</span>
+<span class="sd">                and this Python object should connect to it.</span>
+<span class="sd">            payload (Optional[Dict[str, Any]]): Data needed to create the UI element</span>
+<span class="sd">                (only used if `spawn=True`). Keys should generally be camelCase.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ValueError: If `spawn` is False but `instance_id` is not provided.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">connection</span><span class="o">.</span><span class="n">activate_connection</span><span class="p">()</span> <span class="c1"># Ensure connection attempt is triggered</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">module_type</span> <span class="o">=</span> <span class="n">module_type</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_error_callback</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="nb">str</span><span class="p">],</span> <span class="kc">None</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">spawn</span> <span class="ow">and</span> <span class="n">instance_id</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;instance_id is required when spawn=False for module type &#39;</span><span class="si">{</span><span class="n">module_type</span><span class="si">}</span><span class="s2">&#39;&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Determine the target_id based on spawn and provided instance_id</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">target_id</span> <span class="o">=</span> <span class="n">instance_id</span> <span class="ow">or</span> <span class="n">generate_unique_id</span><span class="p">(</span><span class="n">module_type</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Initializing BaseModule: type=&#39;</span><span class="si">{</span><span class="n">module_type</span><span class="si">}</span><span class="s2">&#39;, id=&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39;, spawn=</span><span class="si">{</span><span class="n">spawn</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Register the internal handler for this instance</span>
+        <span class="n">connection</span><span class="o">.</span><span class="n">register_message_handler</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_internal_message_handler</span><span class="p">)</span>
+
+        <span class="c1"># Only send spawn command if requested</span>
+        <span class="k">if</span> <span class="n">spawn</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_send_command</span><span class="p">(</span><span class="s2">&quot;spawn&quot;</span><span class="p">,</span> <span class="n">payload</span> <span class="ow">or</span> <span class="p">{})</span></div>
+
+        <span class="c1"># else: Assuming instance exists, just track it locally</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_internal_message_handler</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Internal handler for messages received for this specific instance.</span>
+
+<span class="sd">        This method is automatically called by the connection manager when a</span>
+<span class="sd">        message arrives from Sidekick intended for this module instance.</span>
+<span class="sd">        It checks if the message is an error or an event. Subclasses override</span>
+<span class="sd">        this to handle specific events (like clicks).</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            message (Dict[str, Any]): The message dictionary received from Sidekick.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">msg_type</span> <span class="o">=</span> <span class="n">message</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;type&quot;</span><span class="p">)</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="n">message</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;payload&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">msg_type</span> <span class="o">==</span> <span class="s2">&quot;error&quot;</span><span class="p">:</span>
+            <span class="n">error_message</span> <span class="o">=</span> <span class="s2">&quot;Unknown error&quot;</span>
+            <span class="k">if</span> <span class="n">payload</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;message&quot;</span><span class="p">),</span> <span class="nb">str</span><span class="p">):</span>
+                <span class="n">error_message</span> <span class="o">=</span> <span class="n">payload</span><span class="p">[</span><span class="s2">&quot;message&quot;</span><span class="p">]</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Module &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39; received error from Sidekick: </span><span class="si">{</span><span class="n">error_message</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_error_callback</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_error_callback</span><span class="p">(</span><span class="n">error_message</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error in </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">module_type</span><span class="si">}</span><span class="s2"> &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39; on_error callback: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">msg_type</span> <span class="o">==</span> <span class="s2">&quot;event&quot;</span><span class="p">:</span>
+            <span class="c1"># Base implementation doesn&#39;t handle specific events, subclasses should.</span>
+            <span class="k">pass</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Module &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39; received unhandled message type &#39;</span><span class="si">{</span><span class="n">msg_type</span><span class="si">}</span><span class="s2">&#39;: </span><span class="si">{</span><span class="n">message</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="BaseModule.on_error">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.base_module.BaseModule.on_error">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_error</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">callback</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="nb">str</span><span class="p">],</span> <span class="kc">None</span><span class="p">]]):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Registers a function to handle errors specific to this module instance.</span>
+
+<span class="sd">        If Sidekick encounters an error related to this specific module instance</span>
+<span class="sd">        (e.g., trying to update a cell that doesn&#39;t exist), it might send back</span>
+<span class="sd">        an error message. This function allows you to define what happens when</span>
+<span class="sd">        such an error is received.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            callback (Optional[Callable[[str], None]]): A function that takes one</span>
+<span class="sd">                argument (the error message string). Pass `None` to remove any</span>
+<span class="sd">                existing callback.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            TypeError: If the provided callback is not callable or None.</span>
+
+<span class="sd">        Examples:</span>
+<span class="sd">            &gt;&gt;&gt; def handle_grid_error(error_msg):</span>
+<span class="sd">            ...     print(f&quot;Oops, grid error: {error_msg}&quot;)</span>
+<span class="sd">            &gt;&gt;&gt; my_grid.on_error(handle_grid_error)</span>
+<span class="sd">            &gt;&gt;&gt; # To remove the handler:</span>
+<span class="sd">            &gt;&gt;&gt; my_grid.on_error(None)</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">callback</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">callable</span><span class="p">(</span><span class="n">callback</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Error callback must be callable or None&quot;</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Setting on_error callback for module &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39;.&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_error_callback</span> <span class="o">=</span> <span class="n">callback</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_send_command</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Constructs and sends a command message to Sidekick for this instance.</span>
+
+<span class="sd">        This is an internal helper method used by methods like `set_color` or `clear`.</span>
+<span class="sd">        It formats the message according to the Sidekick protocol and uses the</span>
+<span class="sd">        connection manager to send it (handling buffering if needed).</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            msg_type (str): The message type (e.g., &quot;spawn&quot;, &quot;update&quot;, &quot;remove&quot;).</span>
+<span class="sd">            payload (Optional[Dict[str, Any]]): The data payload for the command.</span>
+<span class="sd">                Keys should be camelCase. Defaults to None.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">message</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="c1"># Reserved</span>
+            <span class="s2">&quot;module&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">module_type</span><span class="p">,</span>
+            <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="n">msg_type</span><span class="p">,</span>
+            <span class="s2">&quot;target&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="c1"># Include payload only if it&#39;s not None</span>
+        <span class="k">if</span> <span class="n">payload</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">message</span><span class="p">[</span><span class="s2">&quot;payload&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">payload</span>
+
+        <span class="c1"># Delegate sending (and potential buffering) to the connection module</span>
+        <span class="n">connection</span><span class="o">.</span><span class="n">send_message</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_send_update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">payload</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Sends an &#39;update&#39; command with the given payload.</span>
+
+<span class="sd">        Shortcut for `_send_command(&quot;update&quot;, payload)`.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            payload (Dict[str, Any]): The payload for the update command.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_send_command</span><span class="p">(</span><span class="s2">&quot;update&quot;</span><span class="p">,</span> <span class="n">payload</span><span class="p">)</span>
+
+<div class="viewcode-block" id="BaseModule.remove">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.base_module.BaseModule.remove">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">remove</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Removes this module instance from the Sidekick UI.</span>
+
+<span class="sd">        Sends a &#39;remove&#39; command to Sidekick to delete the corresponding UI</span>
+<span class="sd">        element and cleans up internal references and callbacks associated</span>
+<span class="sd">        with this Python object.</span>
+
+<span class="sd">        Examples:</span>
+<span class="sd">            &gt;&gt;&gt; my_grid.remove()</span>
+<span class="sd">            &gt;&gt;&gt; my_console.remove()</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Requesting removal of module &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39;.&quot;</span><span class="p">)</span>
+        <span class="c1"># Always try to unregister handler first</span>
+        <span class="n">connection</span><span class="o">.</span><span class="n">unregister_message_handler</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="p">)</span>
+        <span class="c1"># Reset local callbacks</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_error_callback</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="c1"># Let subclasses reset their specific callbacks if needed</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_reset_specific_callbacks</span><span class="p">()</span>
+        <span class="c1"># Send remove command (might be buffered)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_send_command</span><span class="p">(</span><span class="s2">&quot;remove&quot;</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_reset_specific_callbacks</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Internal placeholder for subclasses to reset their specific callbacks.</span>
+
+<span class="sd">        Called during the `remove()` process. Subclasses (like Grid, Console)</span>
+<span class="sd">        override this to set their specific event callbacks (like `_click_callback`</span>
+<span class="sd">        or `_input_text_callback`) back to None.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span>
+
+<div class="viewcode-block" id="BaseModule.__del__">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.base_module.BaseModule.__del__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__del__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Attempts to unregister the message handler upon garbage collection.</span>
+
+<span class="sd">        This is a cleanup measure, but relying on `remove()` explicitly is safer.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Check if connection module still exists (might be cleaned up during exit)</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">connection</span><span class="p">,</span> <span class="s1">&#39;unregister_message_handler&#39;</span><span class="p">):</span>
+                 <span class="n">connection</span><span class="o">.</span><span class="n">unregister_message_handler</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="c1"># Suppress errors during cleanup</span>
+            <span class="k">pass</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Enjan Chou.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

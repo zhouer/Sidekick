@@ -1,0 +1,419 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>sidekick.control &mdash; Sidekick Python Library 0.0.3 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=47de8214"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Sidekick Python Library
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">API Reference:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../modules.html">sidekick</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project Links:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/zhouer/Sidekick">GitHub Repository</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/sidekick-py/">PyPI Package</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Sidekick Python Library</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">sidekick.control</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for sidekick.control</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Sidekick Control Module Interface.</span>
+
+<span class="sd">This module provides the `Control` class, which allows you to add interactive</span>
+<span class="sd">UI elements like buttons and text input fields to the Sidekick panel directly</span>
+<span class="sd">from your Python script.</span>
+
+<span class="sd">You can use this to:</span>
+<span class="sd">  - Create buttons that trigger actions in your Python code when clicked.</span>
+<span class="sd">  - Add text fields where users can enter information that your script can then process.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Callable</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">logger</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.base_module</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModule</span>
+
+<div class="viewcode-block" id="Control">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.control.Control">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">Control</span><span class="p">(</span><span class="n">BaseModule</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Represents a Control module instance in the Sidekick UI.</span>
+
+<span class="sd">    Use this class to add interactive UI elements like buttons and text input</span>
+<span class="sd">    fields with submit buttons to the Sidekick panel. You can then define</span>
+<span class="sd">    callback functions (`on_click`, `on_input_text`) to react when the user</span>
+<span class="sd">    interacts with these controls.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        target_id (str): The unique identifier for this control panel instance.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="Control.__init__">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.control.Control.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">instance_id</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">spawn</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initializes the Control object, optionally creating a new control panel.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            instance_id (Optional[str]): A specific ID for this control panel.</span>
+<span class="sd">                - If `spawn=True`: Optional. Auto-generated if None.</span>
+<span class="sd">                - If `spawn=False`: **Required**. Identifies the existing panel.</span>
+<span class="sd">            spawn (bool): If True (default), creates a new, empty control panel</span>
+<span class="sd">                UI element. If False, attaches to an existing panel.</span>
+
+<span class="sd">        Examples:</span>
+<span class="sd">            &gt;&gt;&gt; # Create a new control panel</span>
+<span class="sd">            &gt;&gt;&gt; controls = sidekick.Control()</span>
+<span class="sd">            &gt;&gt;&gt;</span>
+<span class="sd">            &gt;&gt;&gt; # Attach to an existing panel named &quot;main-controls&quot;</span>
+<span class="sd">            &gt;&gt;&gt; existing_controls = sidekick.Control(instance_id=&quot;main-controls&quot;, spawn=False)</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Control spawn payload is currently empty.</span>
+        <span class="n">spawn_payload</span> <span class="o">=</span> <span class="p">{}</span> <span class="k">if</span> <span class="n">spawn</span> <span class="k">else</span> <span class="kc">None</span>
+
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">module_type</span><span class="o">=</span><span class="s2">&quot;control&quot;</span><span class="p">,</span>
+            <span class="n">instance_id</span><span class="o">=</span><span class="n">instance_id</span><span class="p">,</span>
+            <span class="n">spawn</span><span class="o">=</span><span class="n">spawn</span><span class="p">,</span>
+            <span class="n">payload</span><span class="o">=</span><span class="n">spawn_payload</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="c1"># Initialize specific callbacks</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_click_callback</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="nb">str</span><span class="p">],</span> <span class="kc">None</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_input_text_callback</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="kc">None</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Control panel &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39; initialized (spawn=</span><span class="si">{</span><span class="n">spawn</span><span class="si">}</span><span class="s2">).&quot;</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_internal_message_handler</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Handles incoming messages for this control panel instance.&quot;&quot;&quot;</span>
+        <span class="n">msg_type</span> <span class="o">=</span> <span class="n">message</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;type&quot;</span><span class="p">)</span>
+        <span class="n">payload</span> <span class="o">=</span> <span class="n">message</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;payload&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">msg_type</span> <span class="o">==</span> <span class="s2">&quot;event&quot;</span><span class="p">:</span>
+            <span class="n">event_type</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;event&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">payload</span> <span class="k">else</span> <span class="kc">None</span>
+            <span class="n">control_id</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;controlId&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">payload</span> <span class="k">else</span> <span class="kc">None</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">control_id</span><span class="p">:</span>
+                 <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Control &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39; received event without &#39;controlId&#39;: </span><span class="si">{</span><span class="n">payload</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                 <span class="k">return</span> <span class="c1"># Cannot process event without controlId</span>
+
+            <span class="k">if</span> <span class="n">event_type</span> <span class="o">==</span> <span class="s2">&quot;click&quot;</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_click_callback</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_click_callback</span><span class="p">(</span><span class="n">control_id</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error in Control &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39; on_click callback for &#39;</span><span class="si">{</span><span class="n">control_id</span><span class="si">}</span><span class="s2">&#39;: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+            <span class="k">elif</span> <span class="n">event_type</span> <span class="o">==</span> <span class="s2">&quot;inputText&quot;</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_input_text_callback</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">value</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;value&quot;</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">_input_text_callback</span><span class="p">(</span><span class="n">control_id</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Control &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39; received inputText for &#39;</span><span class="si">{</span><span class="n">control_id</span><span class="si">}</span><span class="s2">&#39; with non-string value: </span><span class="si">{</span><span class="n">payload</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error in Control &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39; on_input_text callback for &#39;</span><span class="si">{</span><span class="n">control_id</span><span class="si">}</span><span class="s2">&#39;: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Control &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39; received unhandled event &#39;</span><span class="si">{</span><span class="n">event_type</span><span class="si">}</span><span class="s2">&#39; for control &#39;</span><span class="si">{</span><span class="n">control_id</span><span class="si">}</span><span class="s2">&#39;.&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Call base handler for error messages</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">_internal_message_handler</span><span class="p">(</span><span class="n">message</span><span class="p">)</span>
+
+<div class="viewcode-block" id="Control.on_click">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.control.Control.on_click">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_click</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">callback</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="nb">str</span><span class="p">],</span> <span class="kc">None</span><span class="p">]]):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Registers a function to handle button clicks within this panel.</span>
+
+<span class="sd">        When a button added via `add_button` is clicked in the Sidekick UI, the</span>
+<span class="sd">        function registered here will be called.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            callback (Optional[Callable[[str], None]]): A function that takes one</span>
+<span class="sd">                argument: the `control_id` (string) of the button that was clicked.</span>
+<span class="sd">                Pass `None` to remove the current callback.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            TypeError: If the provided callback is not callable or None.</span>
+
+<span class="sd">        Examples:</span>
+<span class="sd">            &gt;&gt;&gt; def handle_button(button_id):</span>
+<span class="sd">            ...     print(f&quot;Button &#39;{button_id}&#39; was pressed!&quot;)</span>
+<span class="sd">            ...     if button_id == &quot;quit_button&quot;:</span>
+<span class="sd">            ...         sidekick.shutdown()</span>
+<span class="sd">            &gt;&gt;&gt;</span>
+<span class="sd">            &gt;&gt;&gt; controls = sidekick.Control()</span>
+<span class="sd">            &gt;&gt;&gt; controls.add_button(&quot;start_button&quot;, &quot;Start Process&quot;)</span>
+<span class="sd">            &gt;&gt;&gt; controls.add_button(&quot;quit_button&quot;, &quot;Quit&quot;)</span>
+<span class="sd">            &gt;&gt;&gt; controls.on_click(handle_button)</span>
+<span class="sd">            &gt;&gt;&gt; # sidekick.run_forever() # Needed to keep script alive for clicks</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">callback</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">callable</span><span class="p">(</span><span class="n">callback</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Click callback must be callable or None&quot;</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Setting on_click callback for control panel &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39;.&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_click_callback</span> <span class="o">=</span> <span class="n">callback</span></div>
+
+
+<div class="viewcode-block" id="Control.on_input_text">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.control.Control.on_input_text">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">on_input_text</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">callback</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">],</span> <span class="kc">None</span><span class="p">]]):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Registers a function to handle text submitted from text input controls.</span>
+
+<span class="sd">        When the user enters text into a field added by `add_text_input` and</span>
+<span class="sd">        clicks its associated submit button in Sidekick, the function registered</span>
+<span class="sd">        here will be called.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            callback (Optional[Callable[[str, str], None]]): A function that takes</span>
+<span class="sd">                two arguments:</span>
+<span class="sd">                1. `control_id` (str): The ID of the text input group.</span>
+<span class="sd">                2. `value` (str): The text entered by the user.</span>
+<span class="sd">                Pass `None` to remove the current callback.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            TypeError: If the provided callback is not callable or None.</span>
+
+<span class="sd">        Examples:</span>
+<span class="sd">            &gt;&gt;&gt; def handle_name_input(input_id, entered_name):</span>
+<span class="sd">            ...     print(f&quot;Input received from &#39;{input_id}&#39;: Hello, {entered_name}!&quot;)</span>
+<span class="sd">            &gt;&gt;&gt;</span>
+<span class="sd">            &gt;&gt;&gt; controls = sidekick.Control()</span>
+<span class="sd">            &gt;&gt;&gt; controls.add_text_input(&quot;name_input&quot;, placeholder=&quot;Enter your name&quot;)</span>
+<span class="sd">            &gt;&gt;&gt; controls.on_input_text(handle_name_input)</span>
+<span class="sd">            &gt;&gt;&gt; # sidekick.run_forever() # Needed to keep script alive for input</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">callback</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">callable</span><span class="p">(</span><span class="n">callback</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;Input text callback must be callable or None&quot;</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Setting on_input_text callback for control panel &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39;.&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_input_text_callback</span> <span class="o">=</span> <span class="n">callback</span></div>
+
+
+    <span class="c1"># on_error is inherited from BaseModule</span>
+
+<div class="viewcode-block" id="Control.add_button">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.control.Control.add_button">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_button</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">control_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Adds a clickable button to this control panel in the Sidekick UI.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            control_id (str): A unique identifier for this button within this panel.</span>
+<span class="sd">                You&#39;ll receive this ID in the `on_click` callback when the button</span>
+<span class="sd">                is pressed. Must be a non-empty string.</span>
+<span class="sd">            text (str): The text label displayed on the button.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ValueError: If `control_id` is empty or not a string (logs an error).</span>
+
+<span class="sd">        Examples:</span>
+<span class="sd">            &gt;&gt;&gt; controls.add_button(&quot;action_button&quot;, &quot;Perform Action&quot;)</span>
+<span class="sd">            &gt;&gt;&gt; controls.add_button(&quot;cancel_button&quot;, &quot;Cancel&quot;)</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">control_id</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">control_id</span><span class="p">:</span>
+            <span class="c1"># Log error and raise exception for invalid control_id</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;Control ID for add_button must be a non-empty string.&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Control ID for add_button must be a non-empty string.&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">text</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Button text for &#39;</span><span class="si">{</span><span class="n">control_id</span><span class="si">}</span><span class="s2">&#39; is not a string, converting.&quot;</span><span class="p">)</span>
+            <span class="n">text</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">text</span><span class="p">)</span>
+
+        <span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;add&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;controlId&quot;</span><span class="p">:</span> <span class="n">control_id</span><span class="p">,</span>
+            <span class="s2">&quot;options&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;controlType&quot;</span><span class="p">:</span> <span class="s2">&quot;button&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;config&quot;</span><span class="p">:</span> <span class="p">{</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">text</span> <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_send_update</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Control &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39;: Sent add command for button &#39;</span><span class="si">{</span><span class="n">control_id</span><span class="si">}</span><span class="s2">&#39;.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Control.add_text_input">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.control.Control.add_text_input">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_text_input</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">control_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">placeholder</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="n">initial_value</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="n">button_text</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;Submit&quot;</span>
+    <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Adds a text input field and an associated submit button to the panel.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            control_id (str): A unique identifier for this text input group.</span>
+<span class="sd">                You&#39;ll receive this ID and the entered text in the `on_input_text`</span>
+<span class="sd">                callback when the submit button is clicked. Must be a non-empty string.</span>
+<span class="sd">            placeholder (str): Placeholder text displayed in the input field when</span>
+<span class="sd">                it&#39;s empty. Defaults to &quot;&quot;.</span>
+<span class="sd">            initial_value (str): Initial text value pre-filled in the input field.</span>
+<span class="sd">                Defaults to &quot;&quot;.</span>
+<span class="sd">            button_text (str): Text label for the submit button associated with this</span>
+<span class="sd">                input field. Defaults to &quot;Submit&quot;.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ValueError: If `control_id` is empty or not a string (logs an error).</span>
+
+<span class="sd">        Examples:</span>
+<span class="sd">            &gt;&gt;&gt; # Add a simple text input</span>
+<span class="sd">            &gt;&gt;&gt; controls.add_text_input(&quot;user_query&quot;, placeholder=&quot;Ask something...&quot;)</span>
+<span class="sd">            &gt;&gt;&gt;</span>
+<span class="sd">            &gt;&gt;&gt; # Add an input with initial value and custom button</span>
+<span class="sd">            &gt;&gt;&gt; controls.add_text_input(&quot;config_value&quot;, initial_value=&quot;default&quot;, button_text=&quot;Update&quot;)</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">control_id</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">control_id</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;Control ID for add_text_input must be a non-empty string.&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Control ID for add_text_input must be a non-empty string.&quot;</span><span class="p">)</span>
+        <span class="n">placeholder</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">placeholder</span><span class="p">)</span>
+        <span class="n">initial_value</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">initial_value</span><span class="p">)</span>
+        <span class="n">button_text</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">button_text</span><span class="p">)</span>
+
+        <span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;add&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;controlId&quot;</span><span class="p">:</span> <span class="n">control_id</span><span class="p">,</span>
+            <span class="s2">&quot;options&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;controlType&quot;</span><span class="p">:</span> <span class="s2">&quot;textInput&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;config&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;placeholder&quot;</span><span class="p">:</span> <span class="n">placeholder</span><span class="p">,</span>
+                    <span class="s2">&quot;initialValue&quot;</span><span class="p">:</span> <span class="n">initial_value</span><span class="p">,</span>
+                    <span class="s2">&quot;buttonText&quot;</span><span class="p">:</span> <span class="n">button_text</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_send_update</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Control &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39;: Sent add command for text input &#39;</span><span class="si">{</span><span class="n">control_id</span><span class="si">}</span><span class="s2">&#39;.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Control.remove_control">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.control.Control.remove_control">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">remove_control</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">control_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Removes a specific control (button or text input) from this panel.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            control_id (str): The unique identifier (`control_id` used when adding)</span>
+<span class="sd">                of the control to remove. Must be a non-empty string.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ValueError: If `control_id` is empty or not a string (logs an error).</span>
+
+<span class="sd">        Examples:</span>
+<span class="sd">            &gt;&gt;&gt; controls.remove_control(&quot;start_button&quot;)</span>
+<span class="sd">            &gt;&gt;&gt; controls.remove_control(&quot;user_query&quot;)</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">control_id</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">control_id</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;Control ID for remove_control must be a non-empty string.&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Control ID for remove_control must be a non-empty string.&quot;</span><span class="p">)</span>
+
+        <span class="n">payload</span> <span class="o">=</span> <span class="p">{</span> <span class="s2">&quot;action&quot;</span><span class="p">:</span> <span class="s2">&quot;remove&quot;</span><span class="p">,</span> <span class="s2">&quot;controlId&quot;</span><span class="p">:</span> <span class="n">control_id</span> <span class="p">}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_send_update</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Control &#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">target_id</span><span class="si">}</span><span class="s2">&#39;: Sent remove command for control &#39;</span><span class="si">{</span><span class="n">control_id</span><span class="si">}</span><span class="s2">&#39;.&quot;</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_reset_specific_callbacks</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Resets control-specific callbacks on removal.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_click_callback</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_input_text_callback</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+    <span class="c1"># remove() is inherited from BaseModule</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Enjan Chou.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

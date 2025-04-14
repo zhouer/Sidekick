@@ -1,0 +1,1119 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>sidekick.connection &mdash; Sidekick Python Library 0.0.3 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=47de8214"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            Sidekick Python Library
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">API Reference:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../modules.html">sidekick</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Project Links:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/zhouer/Sidekick">GitHub Repository</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://pypi.org/project/sidekick-py/">PyPI Package</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">Sidekick Python Library</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">sidekick.connection</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for sidekick.connection</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Sidekick WebSocket Connection Management.</span>
+
+<span class="sd">This module is the &quot;engine room&quot; of the Sidekick Python library. It handles</span>
+<span class="sd">all the behind-the-scenes communication with the Sidekick visualization panel,</span>
+<span class="sd">usually via a WebSocket connection.</span>
+
+<span class="sd">As a user of the `sidekick` library, you typically don&#39;t need to interact</span>
+<span class="sd">with this module directly. Most of its important functions (like `set_url`,</span>
+<span class="sd">`run_forever`, `shutdown`, `ensure_ready`, `flush_messages`) are made</span>
+<span class="sd">available directly under the main `sidekick` package (e.g., `sidekick.set_url()`).</span>
+
+<span class="sd">Key responsibilities managed here include:</span>
+<span class="sd">  - Establishing and maintaining the WebSocket connection.</span>
+<span class="sd">  - Running a background thread to listen for messages from Sidekick.</span>
+<span class="sd">  - Sending messages (commands) from your Python script to Sidekick.</span>
+<span class="sd">  - Buffering messages if the connection isn&#39;t ready yet.</span>
+<span class="sd">  - Handling system-level messages for discovering peers (Hero/Sidekick).</span>
+<span class="sd">  - Managing the connection state (Disconnected, Connecting, Ready).</span>
+<span class="sd">  - Providing functions to control the script&#39;s lifecycle (`run_forever`)</span>
+<span class="sd">    and ensure messages are sent (`flush_messages`).</span>
+<span class="sd">  - Cleaning up the connection gracefully (`shutdown`).</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">websocket</span> <span class="c1"># Using websocket-client library</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">threading</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">atexit</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">uuid</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">deque</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">enum</span><span class="w"> </span><span class="kn">import</span> <span class="n">Enum</span><span class="p">,</span> <span class="n">auto</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Deque</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Set</span>
+
+<span class="c1"># --- Import logger from package __init__ ---</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.</span><span class="w"> </span><span class="kn">import</span> <span class="n">logger</span>
+
+<span class="c1"># --- Version Import ---</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">._version</span><span class="w"> </span><span class="kn">import</span> <span class="n">__version__</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="n">__version__</span> <span class="o">=</span> <span class="s1">&#39;unknown&#39;</span> <span class="c1"># Fallback version</span>
+
+<span class="c1"># --- Connection Status Enum ---</span>
+<div class="viewcode-block" id="ConnectionStatus">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.connection.ConnectionStatus">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ConnectionStatus</span><span class="p">(</span><span class="n">Enum</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Represents the different states of the WebSocket connection.&quot;&quot;&quot;</span>
+    <span class="n">DISCONNECTED</span> <span class="o">=</span> <span class="n">auto</span><span class="p">()</span>               <span class="c1"># Not connected or connection closed.</span>
+    <span class="n">CONNECTING</span> <span class="o">=</span> <span class="n">auto</span><span class="p">()</span>                 <span class="c1"># Attempting to establish connection.</span>
+    <span class="n">CONNECTED_WAITING_SIDEKICK</span> <span class="o">=</span> <span class="n">auto</span><span class="p">()</span> <span class="c1"># Connected to server, waiting for Sidekick UI to announce itself.</span>
+    <span class="n">CONNECTED_READY</span> <span class="o">=</span> <span class="n">auto</span><span class="p">()</span>            <span class="c1"># Connected and Sidekick UI is online and ready.</span></div>
+
+
+<span class="c1"># --- Configuration and State (Internal) ---</span>
+<span class="n">_ws_url</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;ws://localhost:5163&quot;</span>
+<span class="n">_ws_connection</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">websocket</span><span class="o">.</span><span class="n">WebSocket</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="n">_connection_lock</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">RLock</span><span class="p">()</span> <span class="c1"># Lock for thread safety</span>
+<span class="n">_listener_thread</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="n">_listener_started</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="n">_message_handlers</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span> <span class="kc">None</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span> <span class="c1"># Maps instance_id to handler</span>
+<span class="n">_command_counter</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span> <span class="c1"># Counter for Canvas command IDs</span>
+
+<span class="n">_peer_id</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span> <span class="c1"># Unique ID for this Python script instance</span>
+<span class="n">_connection_status</span><span class="p">:</span> <span class="n">ConnectionStatus</span> <span class="o">=</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">DISCONNECTED</span>
+<span class="n">_sidekick_peers_online</span><span class="p">:</span> <span class="n">Set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span> <span class="c1"># Stores IDs of online Sidekick UIs</span>
+<span class="n">_message_buffer</span><span class="p">:</span> <span class="n">Deque</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="n">deque</span><span class="p">()</span> <span class="c1"># Buffer for messages sent before READY</span>
+<span class="n">_clear_on_connect</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+<span class="n">_clear_on_disconnect</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="n">_global_message_handler</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span> <span class="kc">None</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span> <span class="c1"># Global handler</span>
+
+<span class="n">_stop_event</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span> <span class="c1"># Signals listener thread to stop</span>
+<span class="n">_ready_event</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span> <span class="c1"># Signals when connection becomes READY</span>
+<span class="n">_shutdown_event</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span> <span class="c1"># Signals shutdown for run_forever</span>
+<span class="n">_buffer_flushed_and_ready_condition</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Condition</span><span class="p">(</span><span class="n">_connection_lock</span><span class="p">)</span> <span class="c1"># For flush_messages</span>
+
+<span class="n">_PING_INTERVAL</span> <span class="o">=</span> <span class="mi">20</span>
+<span class="n">_PING_TIMEOUT</span> <span class="o">=</span> <span class="mi">10</span>
+<span class="n">_INITIAL_CONNECT_TIMEOUT</span> <span class="o">=</span> <span class="mi">5</span>
+<span class="n">_LISTENER_RECV_TIMEOUT</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="c1"># Timeout for ws.recv()</span>
+
+<span class="c1"># --- Private Helper Functions (Internal Use Only) ---</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_generate_peer_id</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generates the unique peer ID for this Hero instance.&quot;&quot;&quot;</span>
+    <span class="k">global</span> <span class="n">_peer_id</span>
+    <span class="k">if</span> <span class="n">_peer_id</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">_peer_id</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;hero-</span><span class="si">{</span><span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">()</span><span class="o">.</span><span class="n">hex</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Generated Hero Peer ID: </span><span class="si">{</span><span class="n">_peer_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">_peer_id</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_send_raw</span><span class="p">(</span><span class="n">ws</span><span class="p">:</span> <span class="n">websocket</span><span class="o">.</span><span class="n">WebSocket</span><span class="p">,</span> <span class="n">message_dict</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Internal: Sends the message directly, handles basic errors.&quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">message_json</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">message_dict</span><span class="p">)</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Sending raw: </span><span class="si">{</span><span class="n">message_json</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">ws</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">message_json</span><span class="p">)</span>
+    <span class="k">except</span> <span class="p">(</span><span class="n">websocket</span><span class="o">.</span><span class="n">WebSocketException</span><span class="p">,</span> <span class="ne">BrokenPipeError</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="c1"># Check if we are already stopping/disconnected to avoid redundant close calls</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">_stop_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">()</span> <span class="ow">and</span> <span class="n">_connection_status</span> <span class="o">!=</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">DISCONNECTED</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;WebSocket send error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">. Triggering close.&quot;</span><span class="p">)</span>
+            <span class="c1"># Use a separate thread or schedule cleanup to avoid deadlock if called from listener</span>
+            <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">close_connection</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="kc">False</span><span class="p">,),</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unexpected error sending message: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_send_system_announce</span><span class="p">(</span><span class="n">status</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Sends the system announce message (online/offline).&quot;&quot;&quot;</span>
+    <span class="c1"># This function might be called before connection is fully &#39;READY&#39;</span>
+    <span class="c1"># It needs to acquire the connection directly if available</span>
+    <span class="k">with</span> <span class="n">_connection_lock</span><span class="p">:</span>
+        <span class="n">ws</span> <span class="o">=</span> <span class="n">_ws_connection</span> <span class="c1"># Get current connection object safely</span>
+        <span class="n">peer_id</span> <span class="o">=</span> <span class="n">_generate_peer_id</span><span class="p">()</span> <span class="c1"># Ensure peer ID exists</span>
+        <span class="k">if</span> <span class="n">ws</span> <span class="ow">and</span> <span class="n">ws</span><span class="o">.</span><span class="n">connected</span> <span class="ow">and</span> <span class="n">peer_id</span><span class="p">:</span>
+            <span class="n">announce_payload</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;peerId&quot;</span><span class="p">:</span> <span class="n">peer_id</span><span class="p">,</span>
+                <span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;hero&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="n">status</span><span class="p">,</span>
+                <span class="s2">&quot;version&quot;</span><span class="p">:</span> <span class="n">__version__</span><span class="p">,</span>
+                <span class="s2">&quot;timestamp&quot;</span><span class="p">:</span> <span class="nb">int</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">*</span> <span class="mi">1000</span><span class="p">)</span>
+            <span class="p">}</span>
+            <span class="n">message</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+                <span class="s2">&quot;module&quot;</span><span class="p">:</span> <span class="s2">&quot;system&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;announce&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;payload&quot;</span><span class="p">:</span> <span class="n">announce_payload</span>
+            <span class="p">}</span>
+            <span class="n">_send_raw</span><span class="p">(</span><span class="n">ws</span><span class="p">,</span> <span class="n">message</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Sent system announce: </span><span class="si">{</span><span class="n">status</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">status</span> <span class="o">==</span> <span class="s2">&quot;offline&quot;</span><span class="p">:</span>
+             <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Cannot send offline announce, connection already closed or closing.&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+             <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Cannot send system announce &#39;</span><span class="si">{</span><span class="n">status</span><span class="si">}</span><span class="s2">&#39;, WebSocket not connected.&quot;</span><span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_flush_message_buffer</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Sends all buffered messages. Assumes lock is held. Returns True if READY and empty.&quot;&quot;&quot;</span>
+    <span class="n">notify_condition</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_message_buffer</span><span class="p">:</span>
+        <span class="c1"># Buffer is already empty, potentially need notification if status just became READY</span>
+        <span class="k">if</span> <span class="n">_connection_status</span> <span class="o">==</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">CONNECTED_READY</span><span class="p">:</span>
+             <span class="n">notify_condition</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">return</span> <span class="n">notify_condition</span> <span class="c1"># Return whether notification is needed</span>
+
+    <span class="n">ws</span> <span class="o">=</span> <span class="n">_ws_connection</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">ws</span> <span class="ow">and</span> <span class="n">ws</span><span class="o">.</span><span class="n">connected</span> <span class="ow">and</span> <span class="n">_connection_status</span> <span class="o">==</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">CONNECTED_READY</span><span class="p">):</span>
+        <span class="c1"># Cannot flush yet, state not met</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Flushing </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">_message_buffer</span><span class="p">)</span><span class="si">}</span><span class="s2"> buffered messages...&quot;</span><span class="p">)</span>
+    <span class="k">while</span> <span class="n">_message_buffer</span><span class="p">:</span>
+        <span class="n">message_to_send</span> <span class="o">=</span> <span class="n">_message_buffer</span><span class="o">.</span><span class="n">popleft</span><span class="p">()</span>
+        <span class="n">_send_raw</span><span class="p">(</span><span class="n">ws</span><span class="p">,</span> <span class="n">message_to_send</span><span class="p">)</span> <span class="c1"># Assumes _send_raw handles potential errors</span>
+        <span class="c1"># Check stop event during flushing in case close is called concurrently</span>
+        <span class="k">if</span> <span class="n">_stop_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
+             <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Stop event set during buffer flush, aborting.&quot;</span><span class="p">)</span>
+             <span class="k">return</span> <span class="kc">False</span> <span class="c1"># State not met as we are stopping</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Message buffer flushed.&quot;</span><span class="p">)</span>
+    <span class="c1"># Buffer is now empty and status is READY</span>
+    <span class="k">return</span> <span class="kc">True</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_handle_sidekick_online</span><span class="p">(</span><span class="n">sidekick_peer_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Handles logic when the first Sidekick UI announces online.&quot;&quot;&quot;</span>
+    <span class="c1"># Assumes lock is held by the caller (_listen_for_messages)</span>
+    <span class="k">global</span> <span class="n">_connection_status</span>
+    <span class="n">notify_flush_cond</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">if</span> <span class="n">_connection_status</span> <span class="o">==</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">CONNECTED_WAITING_SIDEKICK</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Sidekick &#39;</span><span class="si">{</span><span class="n">sidekick_peer_id</span><span class="si">}</span><span class="s2">&#39; announced online. System is READY.&quot;</span><span class="p">)</span>
+        <span class="n">_connection_status</span> <span class="o">=</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">CONNECTED_READY</span>
+        <span class="n">_ready_event</span><span class="o">.</span><span class="n">set</span><span class="p">()</span> <span class="c1"># Signal that connection is ready</span>
+
+        <span class="k">if</span> <span class="n">_clear_on_connect</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;clear_on_connect is True, sending global/clearAll.&quot;</span><span class="p">)</span>
+            <span class="n">clear_all</span><span class="p">()</span> <span class="c1"># This will now succeed as status is READY</span>
+
+        <span class="c1"># Flush buffer and check if the condition (READY + empty) is now met</span>
+        <span class="n">notify_flush_cond</span> <span class="o">=</span> <span class="n">_flush_message_buffer</span><span class="p">()</span>
+
+    <span class="c1"># If the condition (READY + empty buffer) is met, notify waiters</span>
+    <span class="k">if</span> <span class="n">notify_flush_cond</span><span class="p">:</span>
+         <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;_handle_sidekick_online: Notifying flush condition.&quot;</span><span class="p">)</span>
+         <span class="n">_buffer_flushed_and_ready_condition</span><span class="o">.</span><span class="n">notify_all</span><span class="p">()</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_listen_for_messages</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Background thread function to listen for incoming messages.&quot;&quot;&quot;</span>
+    <span class="k">global</span> <span class="n">_connection_status</span><span class="p">,</span> <span class="n">_message_handlers</span><span class="p">,</span> <span class="n">_sidekick_peers_online</span><span class="p">,</span> <span class="n">_listener_started</span><span class="p">,</span> <span class="n">_global_message_handler</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Listener thread started.&quot;</span><span class="p">)</span>
+    <span class="n">ws</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="c1"># Main loop controlled by the stop event</span>
+    <span class="k">while</span> <span class="ow">not</span> <span class="n">_stop_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
+        <span class="k">with</span> <span class="n">_connection_lock</span><span class="p">:</span>
+             <span class="c1"># Check status/connection integrity at the start of each loop iteration</span>
+             <span class="k">if</span> <span class="n">_connection_status</span> <span class="o">==</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">DISCONNECTED</span><span class="p">:</span>
+                 <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Listener: Status is DISCONNECTED, stopping loop.&quot;</span><span class="p">)</span>
+                 <span class="k">break</span> <span class="c1"># Exit loop if disconnected externally</span>
+             <span class="k">if</span> <span class="n">_ws_connection</span> <span class="ow">and</span> <span class="n">_ws_connection</span><span class="o">.</span><span class="n">connected</span><span class="p">:</span>
+                 <span class="n">ws</span> <span class="o">=</span> <span class="n">_ws_connection</span>
+             <span class="k">else</span><span class="p">:</span>
+                 <span class="c1"># Connection lost unexpectedly? Trigger close only if not already stopping.</span>
+                 <span class="k">if</span> <span class="ow">not</span> <span class="n">_stop_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Listener: WebSocket connection lost.&quot;</span><span class="p">)</span>
+                    <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">close_connection</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="kc">False</span><span class="p">,),</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+                 <span class="k">break</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">ws</span><span class="p">:</span>
+            <span class="c1"># Should have been caught above, but as a safeguard</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">_stop_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
+                 <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Listener: WebSocket object is None, stopping loop.&quot;</span><span class="p">)</span>
+                 <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">close_connection</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="kc">False</span><span class="p">,),</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+            <span class="k">break</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Set timeout for recv() to allow periodic check of _stop_event</span>
+            <span class="c1"># This is the crucial change for reliable shutdown</span>
+            <span class="n">ws</span><span class="o">.</span><span class="n">settimeout</span><span class="p">(</span><span class="n">_LISTENER_RECV_TIMEOUT</span><span class="p">)</span>
+            <span class="n">message_str</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">recv</span><span class="p">()</span>
+
+            <span class="c1"># Check stop event again immediately after potentially blocking recv</span>
+            <span class="k">if</span> <span class="n">_stop_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span> <span class="k">break</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">message_str</span><span class="p">:</span> <span class="c1"># Empty message often means server closed connection</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">_stop_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
+                     <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Listener: Server closed connection (received empty message).&quot;</span><span class="p">)</span>
+                     <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">close_connection</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="kc">False</span><span class="p">,),</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+                <span class="k">break</span>
+
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Listener: Received raw message: </span><span class="si">{</span><span class="n">message_str</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">message_data</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">message_str</span><span class="p">)</span> <span class="c1"># Assume valid JSON</span>
+
+            <span class="k">with</span> <span class="n">_connection_lock</span><span class="p">:</span> <span class="c1"># Acquire lock to process message and update state</span>
+                 <span class="c1"># Check stop/disconnect again inside lock</span>
+                 <span class="k">if</span> <span class="n">_stop_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">()</span> <span class="ow">or</span> <span class="n">_connection_status</span> <span class="o">==</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">DISCONNECTED</span><span class="p">:</span> <span class="k">break</span>
+
+                 <span class="c1"># --- 1. Call Global Handler (if registered) ---</span>
+                 <span class="k">if</span> <span class="n">_global_message_handler</span><span class="p">:</span>
+                     <span class="k">try</span><span class="p">:</span>
+                         <span class="n">_global_message_handler</span><span class="p">(</span><span class="n">message_data</span><span class="p">)</span>
+                     <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                         <span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Listener: Error in global message handler: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+                 <span class="c1"># --- 2. Handle Message Dispatch ---</span>
+                 <span class="n">module</span> <span class="o">=</span> <span class="n">message_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;module&#39;</span><span class="p">)</span>
+                 <span class="n">msg_type</span> <span class="o">=</span> <span class="n">message_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;type&#39;</span><span class="p">)</span>
+                 <span class="n">payload</span> <span class="o">=</span> <span class="n">message_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;payload&#39;</span><span class="p">)</span>
+
+                 <span class="c1"># --- Handle System Announce ---</span>
+                 <span class="k">if</span> <span class="n">module</span> <span class="o">==</span> <span class="s1">&#39;system&#39;</span> <span class="ow">and</span> <span class="n">msg_type</span> <span class="o">==</span> <span class="s1">&#39;announce&#39;</span> <span class="ow">and</span> <span class="n">payload</span><span class="p">:</span>
+                      <span class="n">peer_id</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;peerId&#39;</span><span class="p">)</span>
+                      <span class="n">role</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;role&#39;</span><span class="p">)</span>
+                      <span class="n">status</span> <span class="o">=</span> <span class="n">payload</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;status&#39;</span><span class="p">)</span>
+                      <span class="k">if</span> <span class="n">peer_id</span> <span class="ow">and</span> <span class="n">role</span> <span class="o">==</span> <span class="s1">&#39;sidekick&#39;</span><span class="p">:</span>
+                           <span class="k">if</span> <span class="n">status</span> <span class="o">==</span> <span class="s1">&#39;online&#39;</span><span class="p">:</span>
+                                <span class="n">was_empty</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">_sidekick_peers_online</span>
+                                <span class="n">_sidekick_peers_online</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">peer_id</span><span class="p">)</span>
+                                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Sidekick peer online: </span><span class="si">{</span><span class="n">peer_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                                <span class="k">if</span> <span class="n">was_empty</span><span class="p">:</span> <span class="c1"># If this is the *first* sidekick online</span>
+                                     <span class="n">_handle_sidekick_online</span><span class="p">(</span><span class="n">peer_id</span><span class="p">)</span>
+                           <span class="k">elif</span> <span class="n">status</span> <span class="o">==</span> <span class="s1">&#39;offline&#39;</span><span class="p">:</span>
+                                <span class="k">if</span> <span class="n">peer_id</span> <span class="ow">in</span> <span class="n">_sidekick_peers_online</span><span class="p">:</span>
+                                     <span class="n">_sidekick_peers_online</span><span class="o">.</span><span class="n">discard</span><span class="p">(</span><span class="n">peer_id</span><span class="p">)</span>
+                                     <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Sidekick peer offline: </span><span class="si">{</span><span class="n">peer_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                                     <span class="c1"># Optional: If needed, could transition back to WAITING</span>
+                                     <span class="c1"># and clear _ready_event if _sidekick_peers_online is now empty.</span>
+                                     <span class="c1"># if not _sidekick_peers_online and _connection_status == ConnectionStatus.CONNECTED_READY:</span>
+                                     <span class="c1">#    _connection_status = ConnectionStatus.CONNECTED_WAITING_SIDEKICK</span>
+                                     <span class="c1">#    _ready_event.clear()</span>
+                                     <span class="c1">#    logger.info(&quot;Last Sidekick peer disconnected, returning to WAITING state.&quot;)</span>
+
+                 <span class="c1"># --- Handle Module Event/Error (Dispatch to specific handler) ---</span>
+                 <span class="k">elif</span> <span class="n">msg_type</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;event&#39;</span><span class="p">,</span> <span class="s1">&#39;error&#39;</span><span class="p">]:</span>
+                      <span class="n">instance_id</span> <span class="o">=</span> <span class="n">message_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;src&#39;</span><span class="p">)</span>
+                      <span class="k">if</span> <span class="n">instance_id</span> <span class="ow">and</span> <span class="n">instance_id</span> <span class="ow">in</span> <span class="n">_message_handlers</span><span class="p">:</span>
+                           <span class="n">handler</span> <span class="o">=</span> <span class="n">_message_handlers</span><span class="p">[</span><span class="n">instance_id</span><span class="p">]</span>
+                           <span class="k">try</span><span class="p">:</span>
+                                <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Listener: Invoking handler for instance &#39;</span><span class="si">{</span><span class="n">instance_id</span><span class="si">}</span><span class="s2">&#39; (type: </span><span class="si">{</span><span class="n">msg_type</span><span class="si">}</span><span class="s2">).&quot;</span><span class="p">)</span>
+                                <span class="n">handler</span><span class="p">(</span><span class="n">message_data</span><span class="p">)</span> <span class="c1"># Call the module&#39;s internal handler</span>
+                           <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                                <span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Listener: Error executing handler for instance &#39;</span><span class="si">{</span><span class="n">instance_id</span><span class="si">}</span><span class="s2">&#39;: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                      <span class="k">elif</span> <span class="n">instance_id</span><span class="p">:</span>
+                           <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Listener: No specific handler registered for instance &#39;</span><span class="si">{</span><span class="n">instance_id</span><span class="si">}</span><span class="s2">&#39; for message type </span><span class="si">{</span><span class="n">msg_type</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+                      <span class="k">else</span><span class="p">:</span>
+                           <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Listener: Received </span><span class="si">{</span><span class="n">msg_type</span><span class="si">}</span><span class="s2"> message without &#39;src&#39;: </span><span class="si">{</span><span class="n">message_data</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+                 <span class="k">else</span><span class="p">:</span>
+                      <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Listener: Received unhandled message type: module=&#39;</span><span class="si">{</span><span class="n">module</span><span class="si">}</span><span class="s2">&#39;, type=&#39;</span><span class="si">{</span><span class="n">msg_type</span><span class="si">}</span><span class="s2">&#39;&quot;</span><span class="p">)</span>
+
+        <span class="k">except</span> <span class="n">websocket</span><span class="o">.</span><span class="n">WebSocketTimeoutException</span><span class="p">:</span>
+            <span class="c1"># This is expected due to ws.settimeout(). Just continue the loop.</span>
+            <span class="c1"># logger.debug(&quot;Listener: recv() timeout, checking stop event.&quot;)</span>
+            <span class="k">continue</span>
+        <span class="k">except</span> <span class="n">websocket</span><span class="o">.</span><span class="n">WebSocketConnectionClosedException</span><span class="p">:</span>
+            <span class="c1"># Connection closed gracefully</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">_stop_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
+                 <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Listener: WebSocket connection closed.&quot;</span><span class="p">)</span>
+                 <span class="c1"># Trigger close_connection if it wasn&#39;t initiated by us</span>
+                 <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">close_connection</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="kc">False</span><span class="p">,),</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+            <span class="k">break</span> <span class="c1"># Exit loop</span>
+        <span class="k">except</span> <span class="n">websocket</span><span class="o">.</span><span class="n">WebSocketPayloadException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+             <span class="c1"># Error processing the WebSocket frame/payload itself</span>
+             <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Listener: Invalid WebSocket payload received: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+             <span class="k">continue</span> <span class="c1"># Try to continue receiving other messages</span>
+        <span class="k">except</span> <span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">,</span> <span class="ne">TypeError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+             <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Listener: Failed to parse JSON message or invalid data: </span><span class="si">{</span><span class="n">message_str</span><span class="si">}</span><span class="s2">, Error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+             <span class="k">continue</span> <span class="c1"># Skip this message</span>
+        <span class="k">except</span> <span class="ne">OSError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="c1"># Ignore &quot;[Errno 9] Bad file descriptor&quot; if stop_event is set, as it&#39;s expected during shutdown</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">_stop_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">()</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">e</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">)</span> <span class="ow">and</span> <span class="n">e</span><span class="o">.</span><span class="n">errno</span> <span class="o">==</span> <span class="mi">9</span><span class="p">):</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">_stop_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Listener: OS error (</span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">), likely connection closed.&quot;</span><span class="p">)</span>
+                    <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">close_connection</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="kc">False</span><span class="p">,),</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+            <span class="k">break</span> <span class="c1"># Exit loop on OS errors (unless expected during shutdown)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="c1"># Catchall for other unexpected errors</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">_stop_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
+                 <span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Listener: Unexpected error: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                 <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">close_connection</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="kc">False</span><span class="p">,),</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+            <span class="k">break</span> <span class="c1"># Exit loop</span>
+
+    <span class="c1"># --- Listener Loop Exit ---</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Listener thread finished.&quot;</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">_connection_lock</span><span class="p">:</span>
+        <span class="c1"># Ensure listener status is updated after loop exit</span>
+        <span class="n">_listener_started</span> <span class="o">=</span> <span class="kc">False</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_ensure_connection</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Internal: Attempts WebSocket connection if disconnected.&quot;&quot;&quot;</span>
+    <span class="k">global</span> <span class="n">_ws_connection</span><span class="p">,</span> <span class="n">_listener_thread</span><span class="p">,</span> <span class="n">_listener_started</span><span class="p">,</span> <span class="n">_connection_status</span>
+
+    <span class="k">with</span> <span class="n">_connection_lock</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">_connection_status</span> <span class="o">!=</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">DISCONNECTED</span><span class="p">:</span>
+            <span class="k">return</span> <span class="c1"># Already connected or connecting</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Attempting to connect to Sidekick server at </span><span class="si">{</span><span class="n">_ws_url</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
+        <span class="n">_connection_status</span> <span class="o">=</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">CONNECTING</span>
+        <span class="n">_sidekick_peers_online</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+        <span class="n">_message_buffer</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+        <span class="c1"># --- Reset Events for the new connection attempt ---</span>
+        <span class="n">_stop_event</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+        <span class="n">_ready_event</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+        <span class="n">_shutdown_event</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">_ws_connection</span> <span class="o">=</span> <span class="n">websocket</span><span class="o">.</span><span class="n">create_connection</span><span class="p">(</span>
+                <span class="n">_ws_url</span><span class="p">,</span>
+                <span class="n">timeout</span><span class="o">=</span><span class="n">_INITIAL_CONNECT_TIMEOUT</span><span class="p">,</span>
+                <span class="n">ping_interval</span><span class="o">=</span><span class="n">_PING_INTERVAL</span><span class="p">,</span>
+                <span class="n">ping_timeout</span><span class="o">=</span><span class="n">_PING_TIMEOUT</span>
+            <span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Successfully connected to Sidekick server.&quot;</span><span class="p">)</span>
+            <span class="c1"># Timeout will be set dynamically in the listener loop</span>
+
+            <span class="c1"># Send online announcement immediately</span>
+            <span class="n">_send_system_announce</span><span class="p">(</span><span class="s2">&quot;online&quot;</span><span class="p">)</span>
+
+            <span class="n">_connection_status</span> <span class="o">=</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">CONNECTED_WAITING_SIDEKICK</span>
+
+            <span class="c1"># Start listener thread if not already running</span>
+            <span class="c1"># Check both the flag and the thread object&#39;s status</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">_listener_started</span> <span class="ow">and</span> <span class="ow">not</span> <span class="p">(</span><span class="n">_listener_thread</span> <span class="ow">and</span> <span class="n">_listener_thread</span><span class="o">.</span><span class="n">is_alive</span><span class="p">()):</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Starting WebSocket listener thread.&quot;</span><span class="p">)</span>
+                <span class="n">_listener_thread</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">_listen_for_messages</span><span class="p">,</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="c1"># CRITICAL: Use daemon=True</span>
+                <span class="n">_listener_thread</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+                <span class="n">_listener_started</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="k">elif</span> <span class="p">(</span><span class="n">_listener_thread</span> <span class="ow">and</span> <span class="n">_listener_thread</span><span class="o">.</span><span class="n">is_alive</span><span class="p">()):</span>
+                 <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Listener thread already running during connect sequence (unexpected).&quot;</span><span class="p">)</span>
+                 <span class="n">_listener_started</span> <span class="o">=</span> <span class="kc">True</span> <span class="c1"># Assume it&#39;s active</span>
+
+
+        <span class="k">except</span> <span class="p">(</span><span class="n">websocket</span><span class="o">.</span><span class="n">WebSocketException</span><span class="p">,</span> <span class="ne">ConnectionRefusedError</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">,</span> <span class="ne">TimeoutError</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to connect to Sidekick server at </span><span class="si">{</span><span class="n">_ws_url</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">_ws_connection</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">_connection_status</span> <span class="o">=</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">DISCONNECTED</span>
+            <span class="n">_stop_event</span><span class="o">.</span><span class="n">set</span><span class="p">()</span> <span class="c1"># Ensure stop is set if connection fails, prevents zombie listener start attempts</span>
+            <span class="n">_listener_started</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unexpected error during connection: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">_ws_connection</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">_connection_status</span> <span class="o">=</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">DISCONNECTED</span>
+            <span class="n">_stop_event</span><span class="o">.</span><span class="n">set</span><span class="p">()</span>
+            <span class="n">_listener_started</span> <span class="o">=</span> <span class="kc">False</span>
+
+
+<span class="c1"># --- Public API ---</span>
+
+<div class="viewcode-block" id="set_url">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.connection.set_url">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">set_url</span><span class="p">(</span><span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Sets the WebSocket server URL where Sidekick is listening.</span>
+
+<span class="sd">    You **must** call this function *before* creating any Sidekick modules</span>
+<span class="sd">    (like `Grid`, `Console`) if the Sidekick server is not running on the</span>
+<span class="sd">    default URL (`ws://localhost:5163`).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        url (str): The WebSocket URL (must start with &quot;ws://&quot; or &quot;wss://&quot;).</span>
+
+<span class="sd">    Examples:</span>
+<span class="sd">        &gt;&gt;&gt; # If Sidekick server is running on a different port</span>
+<span class="sd">        &gt;&gt;&gt; sidekick.set_url(&quot;ws://localhost:8080&quot;)</span>
+<span class="sd">        &gt;&gt;&gt;</span>
+<span class="sd">        &gt;&gt;&gt; # If Sidekick server is on a different machine</span>
+<span class="sd">        &gt;&gt;&gt; sidekick.set_url(&quot;ws://192.168.1.100:5163&quot;)</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        None</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">global</span> <span class="n">_ws_url</span>
+    <span class="k">with</span> <span class="n">_connection_lock</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">_connection_status</span> <span class="o">!=</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">DISCONNECTED</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Cannot change URL after connection attempt. Call sidekick.close_connection() first if needed.&quot;</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">url</span><span class="o">.</span><span class="n">startswith</span><span class="p">((</span><span class="s2">&quot;ws://&quot;</span><span class="p">,</span> <span class="s2">&quot;wss://&quot;</span><span class="p">)):</span>
+             <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Invalid WebSocket URL scheme: </span><span class="si">{</span><span class="n">url</span><span class="si">}</span><span class="s2">. Please use &#39;ws://&#39; or &#39;wss://&#39;.&quot;</span><span class="p">)</span>
+             <span class="k">return</span>
+        <span class="n">_ws_url</span> <span class="o">=</span> <span class="n">url</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Sidekick WebSocket URL set to: </span><span class="si">{</span><span class="n">_ws_url</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="set_config">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.connection.set_config">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">set_config</span><span class="p">(</span><span class="n">clear_on_connect</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">clear_on_disconnect</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Configures automatic clearing behavior of the Sidekick UI.</span>
+
+<span class="sd">    Call this *before* creating any Sidekick modules to change the default behavior.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        clear_on_connect (bool): If True (default), sends a command to clear all</span>
+<span class="sd">            existing UI elements in Sidekick as soon as the connection becomes ready.</span>
+<span class="sd">            Set to False if you want your script to potentially interact with UI</span>
+<span class="sd">            elements left over from a previous script run.</span>
+<span class="sd">        clear_on_disconnect (bool): If True (default is False), attempts to send</span>
+<span class="sd">            a command to clear all UI elements when the Python script disconnects</span>
+<span class="sd">            (e.g., at the end of the script or when `shutdown()` is called). This</span>
+<span class="sd">            is a &quot;best-effort&quot; attempt and might not always succeed.</span>
+
+<span class="sd">    Examples:</span>
+<span class="sd">        &gt;&gt;&gt; # Prevent clearing the UI when the script connects</span>
+<span class="sd">        &gt;&gt;&gt; sidekick.set_config(clear_on_connect=False)</span>
+<span class="sd">        &gt;&gt;&gt;</span>
+<span class="sd">        &gt;&gt;&gt; # Try to clear the UI when the script exits</span>
+<span class="sd">        &gt;&gt;&gt; sidekick.set_config(clear_on_disconnect=True)</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        None</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">global</span> <span class="n">_clear_on_connect</span><span class="p">,</span> <span class="n">_clear_on_disconnect</span>
+    <span class="k">with</span> <span class="n">_connection_lock</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">_connection_status</span> <span class="o">!=</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">DISCONNECTED</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Cannot change config after connection attempt. Call sidekick.close_connection() first if needed.&quot;</span><span class="p">)</span>
+            <span class="k">return</span>
+        <span class="n">_clear_on_connect</span> <span class="o">=</span> <span class="n">clear_on_connect</span>
+        <span class="n">_clear_on_disconnect</span> <span class="o">=</span> <span class="n">clear_on_disconnect</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Set config: clear_on_connect=</span><span class="si">{</span><span class="n">_clear_on_connect</span><span class="si">}</span><span class="s2">, clear_on_disconnect=</span><span class="si">{</span><span class="n">_clear_on_disconnect</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="activate_connection">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.connection.activate_connection">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">activate_connection</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Ensures the connection attempt to the Sidekick server is initiated.</span>
+
+<span class="sd">    This function is usually called automatically when you create the first</span>
+<span class="sd">    Sidekick module (like `Grid` or `Console`). You typically don&#39;t need to</span>
+<span class="sd">    call it directly, but it&#39;s safe to do so. It won&#39;t do anything if the</span>
+<span class="sd">    connection is already active or connecting.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        None</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">_connection_lock</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">_connection_status</span> <span class="o">==</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">DISCONNECTED</span><span class="p">:</span>
+             <span class="n">_ensure_connection</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="send_message">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.connection.send_message">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">send_message</span><span class="p">(</span><span class="n">message_dict</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Sends a message dictionary to the Sidekick system. (Internal Use)</span>
+
+<span class="sd">    Handles buffering if Sidekick is not yet ready and ensures the connection</span>
+<span class="sd">    attempt is triggered.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        message_dict (Dict[str, Any]): The message payload conforming to the protocol.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        None</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">module</span> <span class="o">=</span> <span class="n">message_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;module&quot;</span><span class="p">)</span>
+    <span class="n">msg_type</span> <span class="o">=</span> <span class="n">message_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;type&quot;</span><span class="p">)</span>
+    <span class="n">notify_flush_cond</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="k">with</span> <span class="n">_connection_lock</span><span class="p">:</span>
+        <span class="n">current_status</span> <span class="o">=</span> <span class="n">_connection_status</span>
+        <span class="n">ws</span> <span class="o">=</span> <span class="n">_ws_connection</span>
+
+        <span class="c1"># Buffering Logic</span>
+        <span class="n">should_buffer</span> <span class="o">=</span> <span class="p">(</span><span class="n">module</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;system&quot;</span><span class="p">])</span> <span class="ow">and</span> \
+                        <span class="p">(</span><span class="n">current_status</span> <span class="o">!=</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">CONNECTED_READY</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">should_buffer</span><span class="p">:</span>
+            <span class="n">_message_buffer</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">message_dict</span><span class="p">)</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Buffering message (</span><span class="si">{</span><span class="n">module</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">msg_type</span><span class="si">}</span><span class="s2">): </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">_message_buffer</span><span class="p">)</span><span class="si">}</span><span class="s2"> in buffer.&quot;</span><span class="p">)</span>
+            <span class="c1"># If disconnected/connecting, ensure connection attempt is triggered</span>
+            <span class="k">if</span> <span class="n">current_status</span> <span class="o">==</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">DISCONNECTED</span><span class="p">:</span>
+                 <span class="n">_ensure_connection</span><span class="p">()</span>
+            <span class="c1"># Cannot notify condition yet</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Sending Logic (System messages or when Ready)</span>
+            <span class="k">if</span> <span class="n">current_status</span> <span class="ow">in</span> <span class="p">[</span><span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">CONNECTED_WAITING_SIDEKICK</span><span class="p">,</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">CONNECTED_READY</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="n">ws</span> <span class="ow">and</span> <span class="n">ws</span><span class="o">.</span><span class="n">connected</span><span class="p">:</span>
+                    <span class="n">_send_raw</span><span class="p">(</span><span class="n">ws</span><span class="p">,</span> <span class="n">message_dict</span><span class="p">)</span>
+                    <span class="c1"># If we just sent the last message in the buffer while ready, notify</span>
+                    <span class="k">if</span> <span class="n">current_status</span> <span class="o">==</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">CONNECTED_READY</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">_message_buffer</span><span class="p">:</span>
+                         <span class="n">notify_flush_cond</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># Should not happen if status is correct, but handle defensively</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Cannot send message, status is </span><span class="si">{</span><span class="n">current_status</span><span class="si">}</span><span class="s2"> but WebSocket is not connected. Buffering.&quot;</span><span class="p">)</span>
+                    <span class="n">_message_buffer</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">message_dict</span><span class="p">)</span> <span class="c1"># Buffer it anyway</span>
+                    <span class="k">if</span> <span class="n">current_status</span> <span class="o">==</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">DISCONNECTED</span><span class="p">:</span>
+                         <span class="n">_ensure_connection</span><span class="p">()</span> <span class="c1"># Trigger connection if disconnected</span>
+            <span class="k">elif</span> <span class="n">current_status</span> <span class="ow">in</span> <span class="p">[</span><span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">DISCONNECTED</span><span class="p">,</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">CONNECTING</span><span class="p">]:</span>
+                 <span class="k">if</span> <span class="n">module</span> <span class="o">==</span> <span class="s2">&quot;system&quot;</span><span class="p">:</span> <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Cannot send system message, connection status is </span><span class="si">{</span><span class="n">current_status</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+                 <span class="k">else</span><span class="p">:</span> <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Message (</span><span class="si">{</span><span class="n">module</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">msg_type</span><span class="si">}</span><span class="s2">) dropped, connection status is </span><span class="si">{</span><span class="n">current_status</span><span class="si">}</span><span class="s2">.&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Notify condition outside the main sending logic, but still under lock</span>
+        <span class="k">if</span> <span class="n">notify_flush_cond</span><span class="p">:</span>
+             <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;send_message: Buffer became empty while ready, notifying condition.&quot;</span><span class="p">)</span>
+             <span class="n">_buffer_flushed_and_ready_condition</span><span class="o">.</span><span class="n">notify_all</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="clear_all">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.connection.clear_all">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">clear_all</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Sends a command to Sidekick to remove all currently displayed UI elements.</span>
+
+<span class="sd">    This affects all modules (Grids, Consoles, etc.) shown in the Sidekick panel.</span>
+
+<span class="sd">    Examples:</span>
+<span class="sd">        &gt;&gt;&gt; # Clear everything currently shown in Sidekick</span>
+<span class="sd">        &gt;&gt;&gt; sidekick.clear_all()</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        None</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Requesting global clearAll.&quot;</span><span class="p">)</span>
+    <span class="n">message</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+        <span class="s2">&quot;module&quot;</span><span class="p">:</span> <span class="s2">&quot;global&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;clearAll&quot;</span><span class="p">,</span>
+    <span class="p">}</span>
+    <span class="c1"># Use the public send_message to handle buffering if needed</span>
+    <span class="n">send_message</span><span class="p">(</span><span class="n">message</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="close_connection">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.connection.close_connection">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">close_connection</span><span class="p">(</span><span class="n">log_info</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Closes the WebSocket connection, stops the listener, and cleans up resources.</span>
+
+<span class="sd">    You generally don&#39;t need to call this directly. Use `sidekick.shutdown()`</span>
+<span class="sd">    instead, especially if using `sidekick.run_forever()`, as `shutdown()` handles</span>
+<span class="sd">    more context. `shutdown()` is also called automatically when your script exits normally.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        log_info (bool): Whether to log info messages during closing. Defaults to True.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        None</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">global</span> <span class="n">_ws_connection</span><span class="p">,</span> <span class="n">_listener_thread</span><span class="p">,</span> <span class="n">_listener_started</span><span class="p">,</span> <span class="n">_connection_status</span><span class="p">,</span> <span class="n">_message_handlers</span><span class="p">,</span> <span class="n">_sidekick_peers_online</span><span class="p">,</span> <span class="n">_message_buffer</span>
+
+    <span class="k">with</span> <span class="n">_connection_lock</span><span class="p">:</span>
+        <span class="c1"># Check if already disconnected or stopping process initiated</span>
+        <span class="k">if</span> <span class="n">_connection_status</span> <span class="o">==</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">DISCONNECTED</span> <span class="ow">and</span> <span class="n">_stop_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">log_info</span><span class="p">:</span> <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Connection already closed or closing process initiated.&quot;</span><span class="p">)</span>
+            <span class="k">return</span>
+
+        <span class="k">if</span> <span class="n">log_info</span><span class="p">:</span> <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Closing WebSocket connection...&quot;</span><span class="p">)</span>
+        <span class="n">initial_status</span> <span class="o">=</span> <span class="n">_connection_status</span>
+
+        <span class="c1"># --- Signal listener thread to stop FIRST ---</span>
+        <span class="n">_stop_event</span><span class="o">.</span><span class="n">set</span><span class="p">()</span>
+        <span class="c1"># Signal any waiting threads (like flush_messages) that we are disconnecting</span>
+        <span class="n">_buffer_flushed_and_ready_condition</span><span class="o">.</span><span class="n">notify_all</span><span class="p">()</span>
+        <span class="n">_ready_event</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span> <span class="c1"># Ensure ready state is false</span>
+
+        <span class="c1"># --- Mark as disconnected ---</span>
+        <span class="n">_connection_status</span> <span class="o">=</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">DISCONNECTED</span>
+        <span class="n">_sidekick_peers_online</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+
+        <span class="c1"># Check *before* clearing the buffer or closing the socket</span>
+        <span class="n">buffered_count</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">_message_buffer</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">buffered_count</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">warning_message</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;[Sidekick Warning] Script finished, but </span><span class="si">{</span><span class="n">buffered_count</span><span class="si">}</span><span class="s2"> message(s) were still buffered.&quot;</span>
+            <span class="n">warning_message</span> <span class="o">+=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">                 Visual updates in Sidekick might be incomplete or missing.&quot;</span>
+            <span class="n">warning_message</span> <span class="o">+=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">                 For short scripts, add &#39;sidekick.flush_messages(timeout=5.0)&#39; at the end.&quot;</span>
+            <span class="n">warning_message</span> <span class="o">+=</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">                 For interactive scripts, use &#39;sidekick.run_forever()&#39; to keep the script alive.&quot;</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="n">warning_message</span><span class="p">)</span>
+
+        <span class="n">_message_buffer</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span> <span class="c1"># Clear buffer after checking</span>
+
+        <span class="c1"># --- Best-effort cleanup messages ---</span>
+        <span class="n">ws_temp</span> <span class="o">=</span> <span class="n">_ws_connection</span>
+        <span class="k">if</span> <span class="n">ws_temp</span> <span class="ow">and</span> <span class="n">ws_temp</span><span class="o">.</span><span class="n">connected</span> <span class="ow">and</span> <span class="n">initial_status</span> <span class="o">!=</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">CONNECTING</span><span class="p">:</span>
+             <span class="k">if</span> <span class="n">_clear_on_disconnect</span><span class="p">:</span>
+                  <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Attempting to send global/clearAll on disconnect (best-effort).&quot;</span><span class="p">)</span>
+                  <span class="n">clear_all_msg</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;module&quot;</span><span class="p">:</span> <span class="s2">&quot;global&quot;</span><span class="p">,</span> <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;clearAll&quot;</span><span class="p">}</span>
+                  <span class="k">try</span><span class="p">:</span> <span class="n">_send_raw</span><span class="p">(</span><span class="n">ws_temp</span><span class="p">,</span> <span class="n">clear_all_msg</span><span class="p">)</span>
+                  <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span> <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Failed to send clearAll during disconnect.&quot;</span><span class="p">)</span>
+
+             <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Attempting to send offline announce (best-effort).&quot;</span><span class="p">)</span>
+             <span class="k">try</span><span class="p">:</span> <span class="n">_send_system_announce</span><span class="p">(</span><span class="s2">&quot;offline&quot;</span><span class="p">)</span> <span class="c1"># Use helper which calls _send_raw</span>
+             <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span> <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Failed to send offline announce during disconnect.&quot;</span><span class="p">)</span>
+
+        <span class="c1"># --- Close WebSocket (no shutdown needed) ---</span>
+        <span class="k">if</span> <span class="n">ws_temp</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1"># logger.debug(&quot;Attempting ws.close()...&quot;)</span>
+                <span class="c1"># Set a short timeout for close itself, just in case</span>
+                <span class="n">ws_temp</span><span class="o">.</span><span class="n">settimeout</span><span class="p">(</span><span class="mf">0.5</span><span class="p">)</span>
+                <span class="n">ws_temp</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                 <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error during WebSocket close(): </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">_ws_connection</span> <span class="o">=</span> <span class="kc">None</span> <span class="c1"># Set global var to None after trying to close</span>
+
+        <span class="c1"># --- Get listener thread reference before clearing ---</span>
+        <span class="n">listener_thread_temp</span> <span class="o">=</span> <span class="n">_listener_thread</span>
+        <span class="n">_listener_thread</span> <span class="o">=</span> <span class="kc">None</span> <span class="c1"># Clear global reference</span>
+        <span class="n">_listener_started</span> <span class="o">=</span> <span class="kc">False</span> <span class="c1"># Allow listener restart on next connect</span>
+
+    <span class="c1"># --- Join Listener Thread (Outside main lock) ---</span>
+    <span class="k">if</span> <span class="n">listener_thread_temp</span> <span class="ow">and</span> <span class="n">listener_thread_temp</span><span class="o">.</span><span class="n">is_alive</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">log_info</span><span class="p">:</span> <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Waiting for listener thread to stop...&quot;</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Timeout slightly longer than recv timeout allows it to naturally exit</span>
+            <span class="n">listener_thread_temp</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="n">_LISTENER_RECV_TIMEOUT</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">listener_thread_temp</span><span class="o">.</span><span class="n">is_alive</span><span class="p">():</span>
+                 <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Listener thread did not stop gracefully after join timeout.&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                 <span class="k">if</span> <span class="n">log_info</span><span class="p">:</span> <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Listener thread stopped.&quot;</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+             <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error joining listener thread: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">log_info</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Listener thread was not running or already finished.&quot;</span><span class="p">)</span>
+
+    <span class="c1"># --- Clear Handlers (outside lock is fine) ---</span>
+    <span class="k">if</span> <span class="n">_message_handlers</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Clearing instance message handlers.&quot;</span><span class="p">)</span>
+        <span class="n">_message_handlers</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">log_info</span><span class="p">:</span> <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;WebSocket connection closed.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="run_forever">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.connection.run_forever">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">run_forever</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Keeps the Python script running indefinitely to listen for Sidekick events.</span>
+
+<span class="sd">    If your script needs to react to user input from Sidekick (like button clicks</span>
+<span class="sd">    via `Control.on_click` or text input via `Console.on_input_text`), you</span>
+<span class="sd">    should call `sidekick.run_forever()` at the end of your script setup.</span>
+
+<span class="sd">    This function will block the script from exiting, allowing the background</span>
+<span class="sd">    thread to continue receiving messages and triggering your callback functions.</span>
+
+<span class="sd">    To stop the script gracefully, either:</span>
+<span class="sd">    1. Press Ctrl+C in the terminal.</span>
+<span class="sd">    2. Call `sidekick.shutdown()` from within one of your event callback functions.</span>
+
+<span class="sd">    Examples:</span>
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            import sidekick</span>
+<span class="sd">            import time</span>
+
+<span class="sd">            console = sidekick.Console(show_input=True)</span>
+<span class="sd">            control = sidekick.Control()</span>
+
+<span class="sd">            def handle_input(text):</span>
+<span class="sd">                console.print(f&quot;You entered: {text}&quot;)</span>
+<span class="sd">                if text == &quot;quit&quot;:</span>
+<span class="sd">                    console.print(&quot;Shutting down...&quot;)</span>
+<span class="sd">                    sidekick.shutdown() # Stop run_forever</span>
+
+<span class="sd">            def handle_click(control_id):</span>
+<span class="sd">                console.print(f&quot;Button &#39;{control_id}&#39; clicked!&quot;)</span>
+
+<span class="sd">            console.on_input_text(handle_input)</span>
+<span class="sd">            control.on_click(handle_click)</span>
+
+<span class="sd">            control.add_button(&quot;my_button&quot;, &quot;Click Me&quot;)</span>
+<span class="sd">            console.print(&quot;Enter text below or click the button.&quot;)</span>
+<span class="sd">            console.print(&quot;Type &#39;quit&#39; to exit.&quot;)</span>
+
+<span class="sd">            # Keep the script running to handle events</span>
+<span class="sd">            sidekick.run_forever()</span>
+
+<span class="sd">            print(&quot;Script finished.&quot;) # This line will run after shutdown() is called</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        None</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">activate_connection</span><span class="p">()</span> <span class="c1"># Make sure connection attempt happens if needed</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Sidekick entering run_forever mode. Press Ctrl+C or call sidekick.shutdown() to exit.&quot;</span><span class="p">)</span>
+    <span class="n">_shutdown_event</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span> <span class="c1"># Ensure clean state before waiting</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">while</span> <span class="ow">not</span> <span class="n">_shutdown_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
+            <span class="c1"># Check if listener died unexpectedly (and not because we&#39;re shutting down)</span>
+            <span class="k">with</span> <span class="n">_connection_lock</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">_listener_thread</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">_listener_thread</span><span class="o">.</span><span class="n">is_alive</span><span class="p">()</span> <span class="ow">and</span> \
+                   <span class="n">_listener_started</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">_stop_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
+                    <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;run_forever: Listener thread died unexpectedly. Attempting reconnect...&quot;</span><span class="p">)</span>
+                    <span class="c1"># Mark as disconnected to trigger reconnect attempt</span>
+                    <span class="n">_connection_status</span> <span class="o">=</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">DISCONNECTED</span>
+                    <span class="n">_listener_started</span> <span class="o">=</span> <span class="kc">False</span> <span class="c1"># Allow restart</span>
+                    <span class="n">_stop_event</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span> <span class="c1"># Clear stop event for the *new* listener</span>
+                    <span class="n">activate_connection</span><span class="p">()</span> <span class="c1"># Try to restart connection and listener</span>
+
+            <span class="c1"># Wait efficiently using the shutdown event</span>
+            <span class="n">signaled</span> <span class="o">=</span> <span class="n">_shutdown_event</span><span class="o">.</span><span class="n">wait</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span> <span class="c1"># Check every second</span>
+            <span class="k">if</span> <span class="n">signaled</span><span class="p">:</span>
+                <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;run_forever: Shutdown event signaled.&quot;</span><span class="p">)</span>
+                <span class="k">break</span> <span class="c1"># Exit loop cleanly if shutdown() was called</span>
+
+    <span class="k">except</span> <span class="ne">KeyboardInterrupt</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;KeyboardInterrupt received, shutting down Sidekick.&quot;</span><span class="p">)</span>
+        <span class="c1"># Let finally block handle shutdown</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">exception</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unexpected error during run_forever: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="c1"># Let finally block handle shutdown</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="c1"># Ensure shutdown logic runs even if loop breaks unexpectedly</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">_shutdown_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span> <span class="c1"># Check if shutdown wasn&#39;t already called</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;run_forever: Exiting loop, initiating shutdown.&quot;</span><span class="p">)</span>
+            <span class="n">shutdown</span><span class="p">()</span> <span class="c1"># Call full shutdown process</span>
+        <span class="k">else</span><span class="p">:</span>
+             <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;run_forever: Loop exited, shutdown already initiated.&quot;</span><span class="p">)</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Sidekick run_forever mode finished.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="shutdown">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.connection.shutdown">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">shutdown</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Initiates a clean shutdown of the Sidekick connection and listener.</span>
+
+<span class="sd">    If you are using `sidekick.run_forever()`, you can call this function</span>
+<span class="sd">    (e.g., from an event handler) to make `run_forever()` stop and allow your</span>
+<span class="sd">    script to exit cleanly.</span>
+
+<span class="sd">    This function is also registered to be called automatically when your Python</span>
+<span class="sd">    script exits normally (using `atexit`). You usually don&#39;t need to call it</span>
+<span class="sd">    manually unless you want to stop `run_forever()` programmatically.</span>
+
+<span class="sd">    It&#39;s safe to call this function multiple times.</span>
+
+<span class="sd">    Examples:</span>
+<span class="sd">        &gt;&gt;&gt; # Inside a button click handler</span>
+<span class="sd">        &gt;&gt;&gt; def on_quit_button_click(control_id):</span>
+<span class="sd">        ...     print(&quot;Quit button pressed. Shutting down.&quot;)</span>
+<span class="sd">        ...     sidekick.shutdown()</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        None</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">_connection_lock</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">_shutdown_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">()</span> <span class="ow">and</span> <span class="n">_stop_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">()</span> <span class="ow">and</span> <span class="n">_connection_status</span> <span class="o">==</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">DISCONNECTED</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Shutdown already completed or in progress.&quot;</span><span class="p">)</span>
+            <span class="k">return</span>
+
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Sidekick shutdown requested.&quot;</span><span class="p">)</span>
+        <span class="n">_shutdown_event</span><span class="o">.</span><span class="n">set</span><span class="p">()</span> <span class="c1"># Signal run_forever to stop</span>
+
+    <span class="c1"># Initiate close outside the lock to allow close_connection to manage its own locking</span>
+    <span class="n">close_connection</span><span class="p">()</span> <span class="c1"># Close the connection and stop listener</span></div>
+
+
+<div class="viewcode-block" id="ensure_ready">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.connection.ensure_ready">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">ensure_ready</span><span class="p">(</span><span class="n">timeout</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Waits until the connection to Sidekick is established and ready.</span>
+
+<span class="sd">    This function blocks your script&#39;s execution until the Sidekick library has</span>
+<span class="sd">    successfully connected to the server AND has received confirmation that at</span>
+<span class="sd">    least one Sidekick UI is online and ready to receive commands.</span>
+
+<span class="sd">    This is useful at the beginning of a script to make sure Sidekick is</span>
+<span class="sd">    ready before you start sending commands to create or update UI elements.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        timeout (Optional[float]): Maximum time in seconds to wait. If None</span>
+<span class="sd">            (default), it will wait indefinitely. If the timeout is reached</span>
+<span class="sd">            before the connection is ready, the function will return False.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        bool: True if the connection became ready within the timeout, False otherwise.</span>
+
+<span class="sd">    Examples:</span>
+<span class="sd">        &gt;&gt;&gt; # Wait up to 10 seconds for Sidekick to be ready</span>
+<span class="sd">        &gt;&gt;&gt; if sidekick.ensure_ready(timeout=10.0):</span>
+<span class="sd">        ...     print(&quot;Sidekick is ready! Proceeding...&quot;)</span>
+<span class="sd">        ...     grid = sidekick.Grid()</span>
+<span class="sd">        ...     grid.set_color(0, 0, &quot;green&quot;)</span>
+<span class="sd">        ... else:</span>
+<span class="sd">        ...     print(&quot;Sidekick didn&#39;t become ready in time.&quot;)</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">activate_connection</span><span class="p">()</span> <span class="c1"># Ensure connection process has started</span>
+
+    <span class="c1"># Handle non-positive timeout immediately</span>
+    <span class="k">if</span> <span class="n">timeout</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">timeout</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">with</span> <span class="n">_connection_lock</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">_connection_status</span> <span class="o">==</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">CONNECTED_READY</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Waiting for connection to be READY (timeout=</span><span class="si">{</span><span class="n">timeout</span><span class="si">}</span><span class="s2">s)...&quot;</span><span class="p">)</span>
+    <span class="c1"># Wait for the ready event to be set</span>
+    <span class="n">ready</span> <span class="o">=</span> <span class="n">_ready_event</span><span class="o">.</span><span class="n">wait</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">ready</span><span class="p">:</span>
+         <span class="c1"># Event was set, double-check status under lock</span>
+         <span class="k">with</span> <span class="n">_connection_lock</span><span class="p">:</span>
+             <span class="k">if</span> <span class="n">_connection_status</span> <span class="o">==</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">CONNECTED_READY</span><span class="p">:</span>
+                  <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Connection is READY.&quot;</span><span class="p">)</span>
+                  <span class="k">return</span> <span class="kc">True</span>
+             <span class="k">else</span><span class="p">:</span>
+                  <span class="c1"># Race condition: Became ready then disconnected before we checked</span>
+                  <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;ensure_ready: Event set, but status is now </span><span class="si">{</span><span class="n">_connection_status</span><span class="si">}</span><span class="s2">. Returning False.&quot;</span><span class="p">)</span>
+                  <span class="c1"># _ready_event should have been cleared by close_connection</span>
+                  <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Timed out</span>
+        <span class="k">with</span> <span class="n">_connection_lock</span><span class="p">:</span> <span class="c1"># Get status for logging</span>
+             <span class="n">current_status</span> <span class="o">=</span> <span class="n">_connection_status</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;ensure_ready: Timed out after </span><span class="si">{</span><span class="n">timeout</span><span class="si">}</span><span class="s2">s waiting for READY state. Current status: </span><span class="si">{</span><span class="n">current_status</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="flush_messages">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.connection.flush_messages">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">flush_messages</span><span class="p">(</span><span class="n">timeout</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Waits until the connection is READY and all buffered messages have been sent.</span>
+
+<span class="sd">    When you send commands (like `grid.set_color()`) before Sidekick is fully</span>
+<span class="sd">    connected and ready, the library temporarily stores these messages in a buffer.</span>
+<span class="sd">    This function waits until the connection is established (`CONNECTED_READY`)</span>
+<span class="sd">    AND all messages in that buffer have been sent to Sidekick.</span>
+
+<span class="sd">    This is particularly useful at the very end of short scripts that don&#39;t use</span>
+<span class="sd">    `run_forever()`. Calling `flush_messages()` increases the chance that Sidekick</span>
+<span class="sd">    receives and displays all your updates before the script exits.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        timeout (Optional[float]): Maximum time in seconds to wait. If None</span>
+<span class="sd">            (default), waits indefinitely. If the timeout is reached before</span>
+<span class="sd">            the buffer is flushed while ready, returns False.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        bool: True if the connection was ready and the buffer was flushed within</span>
+<span class="sd">              the timeout, False otherwise (e.g., timeout, disconnection).</span>
+
+<span class="sd">    Examples:</span>
+<span class="sd">        .. code-block:: python</span>
+
+<span class="sd">            import sidekick</span>
+<span class="sd">            import time</span>
+
+<span class="sd">            # Create a grid and update cells quickly</span>
+<span class="sd">            grid = sidekick.Grid(4, 4)</span>
+<span class="sd">            for i in range(4):</span>
+<span class="sd">                grid.set_color(i, i, color=&quot;blue&quot;)</span>
+<span class="sd">                time.sleep(0.01) # Simulate some work</span>
+
+<span class="sd">            print(&quot;Script finished sending commands.&quot;)</span>
+
+<span class="sd">            # Wait up to 5 seconds for messages to be sent before exiting</span>
+<span class="sd">            if sidekick.flush_messages(timeout=5.0):</span>
+<span class="sd">                print(&quot;Messages flushed successfully.&quot;)</span>
+<span class="sd">            else:</span>
+<span class="sd">                print(&quot;Warning: Messages might not have been fully sent.&quot;)</span>
+
+<span class="sd">            # No run_forever(), so script exits here. flush_messages helps ensure</span>
+<span class="sd">            # the blue cells appear in Sidekick.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">activate_connection</span><span class="p">()</span> <span class="c1"># Ensure connection attempt is happening</span>
+
+    <span class="k">with</span> <span class="n">_buffer_flushed_and_ready_condition</span><span class="p">:</span> <span class="c1"># Use the condition variable&#39;s lock</span>
+        <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span>
+        <span class="n">remaining_timeout</span> <span class="o">=</span> <span class="n">timeout</span>
+
+        <span class="k">while</span> <span class="ow">not</span> <span class="p">(</span><span class="n">_connection_status</span> <span class="o">==</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">CONNECTED_READY</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">_message_buffer</span><span class="p">):</span>
+            <span class="c1"># Check for immediate exit conditions</span>
+            <span class="k">if</span> <span class="n">_connection_status</span> <span class="o">==</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">DISCONNECTED</span><span class="p">:</span>
+                 <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;flush_messages: Connection disconnected. Cannot flush.&quot;</span><span class="p">)</span>
+                 <span class="k">return</span> <span class="kc">False</span> <span class="c1"># Cannot possibly succeed if disconnected</span>
+            <span class="k">if</span> <span class="n">_stop_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span> <span class="c1"># Check if closing process started</span>
+                 <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;flush_messages: Connection closing. Cannot flush.&quot;</span><span class="p">)</span>
+                 <span class="k">return</span> <span class="kc">False</span>
+
+            <span class="c1"># Calculate remaining time for wait()</span>
+            <span class="k">if</span> <span class="n">timeout</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">elapsed</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
+                <span class="k">if</span> <span class="n">elapsed</span> <span class="o">&gt;=</span> <span class="n">timeout</span><span class="p">:</span>
+                    <span class="c1"># Check condition one last time before declaring timeout</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">_connection_status</span> <span class="o">==</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">CONNECTED_READY</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">_message_buffer</span><span class="p">):</span>
+                        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;flush_messages: Timed out after </span><span class="si">{</span><span class="n">timeout</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">s. Status=</span><span class="si">{</span><span class="n">_connection_status</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">, Buffer size=</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">_message_buffer</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                        <span class="k">return</span> <span class="kc">False</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="k">break</span> <span class="c1"># Condition met just as timeout hit</span>
+
+                <span class="c1"># Ensure remaining_timeout isn&#39;t negative for wait()</span>
+                <span class="n">remaining_timeout</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mf">0.</span><span class="p">,</span> <span class="n">timeout</span> <span class="o">-</span> <span class="n">elapsed</span><span class="p">)</span>
+
+            <span class="c1"># Wait for notification or timeout</span>
+            <span class="n">signaled</span> <span class="o">=</span> <span class="n">_buffer_flushed_and_ready_condition</span><span class="o">.</span><span class="n">wait</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="n">remaining_timeout</span><span class="p">)</span>
+
+            <span class="c1"># If wait timed out specifically (signaled is False), check condition again</span>
+            <span class="c1"># This handles the case where the condition became true *just* as wait timed out</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">signaled</span> <span class="ow">and</span> <span class="n">timeout</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                 <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">_connection_status</span> <span class="o">==</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">CONNECTED_READY</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">_message_buffer</span><span class="p">):</span>
+                      <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;flush_messages: Timed out (wait returned False) after </span><span class="si">{</span><span class="n">timeout</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">s. Status=</span><span class="si">{</span><span class="n">_connection_status</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">, Buffer size=</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">_message_buffer</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                      <span class="k">return</span> <span class="kc">False</span>
+                 <span class="c1"># else: Condition became true just as wait timed out, loop will exit</span>
+
+        <span class="c1"># Loop finished because condition is met</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;flush_messages: Connection is READY and message buffer is flushed.&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">True</span></div>
+
+
+<span class="c1"># --- Registration/Utility Functions (Mostly Internal) ---</span>
+
+<div class="viewcode-block" id="register_message_handler">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.connection.register_message_handler">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">register_message_handler</span><span class="p">(</span><span class="n">instance_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">handler</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span> <span class="kc">None</span><span class="p">]):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Registers the internal message handler for a specific module instance.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">callable</span><span class="p">(</span><span class="n">handler</span><span class="p">):</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Handler for instance &#39;</span><span class="si">{</span><span class="n">instance_id</span><span class="si">}</span><span class="s2">&#39; is not callable.&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="k">with</span> <span class="n">_connection_lock</span><span class="p">:</span>
+        <span class="c1"># Only register if not shutting down</span>
+        <span class="k">if</span> <span class="n">_connection_status</span> <span class="o">!=</span> <span class="n">ConnectionStatus</span><span class="o">.</span><span class="n">DISCONNECTED</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">_stop_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Registering internal message handler for instance &#39;</span><span class="si">{</span><span class="n">instance_id</span><span class="si">}</span><span class="s2">&#39;.&quot;</span><span class="p">)</span>
+            <span class="n">_message_handlers</span><span class="p">[</span><span class="n">instance_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">handler</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Connection closed or closing, handler for &#39;</span><span class="si">{</span><span class="n">instance_id</span><span class="si">}</span><span class="s2">&#39; not registered.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="unregister_message_handler">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.connection.unregister_message_handler">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">unregister_message_handler</span><span class="p">(</span><span class="n">instance_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Unregisters the internal message handler for a specific module instance.&quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">_connection_lock</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">instance_id</span> <span class="ow">in</span> <span class="n">_message_handlers</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unregistering internal message handler for instance &#39;</span><span class="si">{</span><span class="n">instance_id</span><span class="si">}</span><span class="s2">&#39;.&quot;</span><span class="p">)</span>
+            <span class="k">del</span> <span class="n">_message_handlers</span><span class="p">[</span><span class="n">instance_id</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># This can happen normally during shutdown cleanup</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No internal message handler found for instance &#39;</span><span class="si">{</span><span class="n">instance_id</span><span class="si">}</span><span class="s2">&#39; to unregister.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="register_global_message_handler">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.connection.register_global_message_handler">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">register_global_message_handler</span><span class="p">(</span><span class="n">handler</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span> <span class="kc">None</span><span class="p">]]):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Registers a function to receive ALL incoming messages from Sidekick.</span>
+
+<span class="sd">    This is an advanced feature primarily for debugging or specific low-level</span>
+<span class="sd">    integrations. The handler function will be called with the raw message</span>
+<span class="sd">    dictionary received over the WebSocket *before* it&#39;s dispatched to specific</span>
+<span class="sd">    module handlers.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        handler (Optional[Callable[[Dict[str, Any]], None]]): A function that</span>
+<span class="sd">            accepts a single argument (the message dictionary), or `None` to</span>
+<span class="sd">            remove the current handler.</span>
+
+<span class="sd">    Examples:</span>
+<span class="sd">        &gt;&gt;&gt; def my_raw_message_spy(message):</span>
+<span class="sd">        ...     print(f&quot;Received from Sidekick: {message}&quot;)</span>
+<span class="sd">        &gt;&gt;&gt;</span>
+<span class="sd">        &gt;&gt;&gt; sidekick.register_global_message_handler(my_raw_message_spy)</span>
+<span class="sd">        &gt;&gt;&gt; # ... run your sidekick code ...</span>
+<span class="sd">        &gt;&gt;&gt; sidekick.register_global_message_handler(None) # Stop spying</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        None</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">global</span> <span class="n">_global_message_handler</span>
+    <span class="k">with</span> <span class="n">_connection_lock</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">handler</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Unregistering global message handler.&quot;</span><span class="p">)</span>
+            <span class="n">_global_message_handler</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">elif</span> <span class="nb">callable</span><span class="p">(</span><span class="n">handler</span><span class="p">):</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Registering global message handler: </span><span class="si">{</span><span class="n">handler</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">_global_message_handler</span> <span class="o">=</span> <span class="n">handler</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;Global message handler must be callable or None.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="get_next_command_id">
+<a class="viewcode-back" href="../../sidekick.html#sidekick.connection.get_next_command_id">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_next_command_id</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generates a sequential ID for commands (like Canvas drawing ops). Internal use.&quot;&quot;&quot;</span>
+    <span class="k">global</span> <span class="n">_command_counter</span>
+    <span class="k">with</span> <span class="n">_connection_lock</span><span class="p">:</span>
+        <span class="n">_command_counter</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">_command_counter</span></div>
+
+
+<span class="c1"># --- Automatic Cleanup ---</span>
+<span class="c1"># Ensure shutdown is called on normal exit. This correctly handles stopping</span>
+<span class="c1"># run_forever if used, and cleans up the connection and listener thread.</span>
+<span class="n">atexit</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">shutdown</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Enjan Chou.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
