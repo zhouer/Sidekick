@@ -24,8 +24,8 @@ except ImportError:
 
 # -- General configuration ---------------------------------------------------
 extensions = [
-    'sphinx.ext.autodoc',      # Core library to pull documentation from docstrings
     'sphinx.ext.napoleon',     # Support for NumPy and Google style docstrings (optional but good)
+    'sphinx.ext.autodoc',      # Core library to pull documentation from docstrings
     'sphinx.ext.intersphinx',  # Link to other projects' documentation (e.g., Python)
     'sphinx.ext.viewcode',     # Add links to source code from documentation
     'sphinx.ext.githubpages', # Helps with GitHub Pages deployment (optional)

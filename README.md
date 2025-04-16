@@ -1,12 +1,13 @@
 # Sidekick – Your Visual Coding Buddy
 
+[![GitHub Repository](https://img.shields.io/badge/GitHub-Repository-blue.svg)](https://github.com/zhouer/Sidekick)
 [![PyPI version](https://badge.fury.io/py/sidekick-py.svg)](https://badge.fury.io/py/sidekick-py)
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/sidekick-coding.sidekick-coding?label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=sidekick-coding.sidekick-coding)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **See your Python code come alive, right inside VS Code!**
 
-Sidekick is your friendly visual assistant for programming. It tackles the challenge of abstract code by providing an **interactive panel** directly within your VS Code editor. Watch loops draw patterns, data structures change in real-time, and build simple interfaces without leaving your development environment.
+Sidekick is your friendly visual assistant for programming. It tackles the challenge of abstract code by providing an **interactive panel** directly within your VS Code editor. Watch loops draw patterns, data structures change in real-time, without leaving your development environment.
 
 Perfect for **learners**, **educators**, **parents teaching coding**, and anyone who benefits from seeing code in action!
 
@@ -21,7 +22,7 @@ Sidekick requires two components:
 2.  **The VS Code Extension:**
     *   Open VS Code.
     *   Go to the Extensions view (`Ctrl+Shift+X`).
-    *   Search for "**Sidekick - Visual Coding Buddy**" or use the [link](https://marketplace.visualstudio.com/items?itemName=sidekick-coding.sidekick-coding).
+    *   Search for "**Sidekick - Your Visual Coding Buddy**" or use the [link](https://marketplace.visualstudio.com/items?itemName=sidekick-coding.sidekick-coding).
     *   Click **Install**.
 
 ## Quick Start
@@ -37,7 +38,7 @@ Let's make a simple interactive grid!
 
     # 1. Create a 5x5 Grid
     grid = sidekick.Grid(5, 5)
-    grid.set_text(2, 2, "Click!") # Center text
+    grid.set_text(2, 2, "Click!")
 
     # 2. Define what happens on click
     def handle_click(x, y):
@@ -51,6 +52,7 @@ Let's make a simple interactive grid!
     grid.on_click(handle_click)
 
     # 4. Keep the script running to listen for clicks!
+    #    Without this, the script would end, and clicks wouldn't be handled.
     sidekick.run_forever()
     ```
 
@@ -62,12 +64,12 @@ Let's make a simple interactive grid!
 
 ## Why Sidekick?
 
-*   **Instant Visualization:** Stop guessing, start seeing! Visualize algorithms on a `Grid`, draw on a `Canvas`, or track output in a `Console`.
+*   **Instant Visualization:** Stop guessing, start seeing! Visualize algorithms on a `Grid`, track output in a `Console`, draw on a `Canvas`, or inspect data with `Viz`.
 *   **Interactive Feedback:** Build programs that react! Create `Control` buttons that trigger Python functions, get user input from the `Console`, or respond to `Grid` clicks.
 *   **Simple Python API:** Focus on your logic, not complex UI code. Sidekick provides an intuitive, beginner-friendly Python library (`sidekick-py`).
 *   **Seamless VS Code Integration:** Works where you work. Sidekick lives in the VS Code side panel, keeping your code and its visual output together.
-*   **Live Variable Explorer:** Use `Viz` to inspect variables and data structures. Magically updates when you use `ObservableValue` – watch lists grow and dictionaries change automatically!  
-*   **Modular & Combinable:** Simple building blocks (`Grid`, `Console`, `Viz`, etc.) that you can combine creatively to suit your needs.
+*   **Live Variable Explorer:** Use `Viz.show()` to inspect variables and data structures. Magically updates when you use `ObservableValue` – watch lists grow and dictionaries change automatically!
+*   **Modular & Combinable:** Simple building blocks (`Grid`, `Console`, `Control`, `Canvas`, `Viz`) that you can combine creatively to suit your needs.
 
 ## The Sidekick Philosophy: Focused & Fun
 
@@ -75,11 +77,11 @@ Let's make a simple interactive grid!
 
 Instead, Sidekick provides the **essential building blocks** for visual interaction, keeping the focus squarely on **understanding your code's logic and flow**. Its strength lies in its **simplicity** and **low learning curve**.
 
-Think of Sidekick modules as powerful, easy-to-use visual tools. Combine them in imaginative ways: build a game board on the `Grid`, show game state in the `Console`, visualize complex data with `Viz`, and add controls with `Control`. **The possibilities are vast, limited only by your creativity!**
+Think of Sidekick modules as powerful, easy-to-use visual tools. Combine them in imaginative ways: build a game board on the `Grid`, show game state in the `Console`, visualize complex data with `Viz`, draw graphics with `Canvas`, and add controls with `Control`. **The possibilities are vast, limited only by your creativity!**
 
 ## Core Concepts & Features
 
-Sidekick helps bring your Python code to life visually. Here are the essential features to get you started:
+Sidekick helps bring your Python code to life visually. Here are the essential features:
 
 ### 1. Core Visualization Modules
 
@@ -87,9 +89,9 @@ These are the building blocks you create and control from Python:
 
 *   **`sidekick.Grid`:** A 2D grid of cells. Perfect for maps, boards, or pixel art. Control cell color (`set_color`), text (`set_text`), and react to clicks (`on_click`).
 *   **`sidekick.Console`:** A text output area, like Python's `print`, but inside Sidekick. Optionally includes a text input field. Use `print()`/`log()` for output and `on_input_text()` for user input.
-*   **`sidekick.Viz`:** An interactive tree view for inspecting variables (lists, dicts, objects). Use `show()` to display. **Crucially, use `sidekick.ObservableValue` to make the display automatically update when your data changes!**
-*   **`sidekick.Canvas`:** A 2D drawing surface. Draw lines (`draw_line`), rectangles (`draw_rect`), circles (`draw_circle`), and configure styles (`config`).
 *   **`sidekick.Control`:** Add UI controls like buttons (`add_button`) and text inputs (`add_text_input`). React to interactions using `on_click()` and `on_input_text()` callbacks.
+*   **`sidekick.Canvas`:** A 2D drawing surface. Draw lines (`draw_line`), rectangles (`draw_rect`), circles (`draw_circle`), and configure styles (`config`).
+*   **`sidekick.Viz`:** An interactive tree view for inspecting variables (lists, dicts, objects). Use `show()` to display. **Crucially, use `sidekick.ObservableValue` to make the display automatically update when your data changes!**
 
 ### 2. Interaction via Callbacks
 
@@ -114,23 +116,22 @@ Tired of manually updating variable displays? `Viz` works seamlessly with `Obser
 Sidekick needs to talk to a *running* Python script. You need to manage how long your script runs:
 
 *   **`sidekick.run_forever()`:** The most common method. **Keeps your script running indefinitely** to display visuals and handle interactions (callbacks). Place it at the end of your script. Stop with `Ctrl+C` or by calling `sidekick.shutdown()` from a callback.
-*   **`sidekick.flush_messages(timeout=...)`:** For **short, non-interactive scripts**. Waits briefly to ensure Sidekick receives your updates before the script exits. Use this *instead* of `run_forever()` at the end of simple display scripts.
 *   **`sidekick.shutdown()`:** Call this (usually from a callback) to stop `run_forever()` gracefully and close the connection.
 
 ## Learn More
 
-*  **See More Examples:** [**Examples Directory**](./examples/)
-*  **Explore the API:** [**Full Python API Reference**](https://zhouer.github.io/sidekick-py-docs/)
-*  **For Developers:**
-    * [System Architecture](./docs/architecture.md)
-    * [Communication Protocol](./docs/protocol.md)
-    * [Python Library Development Guide](./docs/python-development.md)
-    * [WebApp Development Guide](./docs/webapp-development.md)
-    * [Extension Development Guide](./docs/extension-development.md)
+*   **See More Examples:** [**Examples Directory**](./examples/)
+*   **Explore the API:** [**Full Python API Reference**](https://zhouer.github.io/sidekick-py-docs/)
+*   **For Developers:**
+    *   [System Architecture](./docs/architecture.md)
+    *   [Communication Protocol](./docs/protocol.md)
+    *   [Python Library Development Guide](./docs/python-development.md)
+    *   [WebApp Development Guide](./docs/webapp-development.md)
+    *   [Extension Development Guide](./docs/extension-development.md)
 
 ## Inspiration & Origins
 
-This project started as a personal tool designed to help teach my own children the fundamentals of coding in a more visual and engaging way. I wanted to bridge the gap between abstract code and tangible results. The core ideas were significantly inspired by the great work and philosophy behind [PyKidos](https://pykidos.github.io/).
+This project started as a personal tool designed to help teach my own children the fundamentals of coding in a more visual and engaging way. I wanted to bridge the gap between abstract code and tangible results. The core ideas were inspired by the great work and philosophy behind [PyKidos](https://pykidos.github.io/).
 
 ## License
 

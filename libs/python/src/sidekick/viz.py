@@ -1,17 +1,20 @@
 """
-Sidekick Variable Visualizer (Viz) Module Interface.
+Provides the Viz class for visualizing Python variables in Sidekick.
 
-This module provides the `Viz` class, which allows you to display and inspect
-Python variables, including complex data structures like lists, dictionaries,
-sets, and objects, in an interactive tree-like view within the Sidekick panel.
+Use the `sidekick.Viz` class to display your Python variables, including
+complex data structures like lists, dictionaries, sets, and custom objects,
+in an interactive tree-like view within the Sidekick panel.
 
 Its most powerful feature is its integration with `sidekick.ObservableValue`.
-When you show an `ObservableValue`, the Viz panel automatically updates itself
-whenever the value inside the `ObservableValue` changes, providing a reactive
-view of your data.
+When you display an `ObservableValue` using `viz.show()`, the Viz panel will
+automatically update itself whenever the data inside the `ObservableValue` changes.
+This makes it incredibly easy to watch how your data structures evolve as your
+script runs, without needing to manually refresh the display.
 
-This module also contains the internal logic (`_get_representation`) used to
-convert Python data into a format suitable for display in Sidekick.
+This module also contains the complex internal logic (`_get_representation`)
+needed to convert Python data into a format suitable for display in the
+Sidekick UI, handling things like nested structures, circular references,
+and large collections.
 """
 
 import functools
@@ -20,96 +23,250 @@ from . import logger
 from .base_module import BaseModule
 from .observable_value import ObservableValue, UnsubscribeFunction, SubscriptionCallback
 
-# --- Representation Helper (_get_representation) ---
-# This complex internal function converts Python data structures into a
-# JSON-serializable format suitable for display in the Sidekick Viz panel.
-# It handles various types, nesting, circular references, and limits depth/items.
-_MAX_DEPTH = 5
-_MAX_ITEMS = 50
-def _get_representation(data: Any, depth: int = 0, visited_ids: Optional[Set[int]] = None) -> Dict[str, Any]:
-    """Internal helper to create a structured representation of Python data."""
-    if visited_ids is None: visited_ids = set()
-    current_id = id(data)
-    if depth > _MAX_DEPTH: return {'type': 'truncated', 'value': f'<Max Depth {_MAX_DEPTH} Reached>', 'id': f'trunc_{current_id}_{depth}'}
-    if current_id in visited_ids: return {'type': 'recursive_ref', 'value': f'<Recursive Reference: {type(data).__name__}>', 'id': f'rec_{current_id}_{depth}'}
+# --- Internal Constants for Representation Generation ---
+# These control how deep and how many items the _get_representation function
+# will explore within nested data structures to avoid infinite loops or
+# sending excessively large amounts of data to the UI.
+_MAX_DEPTH = 5  # How many levels deep into nested objects/lists/dicts to go.
+_MAX_ITEMS = 50 # Max number of items (list elements, dict key-value pairs, set items, object attributes) to show per level.
 
+# --- Representation Helper Function (Internal Use) ---
+
+def _get_representation(
+    data: Any,
+    depth: int = 0,
+    visited_ids: Optional[Set[int]] = None
+) -> Dict[str, Any]:
+    """Converts Python data into a structured, JSON-serializable dictionary for the Viz UI.
+
+    This is a complex internal helper function used by `Viz.show()` and
+    `_handle_observable_update()`. It recursively traverses Python data
+    structures (lists, dicts, sets, objects) and creates a representation
+    that the Sidekick frontend can understand and display as an interactive tree.
+
+    It handles:
+    - Basic types (int, str, bool, None).
+    - Lists, tuples, sets, dictionaries.
+    - Custom object attribute inspection (skipping methods and private attributes).
+    - Recursion/circular references (detects and marks them).
+    - Maximum depth (`_MAX_DEPTH`) to prevent infinite recursion in deep structures.
+    - Maximum items per collection (`_MAX_ITEMS`) to keep payloads manageable.
+    - Special handling for `ObservableValue` instances (inspects the wrapped value
+      and marks the node as observable).
+
+    Note:
+        This function is for internal library use. Its output format is specific
+        to the Sidekick communication protocol and UI component.
+
+    Args:
+        data (Any): The Python data to represent.
+        depth (int): The current recursion depth (starts at 0).
+        visited_ids (Optional[Set[int]]): A set containing the `id()` of objects
+            already visited in the current traversal path, used to detect recursion.
+
+    Returns:
+        Dict[str, Any]: A dictionary representing the data, suitable for sending
+            as part of the Viz module payload. Keys in the returned dictionary
+            and nested dictionaries should follow the `camelCase` convention
+            expected by the protocol/UI where appropriate (e.g., 'observableTracked').
+    """
+    # Initialize visited set for the top-level call.
+    if visited_ids is None: visited_ids = set()
+
+    # Get the memory ID of the current data item.
+    current_id = id(data)
+
+    # --- Termination Conditions for Recursion/Depth ---
+    if depth > _MAX_DEPTH:
+        return {
+            'type': 'truncated',
+            'value': f'<Max Depth {_MAX_DEPTH} Reached>',
+            'id': f'trunc_{current_id}_{depth}' # Unique ID for truncated node
+        }
+    if current_id in visited_ids:
+        return {
+            'type': 'recursive_ref',
+            'value': f'<Recursive Reference: {type(data).__name__}>',
+            'id': f'rec_{current_id}_{depth}' # Unique ID for recursive node
+        }
+
+    # --- Prepare the Representation Dictionary ---
     rep: Dict[str, Any] = {}
     data_type_name = type(data).__name__
-    rep['id'] = f"{data_type_name}_{current_id}_{depth}" # Default ID
+    # Default ID, might be overridden (e.g., for ObservableValue).
+    rep['id'] = f"{data_type_name}_{current_id}_{depth}"
     rep['type'] = data_type_name
-    rep['observableTracked'] = False # Default to False, override for ObservableValue
+    rep['observableTracked'] = False # Assume not observable by default.
 
     try:
+        # Mark this object ID as visited for the current path.
         visited_ids.add(current_id)
+
+        # --- Handle Different Python Types ---
+
         if isinstance(data, ObservableValue):
+            # If it's an ObservableValue, get its *internal* value and represent that.
             internal_value = data.get()
-            # Generate representation for the internal value
-            nested_rep = _get_representation(internal_value, depth, visited_ids) # Pass same depth
-            # Mark this node as originating from an ObservableValue
-            nested_rep['observableTracked'] = True
-            # Use the observable's own ID if available for stability
-            nested_rep['id'] = getattr(data, '_obs_value_id', nested_rep.get('id', f"obs_{current_id}_{depth}"))
-            return nested_rep
-        elif data is None: rep['value'] = 'None'; rep['type'] = 'NoneType'
-        elif isinstance(data, (str, int, float, bool)): rep['value'] = data
+            # Recursively call _get_representation on the internal value.
+            # Use the *same* depth, as the wrapper itself doesn't add a level.
+            nested_rep = _get_representation(internal_value, depth, visited_ids.copy())
+            # Mark the resulting node to indicate it came from an ObservableValue.
+            nested_rep['observableTracked'] = True # camelCase for protocol
+            # Try to use the ObservableValue's persistent internal ID for stability.
+            obs_id = getattr(data, '_obs_value_id', None)
+            nested_rep['id'] = obs_id if obs_id else nested_rep.get('id', f"obs_{current_id}_{depth}")
+            return nested_rep # Return the representation of the *inner* value
+
+        elif data is None:
+            rep['value'] = 'None'
+            rep['type'] = 'NoneType'
+        elif isinstance(data, (str, int, float, bool)):
+            # Primitive types: just store the value directly.
+            rep['value'] = data
         elif isinstance(data, (list, tuple)):
-            rep['type'] = 'list'; rep['value'] = []; rep['length'] = len(data); count = 0
+            rep['type'] = 'list' # Treat tuples as lists for display
+            rep['value'] = [] # Store representations of items here
+            rep['length'] = len(data)
+            count = 0
             for item in data:
-                if count >= _MAX_ITEMS: rep['value'].append({'type': 'truncated', 'value': f'... ({len(data)} items, Max {_MAX_ITEMS} Reached)', 'id': f'{rep["id"]}_trunc_{count}'}); break
-                rep['value'].append(_get_representation(item, depth + 1, visited_ids.copy())); count += 1
+                if count >= _MAX_ITEMS:
+                    # Stop if we exceed the max items limit.
+                    rep['value'].append({
+                        'type': 'truncated',
+                        'value': f'... ({len(data)} items total, showing {_MAX_ITEMS})',
+                        'id': f'{rep["id"]}_trunc_{count}'
+                    })
+                    break
+                # Recursively represent each item, incrementing depth. Pass copy of visited.
+                rep['value'].append(_get_representation(item, depth + 1, visited_ids.copy()))
+                count += 1
         elif isinstance(data, dict):
-            rep['type'] = 'dict'; rep['value'] = []; rep['length'] = len(data); count = 0
-            # Attempt to sort keys for consistent display, fallback if keys are unorderable
-            try: sorted_items = sorted(data.items(), key=lambda item: repr(item[0]))
-            except TypeError: sorted_items = list(data.items())
-            for k, v in sorted_items:
-                if count >= _MAX_ITEMS: rep['value'].append({'key': {'type': 'truncated', 'value': '...', 'id': f'{rep["id"]}_keytrunc_{count}'}, 'value': {'type': 'truncated', 'value': f'... ({len(data)} items, Max {_MAX_ITEMS} Reached)', 'id': f'{rep["id"]}_valtrunc_{count}'}}); break
+            rep['type'] = 'dict'
+            rep['value'] = [] # Store {key: rep, value: rep} pairs
+            rep['length'] = len(data)
+            count = 0
+            # Try to sort dict items by key's repr for consistent display order.
+            try:
+                # Make sure keys are representable before sorting
+                items_to_sort = [(repr(k), k, v) for k, v in data.items()]
+                sorted_items = sorted(items_to_sort)
+                processed_items = [(k,v) for _, k, v in sorted_items]
+            except Exception:
+                # Fallback if keys aren't comparable or repr fails
+                logger.debug(f"Could not sort dict keys for {data_type_name} (id: {current_id}). Using original order.")
+                processed_items = list(data.items())
+
+            for k, v in processed_items:
+                if count >= _MAX_ITEMS:
+                     rep['value'].append({
+                        'key': {'type': 'truncated', 'value': '...', 'id': f'{rep["id"]}_keytrunc_{count}'},
+                        'value': {'type': 'truncated', 'value': f'... ({len(data)} items total, showing {_MAX_ITEMS})', 'id': f'{rep["id"]}_valtrunc_{count}'}
+                    })
+                     break
+                # Represent both the key and the value recursively. Pass copy of visited.
                 key_rep = _get_representation(k, depth + 1, visited_ids.copy())
                 value_rep = _get_representation(v, depth + 1, visited_ids.copy())
-                rep['value'].append({'key': key_rep, 'value': value_rep}); count += 1
+                rep['value'].append({'key': key_rep, 'value': value_rep})
+                count += 1
         elif isinstance(data, set):
-            rep['type'] = 'set'; rep['value'] = []; rep['length'] = len(data); count = 0
-            try: sorted_items = sorted(list(data), key=repr)
-            except TypeError: sorted_items = list(data)
-            for item in sorted_items:
-                if count >= _MAX_ITEMS: rep['value'].append({'type': 'truncated', 'value': f'... ({len(data)} items, Max {_MAX_ITEMS} Reached)', 'id': f'{rep["id"]}_trunc_{count}'}); break
-                rep['value'].append(_get_representation(item, depth + 1, visited_ids.copy())); count += 1
-        else: # Generic object inspection
-            rep['type'] = f"object ({data_type_name})"; rep['value'] = {}; attribute_count = 0
+            rep['type'] = 'set'
+            rep['value'] = []
+            rep['length'] = len(data)
+            count = 0
+            # Try to sort set items by repr for consistency.
             try:
-                attrs = {}; skipped_attrs = 0
-                # Iterate through attributes, skipping private/magic/callables
-                for attr_name in dir(data):
-                     if attr_name.startswith('_'): continue
-                     try:
-                        attr_value = getattr(data, attr_name)
-                        if callable(attr_value): continue # Skip methods
-                        attrs[attr_name] = attr_value
-                     except Exception: skipped_attrs += 1
-                rep['length'] = len(attrs) # Length represents number of displayed attributes
-                # Attempt to sort attributes for consistency
-                try: sorted_attr_items = sorted(attrs.items())
-                except TypeError: sorted_attr_items = list(attrs.items())
+                # Convert items to repr first for sorting
+                items_to_sort = [(repr(item), item) for item in data]
+                sorted_items = sorted(items_to_sort)
+                processed_items = [item for _, item in sorted_items]
+            except Exception:
+                logger.debug(f"Could not sort set items for {data_type_name} (id: {current_id}). Using original order.")
+                processed_items = list(data)
 
+            for item in processed_items:
+                if count >= _MAX_ITEMS:
+                    rep['value'].append({
+                        'type': 'truncated',
+                        'value': f'... ({len(data)} items total, showing {_MAX_ITEMS})',
+                        'id': f'{rep["id"]}_trunc_{count}'
+                    })
+                    break
+                # Represent each item recursively. Pass copy of visited.
+                rep['value'].append(_get_representation(item, depth + 1, visited_ids.copy()))
+                count += 1
+        else:
+            # --- Generic Object Inspection ---
+            rep['type'] = f"object ({data_type_name})"
+            # Use a dictionary to store attribute_name: attribute_representation pairs.
+            rep['value'] = {}
+            attribute_count = 0
+            skipped_attrs = 0
+            attrs_to_represent = {}
+
+            # Try to get attributes using dir()
+            try:
+                for attr_name in dir(data):
+                     # Skip private/magic attributes and callable methods.
+                     if attr_name.startswith('_') or callable(getattr(data, attr_name, None)):
+                        continue
+                     try:
+                         # Store the actual attribute value for later processing.
+                         attrs_to_represent[attr_name] = getattr(data, attr_name)
+                     except Exception:
+                         # Count attributes we couldn't access.
+                         skipped_attrs += 1
+
+                # Length is the number of attributes we plan to represent.
+                rep['length'] = len(attrs_to_represent)
+                # Try sorting attributes alphabetically for consistent display.
+                try: sorted_attr_items = sorted(attrs_to_represent.items())
+                except TypeError: sorted_attr_items = list(attrs_to_represent.items()) # Fallback
+
+                # Represent each accessible, non-callable attribute.
                 for attr_name, attr_value in sorted_attr_items:
-                    if attribute_count >= _MAX_ITEMS: rep['value']['...'] = {'type': 'truncated', 'value': f'... (Max {_MAX_ITEMS} Attrs Reached)', 'id': f'{rep["id"]}_attrtrunc_{attribute_count}'}; break
+                    if attribute_count >= _MAX_ITEMS:
+                        rep['value']['...'] = { # Use '...' as a key for the truncated message
+                            'type': 'truncated',
+                            'value': f'... ({len(attrs_to_represent)} attrs total, showing {_MAX_ITEMS})',
+                            'id': f'{rep["id"]}_attrtrunc_{attribute_count}'
+                        }
+                        break
+                    # Represent attribute value recursively. Pass copy of visited.
                     rep['value'][attr_name] = _get_representation(attr_value, depth + 1, visited_ids.copy())
                     attribute_count += 1
-                # If no attributes were representable, fall back to repr()
-                if not rep['value'] and attribute_count == 0 and skipped_attrs == 0 :
-                     rep['value'] = repr(data); rep['type'] = f"repr ({data_type_name})"
+
+                # If we couldn't find/represent any attributes, fall back to repr().
+                if attribute_count == 0 and skipped_attrs == 0 and not rep['value']:
+                     logger.debug(f"Object {data_type_name} (id: {current_id}) has no representable attributes. Falling back to repr().")
+                     rep['value'] = repr(data)
+                     rep['type'] = f"repr ({data_type_name})" # Indicate it's just the repr string.
+
             except Exception as e_obj:
-                logger.warning(f"Could not fully represent object attributes for {data_type_name}: {e_obj}")
-                try: rep['value'] = repr(data); rep['type'] = f"repr ({data_type_name})"
-                except Exception as e_repr_final: rep['value'] = f"<Object of type {data_type_name}, repr failed: {e_repr_final}>"; rep['type'] = 'error'
+                # Catch errors during the dir()/getattr() process.
+                logger.warning(f"Could not fully inspect object attributes for {data_type_name} (id: {current_id}): {e_obj}")
+                # Fall back to repr() as a last resort.
+                try:
+                    rep['value'] = repr(data)
+                    rep['type'] = f"repr ({data_type_name})"
+                except Exception as e_repr_final:
+                    # If even repr() fails.
+                    rep['value'] = f"<Object of type {data_type_name}, repr() failed: {e_repr_final}>"
+                    rep['type'] = 'error'
+
     except Exception as e:
-        logger.exception(f"Error generating representation for type {data_type_name}")
-        rep['type'] = 'error'; rep['value'] = f"<Error representing object: {e}>"
+        # Catch any unexpected error during representation generation.
+        logger.exception(f"Error generating representation for type {data_type_name} (id: {current_id})")
+        rep['type'] = 'error'
+        rep['value'] = f"<Error representing object: {e}>"
+        # Ensure ID exists even in error cases.
         rep['id'] = rep.get('id', f"error_{current_id}_{depth}")
     finally:
-        # Ensure the current ID is removed from visited set for this path
+        # **Crucial:** Remove the current object's ID from the visited set
+        # *after* exploring this path. This allows the same object to be
+        # visited again via different paths in the data structure.
         if current_id in visited_ids:
             visited_ids.remove(current_id)
+
     return rep
 
 
@@ -119,9 +276,13 @@ class Viz(BaseModule):
     """Represents the Variable Visualizer (Viz) module instance in Sidekick.
 
     Use this class to display Python variables and data structures in an
-    interactive, tree-like view within the Sidekick panel. It's especially powerful
-    when used with :class:`sidekick.ObservableValue`, as it can automatically
-    update the display when the underlying data changes.
+    interactive, collapsible tree view within the Sidekick UI panel. It helps
+    you inspect the state of your data as your script runs.
+
+    The most powerful feature is its integration with `sidekick.ObservableValue`.
+    If you `.show()` an `ObservableValue`, the Viz panel will **automatically
+    update** whenever the wrapped data changes (e.g., list append, dict setitem).
+    This provides a *live*, *reactive* view of your data's state.
 
     Attributes:
         target_id (str): The unique identifier for this Viz panel instance.
@@ -131,248 +292,344 @@ class Viz(BaseModule):
         instance_id: Optional[str] = None,
         spawn: bool = True
     ):
-        """Initializes the Viz object, optionally creating a new viz panel.
+        """Initializes the Viz object and optionally creates the UI panel.
 
         Args:
-            instance_id (Optional[str]): A specific ID for this viz panel.
-                - If `spawn=True`: Optional. Auto-generated if None.
-                - If `spawn=False`: **Required**. Identifies the existing panel.
-            spawn (bool): If True (default), creates a new, empty viz panel UI
-                element. If False, attaches to an existing panel.
+            instance_id (Optional[str]): A specific ID for this Viz panel.
+                - If `spawn=True` (default): Optional. Auto-generated if None.
+                - If `spawn=False`: **Required**. Must match the ID of an existing panel.
+            spawn (bool): If True (default), creates a new, empty Viz panel UI
+                element in Sidekick. If False, attaches to an existing panel.
+
+        Raises:
+            ValueError: If `spawn` is False and `instance_id` is not provided.
+            SidekickConnectionError (or subclass): If the connection to Sidekick
+                cannot be established.
 
         Examples:
             >>> # Create a new Viz panel
-            >>> viz = sidekick.Viz()
+            >>> viz_panel = sidekick.Viz()
             >>>
             >>> # Attach to an existing panel named "debugger-vars"
             >>> existing_viz = sidekick.Viz(instance_id="debugger-vars", spawn=False)
         """
-        # Viz spawn payload is currently empty.
+        # Viz spawn command currently doesn't require a payload.
         spawn_payload = {} if spawn else None
+        # Initialize the base class.
         super().__init__(
             module_type="viz",
             instance_id=instance_id,
             spawn=spawn,
             payload=spawn_payload
         )
-        # Stores information about shown variables and their potential unsubscribe functions.
-        self._shown_variables: Dict[str, Dict[str, Any]] = {} # Tracks shown vars and subscriptions
+        # Internal dictionary to keep track of variables currently being displayed
+        # and their associated cleanup functions (for ObservableValue).
+        # Format: { variable_name: {"value_or_observable": actual_value, "unsubscribe": function_or_None} }
+        self._shown_variables: Dict[str, Dict[str, Any]] = {}
         logger.info(f"Viz panel '{self.target_id}' initialized (spawn={spawn}).")
 
-    # _internal_message_handler handles 'error' via BaseModule. No specific events currently.
-    # on_error is inherited from BaseModule.
+    # --- Internal Message Handling ---
+    # Inherits _internal_message_handler from BaseModule.
+    # Currently, the Viz UI doesn't send any specific 'event' messages back,
+    # so we only need the base class's error handling.
+
+    # --- Error Callback ---
+    # Inherits on_error(callback) method from BaseModule. Use this to handle
+    # potential errors reported by the Viz UI element itself.
 
     def _handle_observable_update(self, variable_name: str, change_details: Dict[str, Any]):
-        """Internal callback triggered by changes in an observed ObservableValue."""
-        logger.debug(f"Viz '{self.target_id}': Received update for '{variable_name}': {change_details}")
-        try:
-            action_type = change_details.get("type", "unknown")
-            path = change_details.get("path", [])
+        """Internal callback method triggered by changes in a subscribed ObservableValue.
 
-            # Construct the 'options' part of the payload, generating representations
-            # for values and keys involved in the change, ensuring camelCase.
-            options: Dict[str, Any] = { "path": path }
+        This function is automatically called by an `ObservableValue` instance
+        when its wrapped data is modified (e.g., via `append`, `__setitem__`).
+        It receives details about the change, converts the relevant data into
+        the required representation format, and sends an 'update' command to the
+        Sidekick Viz UI.
+
+        Args:
+            variable_name (str): The name under which the `ObservableValue` was
+                originally shown using `viz.show()`.
+            change_details (Dict[str, Any]): A dictionary provided by the
+                `ObservableValue` describing the change (e.g., type, path,
+                new value, old value).
+        """
+        logger.debug(f"Viz '{self.target_id}': Received observable update for '{variable_name}': {change_details}")
+        try:
+            # Extract details from the notification.
+            action_type = change_details.get("type", "unknown") # e.g., 'setitem', 'append'
+            path = change_details.get("path", []) # Path within the data structure (list indices, dict keys)
+
+            # --- Prepare Payload Options ---
+            # Convert involved values/keys into representations for the UI.
+            # Keys here *must* be camelCase for the protocol.
+            options: Dict[str, Any] = {
+                "path": path # Path is usually just list indices or dict keys
+            }
             if "value" in change_details:
+                # Represent the new value involved in the change.
                 options["valueRepresentation"] = _get_representation(change_details["value"])
-            if "key" in change_details: # Relevant for dict operations
+            if "key" in change_details: # Relevant for dict operations like setitem.
                 options["keyRepresentation"] = _get_representation(change_details["key"])
-            if "length" in change_details: # Relevant for container size changes
+            if "length" in change_details: # New length after list/dict/set mutation.
                 options["length"] = change_details["length"]
 
-            # Special handling for root 'set' or 'clear' on an ObservableValue:
-            # Resend the full representation of the observable's *current* value.
-            if action_type in ["set", "clear"] and not path: # Only if path is empty (root change)
+            # --- Special Handling for Root Set/Clear ---
+            # If the *entire* ObservableValue was replaced (type 'set') or cleared
+            # (type 'clear') at the root (path is empty), we need to resend the
+            # complete representation of its *new* state.
+            if action_type in ["set", "clear"] and not path:
                 observable_instance = self._shown_variables.get(variable_name, {}).get('value_or_observable')
-                # Ensure observable_instance is not None before getting representation
-                if observable_instance is not None:
+                if isinstance(observable_instance, ObservableValue):
+                    # Regenerate the full representation of the observable's *current* value.
                     options["valueRepresentation"] = _get_representation(observable_instance)
-                    # Ensure length is also updated for root set/clear
-                    actual_data = observable_instance.get() if isinstance(observable_instance, ObservableValue) else observable_instance
-                    try: options["length"] = len(actual_data) if hasattr(actual_data, '__len__') else None
-                    except TypeError: options["length"] = None
+                    # Ensure the length is also updated for the root object.
+                    actual_data = observable_instance.get()
+                    try:
+                        options["length"] = len(actual_data) if hasattr(actual_data, '__len__') else None
+                    except TypeError:
+                        options["length"] = None # Handle cases where len() isn't supported
                 else:
-                    # If the observable was removed concurrently, we might not have it. Log and skip.
-                    logger.warning(f"Viz '{self.target_id}': Observable for '{variable_name}' not found during root update. Skipping.")
-                    return
+                    # This might happen if remove_variable was called concurrently. Log and skip.
+                    logger.warning(f"Viz '{self.target_id}': ObservableValue for '{variable_name}' not found during root update processing. Skipping update.")
+                    return # Avoid sending update if observable is gone
 
-
-            # Construct the full update payload.
+            # --- Construct and Send Update Command ---
             update_payload = {
-                "action": action_type,
-                "variableName": variable_name,
-                "options": options
+                "action": action_type,          # The type of change ('setitem', 'append', etc.)
+                "variableName": variable_name,  # The top-level variable name being updated
+                "options": options              # Contains path, representations, length etc.
             }
+            # Send the granular update command to the UI.
             self._send_update(update_payload)
 
         except Exception as e:
-            # Log errors during the update processing but don't crash.
-            logger.exception(f"Viz '{self.target_id}': Error processing update for observable '{variable_name}'. Change: {change_details}")
+            # Catch errors during update processing to prevent crashing the listener.
+            logger.exception(f"Viz '{self.target_id}': Error processing observable update for '{variable_name}'. Change: {change_details}")
 
     def show(self, name: str, value: Any):
         """Displays or updates a variable in the Viz panel.
 
-        Shows the given `value` associated with the provided `name` in the Sidekick
-        Viz panel. If the `name` already exists, its display is updated.
+        Shows the given `value` under the specified `name` in the Sidekick Viz
+        panel. If a variable with the same `name` is already shown, its display
+        will be updated to reflect the new `value`.
 
-        If the `value` is an instance of :class:`sidekick.ObservableValue`, the Viz
-        panel will automatically listen for changes within that value (e.g., list
-        appends, dictionary updates) and update the UI accordingly, often highlighting
-        the specific change. This is the key to reactive visualization.
+        **Reactivity:** If the `value` you provide is an instance of
+        `sidekick.ObservableValue`, the Viz panel will automatically subscribe
+        to changes within that `ObservableValue`. When you modify the data
+        *through the `ObservableValue` wrapper* (e.g., `my_obs_list.append(5)`,
+        `my_obs_dict['key'] = 'new'`), the Viz panel UI will update automatically
+        to show the change, often highlighting the modified part. This provides
+        a powerful live view of your data.
+
+        For non-ObservableValues, the display shows a snapshot of the value at
+        the time `show()` is called. You need to call `show()` again with the
+        same name to update the display if the underlying non-observable value changes.
 
         Args:
-            name (str): The name to display for the variable (e.g., "my_list", "game_state").
-                Must be a non-empty string.
-            value (Any): The Python variable or value to display. This can be any
-                standard type (int, str, list, dict, set, etc.), a custom object,
-                or an :class:`sidekick.ObservableValue` wrapping one of these.
+            name (str): The name to display for this variable in the Viz panel
+                (e.g., "my_list", "game_state", "counter"). Must be a non-empty string.
+            value (Any): The Python variable or value you want to display. This can be
+                almost anything: numbers, strings, lists, dicts, sets, custom objects,
+                or an `ObservableValue` wrapping one of these.
 
         Raises:
             ValueError: If `name` is empty or not a string.
-
-        Examples:
-            >>> data = {"count": 0, "items": ["a", "b"]}
-            >>> obs_list = sidekick.ObservableValue([10, 20])
-            >>> player_obj = Player("Hero", 100) # Assuming Player is a custom class
-            >>>
-            >>> viz = sidekick.Viz()
-            >>> viz.show("static_data", data)
-            >>> viz.show("reactive_list", obs_list)
-            >>> viz.show("player", player_obj)
-            >>>
-            >>> # Changes to obs_list will automatically update Sidekick
-            >>> obs_list.append(30)
-            >>> obs_list[0] = 5
+            SidekickConnectionError (or subclass): If the connection is not ready
+                or sending the command fails.
 
         Returns:
             None
-        """
-        if not isinstance(name, str) or not name:
-            logger.error("Variable name for viz.show() must be a non-empty string.")
-            # Raise ValueError for clarity
-            raise ValueError("Variable name for viz.show() must be a non-empty string.")
 
-        # --- Subscription Handling ---
-        # Unsubscribe from the previous ObservableValue if this variable name is being reused.
+        Examples:
+            >>> # Simple static data
+            >>> data = {"count": 10, "enabled": True}
+            >>> viz = sidekick.Viz()
+            >>> viz.show("configuration", data)
+            >>>
+            >>> # A reactive list using ObservableValue
+            >>> items = sidekick.ObservableValue(['apple', 'banana'])
+            >>> viz.show("shopping_list", items)
+            >>>
+            >>> # Now, changes to 'items' update the UI automatically:
+            >>> items.append('orange') # Viz panel updates
+            >>> items[0] = 'pear'      # Viz panel updates
+            >>>
+            >>> # Showing a custom object
+            >>> class Player:
+            ...     def __init__(self, name): self.name = name; self.hp = 100
+            >>> player1 = Player("Hero")
+            >>> viz.show("player_stats", player1)
+            >>>
+            >>> # To update the display for the non-observable 'data':
+            >>> data["count"] = 20
+            >>> viz.show("configuration", data) # Need to call show() again
+        """
+        # --- Validate Name ---
+        if not isinstance(name, str) or not name:
+            msg = "Variable name for viz.show() must be a non-empty string."
+            logger.error(msg)
+            raise ValueError(msg)
+
+        # --- Handle Subscriptions for Reactivity ---
+        unsubscribe_func: Optional[UnsubscribeFunction] = None
+
+        # Check if we were previously showing something under this name.
         if name in self._shown_variables:
             previous_entry = self._shown_variables[name]
+            # If the *previous* value was an ObservableValue, unsubscribe from it now
+            # because we are replacing it with a new value (which might or might not be observable).
             if previous_entry.get('unsubscribe'):
-                 logger.debug(f"Viz '{self.target_id}': Unsubscribing previous observable for '{name}'.")
+                 logger.debug(f"Viz '{self.target_id}': Unsubscribing previous observable for variable '{name}' before showing new value.")
                  try:
                      previous_entry['unsubscribe']()
                  except Exception as e:
-                     # Log error during unsubscribe but continue.
                      logger.error(f"Viz '{self.target_id}': Error during unsubscribe for '{name}': {e}")
+                 # Clear the old unsubscribe function immediately after calling it.
+                 previous_entry['unsubscribe'] = None
 
-        unsubscribe_func: Optional[UnsubscribeFunction] = None
-        # If the new value is an ObservableValue, subscribe to it.
+        # Now, check if the *new* value is an ObservableValue.
         if isinstance(value, ObservableValue):
-            # Create a partial function for the callback to include the variable name.
+            # If it is, subscribe to its changes. The callback will include the variable name.
+            # Use functools.partial to bind the current `name` to the callback handler.
             update_callback = functools.partial(self._handle_observable_update, name)
             try:
+                # Store the returned unsubscribe function so we can call it later
+                # if this variable is shown again or removed.
                 unsubscribe_func = value.subscribe(update_callback)
                 logger.info(f"Viz '{self.target_id}': Subscribed to ObservableValue for variable '{name}'.")
             except Exception as e:
-                 logger.error(f"Viz '{self.target_id}': Error subscribing to ObservableValue for '{name}': {e}")
-                 unsubscribe_func = None # Ensure it's None if subscription failed
+                 # Log if subscription fails, but proceed without reactivity for this variable.
+                 logger.error(f"Viz '{self.target_id}': Failed to subscribe to ObservableValue for '{name}': {e}")
+                 unsubscribe_func = None # Ensure it's None on failure
 
-        # Store the value/observable and its unsubscribe function (if any).
+        # Store the new value (or ObservableValue wrapper) and its unsubscribe function (if any).
+        # This overwrites any previous entry for 'name'.
         self._shown_variables[name] = {'value_or_observable': value, 'unsubscribe': unsubscribe_func}
         # --- End Subscription Handling ---
 
-        # --- Generate Representation and Initial Payload ---
+        # --- Generate Initial Representation ---
         try:
-            # Generate the visual representation of the value.
+            # Convert the value (or the value inside the ObservableValue)
+            # into the structured representation for the UI.
             representation = _get_representation(value)
         except Exception as e_repr:
             logger.exception(f"Viz '{self.target_id}': Error generating representation for '{name}'")
-            # Create an error representation to display in Sidekick.
-            representation = {"type": "error", "value": f"<Representation Error: {e_repr}>", "id": f"error_{name}_{id(value)}"}
+            # Create an error representation to display in the UI instead.
+            representation = {
+                "type": "error",
+                "value": f"<Error creating display: {e_repr}>",
+                "id": f"error_{name}_{id(value)}" # Basic unique ID
+            }
 
         # Determine the length of the underlying data if possible.
+        # If it's an ObservableValue, get the length of the *wrapped* data.
         actual_data = value.get() if isinstance(value, ObservableValue) else value
         data_length = None
         if hasattr(actual_data, '__len__'):
-            try: data_length = len(actual_data)
-            except TypeError: pass # len() might not be supported (e.g., for some custom objects)
+            try:
+                data_length = len(actual_data)
+            except TypeError:
+                pass # len() not supported for this type
 
-        # Construct the 'set' payload to send the initial/updated full representation.
+        # --- Prepare and Send Initial 'Set' Command ---
+        # Send the full representation to initially display or update the variable.
+        # Keys in options must be camelCase.
         options: Dict[str, Any] = {
-            "path": [], # 'set' applies to the root path.
-            "valueRepresentation": representation
+            "path": [], # An empty path means we're setting the root variable.
+            "valueRepresentation": representation # The generated structure.
         }
+        # Include length if available.
         if data_length is not None:
             options["length"] = data_length
 
-        initial_payload = {
-            "action": "set",
-            "variableName": name,
+        set_payload = {
+            "action": "set",             # Action 'set' replaces the variable display.
+            "variableName": name,        # The name to show in the UI.
             "options": options
         }
-        # --- End Payload Construction ---
-
-        # Send the initial 'set' update command.
-        self._send_update(initial_payload)
+        self._send_update(set_payload) # Send the command.
         logger.debug(f"Viz '{self.target_id}': Sent 'set' update for variable '{name}'.")
 
     def remove_variable(self, name: str):
         """Removes a previously shown variable from the Viz panel display.
 
-        If the variable was an :class:`sidekick.ObservableValue`, the Viz panel
-        will stop listening for its changes.
+        If the variable currently shown under this `name` was an `ObservableValue`,
+        this method also automatically unsubscribes from its changes, stopping
+        any further automatic updates for it.
 
         Args:
-            name (str): The name of the variable to remove (the same name used in `show()`).
-
-        Examples:
-            >>> viz.show("temporary_var", 123)
-            >>> # ... later ...
-            >>> viz.remove_variable("temporary_var")
+            name (str): The exact name of the variable to remove (the same name
+                that was used in the corresponding `show()` call).
 
         Returns:
             None
-        """
-        if name in self._shown_variables:
-            entry = self._shown_variables.pop(name) # Remove from local tracking
-            # Unsubscribe if an unsubscribe function exists for this variable.
-            if entry.get('unsubscribe'):
-                 logger.info(f"Viz '{self.target_id}': Unsubscribing on remove_variable for '{name}'.")
-                 try:
-                     entry['unsubscribe']()
-                 except Exception as e:
-                     logger.error(f"Viz '{self.target_id}': Error during unsubscribe for '{name}': {e}")
 
-            # Send the 'removeVariable' command to Sidekick.
+        Examples:
+            >>> viz = sidekick.Viz()
+            >>> temp_data = [1, 2, 3]
+            >>> viz.show("temporary_variable", temp_data)
+            >>> # ... time passes, data is no longer needed ...
+            >>> viz.remove_variable("temporary_variable") # Removes it from Sidekick panel
+        """
+        # Check if the variable is currently being tracked.
+        if name in self._shown_variables:
+            entry = self._shown_variables.pop(name) # Remove from our internal tracking.
+
+            # --- Unsubscribe If Necessary ---
+            if entry.get('unsubscribe'):
+                 logger.info(f"Viz '{self.target_id}': Unsubscribing from observable '{name}' on removal.")
+                 try:
+                     entry['unsubscribe']() # Call the cleanup function.
+                 except Exception as e:
+                     # Log errors during unsubscribe but continue removal.
+                     logger.error(f"Viz '{self.target_id}': Error during unsubscribe for '{name}' on removal: {e}")
+
+            # --- Send Remove Command to UI ---
+            # Keys must be camelCase.
             remove_payload = {
-                "action": "removeVariable",
+                "action": "removeVariable", # Specific action to remove a top-level variable
                 "variableName": name,
-                "options": {} # No specific options needed for removal.
+                # "options": {} # No options needed for removal currently. Protocol expects options though.
+                "options": {} # Send empty options object as per protocol expectation (optional keys)
             }
-            self._send_update(remove_payload)
-            logger.info(f"Viz '{self.target_id}': Sent remove_variable update for '{name}'.")
+            self._send_update(remove_payload) # Send the command.
+            logger.info(f"Viz '{self.target_id}': Sent remove_variable command for '{name}'.")
         else:
-            logger.warning(f"Viz '{self.target_id}': Variable '{name}' not found for removal.")
+            # Variable wasn't found, maybe already removed or never shown.
+            logger.warning(f"Viz '{self.target_id}': Variable '{name}' not found for removal. Maybe it was already removed?")
 
     def remove(self):
         """Removes the entire Viz panel instance from the Sidekick UI.
 
-        This also automatically unsubscribes from any tracked ObservableValues
-        associated with variables currently shown in this panel.
+        This cleans up all variables currently displayed in this specific Viz
+        panel and automatically unsubscribes from any `ObservableValue` instances
+        that were being tracked by it.
         """
         logger.info(f"Requesting removal of Viz panel '{self.target_id}'.")
-        # Unsubscribe from all tracked observables before sending the remove command.
-        for name, entry in list(self._shown_variables.items()): # Iterate over a copy
+
+        # --- Unsubscribe from ALL tracked observables FIRST ---
+        # Iterate over a copy of the keys because we're modifying the dictionary.
+        for name in list(self._shown_variables.keys()):
+            entry = self._shown_variables.pop(name) # Remove from tracking
             if entry.get('unsubscribe'):
                  logger.debug(f"Viz '{self.target_id}': Unsubscribing from '{name}' during panel removal.")
                  try:
                      entry['unsubscribe']()
                  except Exception as e:
-                     logger.error(f"Viz '{self.target_id}': Error unsubscribing from '{name}' during remove: {e}")
-            # Remove from local tracking as we go.
-            del self._shown_variables[name]
+                     logger.error(f"Viz '{self.target_id}': Error unsubscribing from '{name}' during panel remove: {e}")
 
+        # Now call the base class's remove() method, which sends the 'remove' command
+        # for the whole module instance and cleans up base class resources.
         super().remove()
 
     def _reset_specific_callbacks(self):
-        """Resets Viz-specific state (subscriptions) on removal."""
-        # Unsubscribing is handled in the main remove() method for Viz.
+        """Resets Viz-specific state (subscriptions) when the module is removed.
+
+        Note:
+            The actual unsubscribing logic is currently handled directly within
+            the overridden `remove()` method for Viz to ensure it happens *before*
+            the base `remove()` command is sent. This method primarily just
+            clears the tracking dictionary.
+        """
+        # Called by BaseModule.remove()
         self._shown_variables.clear()
