@@ -7,7 +7,8 @@ body {
     sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* Base background is set by index.css based on theme */
+    color: var(--sk-foreground); /* Use variable */
+    background-color: var(--sk-background); /* Use variable */
 }
 
 .App {
@@ -15,14 +16,15 @@ body {
     flex-direction: column;
     min-height: 100vh;
     width: 100%;
+    background-color: var(--sk-background); /* Ensure App background matches body */
 }
 
 /* --- Header Styling (Compact & Clear) --- */
 .App-header {
-    background-color: #f8f9fa; /* Lighter background */
+    background-color: var(--sk-header-background); /* Use variable */
     padding: 8px 15px; /* Reduced padding */
-    color: #343a40; /* Darker text */
-    border-bottom: 1px solid #dee2e6; /* Standard border */
+    color: var(--sk-header-foreground); /* Use variable */
+    border-bottom: 1px solid var(--sk-header-border); /* Use variable */
     display: flex;
     align-items: center; /* Vertically align items */
     justify-content: space-between; /* Space out main elements */
@@ -35,7 +37,7 @@ body {
 .App-header h1 {
     margin: 0;
     font-size: 1.2em; /* Slightly smaller title */
-    color: #213547;
+    color: var(--sk-header-foreground); /* Use variable */
     white-space: nowrap; /* Prevent title wrapping */
     flex-shrink: 0; /* Don't allow title to shrink */
 }
@@ -46,7 +48,7 @@ body {
     align-items: center;
     gap: 12px; /* Space between individual status items */
     font-size: 0.8em; /* Smaller font for status */
-    color: #6c757d; /* Default muted color */
+    color: var(--sk-secondary-foreground); /* Use variable */
     flex-grow: 1; /* Allow status to take up space */
     justify-content: flex-end; /* Align status to the right */
     min-width: 0; /* Allow shrinking */
@@ -62,35 +64,34 @@ body {
     line-height: 1.4; /* Adjust line height */
     display: flex; /* Use flex for icon alignment if needed */
     align-items: center;
+    border: 1px solid transparent; /* Base border */
 }
 
 /* Specific status styles using data attributes or classes */
 .status-connected { /* Class on the WebSocket status <p> */
-    background-color: #d4edda; /* Light green background */
-    color: #155724; /* Dark green text */
-    border: 1px solid #c3e6cb;
+    background-color: var(--sk-status-success-bg); /* Use variable */
+    color: var(--sk-status-success-fg); /* Use variable */
+    border-color: var(--sk-status-success-border); /* Use variable */
 }
 .status-disconnected { /* Class on the WebSocket status <p> */
-    background-color: #f8d7da; /* Light red background */
-    color: #721c24; /* Dark red text */
-    border: 1px solid #f5c6cb;
+    background-color: var(--sk-status-error-bg); /* Use variable */
+    color: var(--sk-status-error-fg); /* Use variable */
+    border-color: var(--sk-status-error-border); /* Use variable */
 }
 
 .hero-status-online { /* Class on the Hero status <p> */
-    background-color: #d4edda; /* Light green background */
-    color: #155724; /* Dark green text */
-    border-color: #c3e6cb; /* Match border color */
-    /* Inherits padding and border-radius from .status-indicators p */
+    background-color: var(--sk-status-success-bg); /* Use variable */
+    color: var(--sk-status-success-fg); /* Use variable */
+    border-color: var(--sk-status-success-border); /* Use variable */
 }
 .hero-status-offline { /* Class on the Hero status <p> */
-    background-color: #f8d7da; /* Light red background */
-    color: #721c24; /* Dark red text */
-    border-color: #f5c6cb; /* Match border color */
-    /* Inherits padding and border-radius from .status-indicators p */
+    background-color: var(--sk-status-error-bg); /* Use variable */
+    color: var(--sk-status-error-fg); /* Use variable */
+    border-color: var(--sk-status-error-border); /* Use variable */
 }
 
 .app-version {
-    color: #6c757d;
+    color: var(--sk-secondary-foreground); /* Use variable */
     padding: 2px 0 !important; /* Override badge padding */
     border: none !important;
     background-color: transparent !important;
@@ -100,22 +101,23 @@ body {
 .App-header button {
     padding: 5px 12px; /* Reduced padding */
     font-size: 0.85em; /* Slightly smaller font */
-    background-color: #007bff;
-    color: white;
+    background-color: var(--sk-button-primary-bg); /* Use variable */
+    color: var(--sk-button-primary-fg); /* Use variable */
     border: none;
     border-radius: 4px;
     cursor: pointer;
-    transition: background-color 0.2s ease;
+    transition: background-color 0.2s ease, opacity 0.2s ease;
     white-space: nowrap; /* Prevent button text wrapping */
     flex-shrink: 0; /* Don't allow button to shrink */
 }
 
 .App-header button:hover {
-    background-color: #0056b3;
+    background-color: var(--sk-button-primary-hover-bg); /* Use variable */
 }
 
 .App-header button:disabled {
-    background-color: #6c757d; /* Muted gray when disabled */
+    background-color: var(--sk-button-disabled-bg); /* Use variable */
+    color: var(--sk-button-disabled-fg); /* Use variable */
     cursor: not-allowed;
     opacity: 0.65;
 }
@@ -133,8 +135,8 @@ body {
 
 /* General styling for module containers */
 .module-card {
-    background-color: #ffffff;
-    border: 1px solid #eee;
+    background-color: var(--sk-card-background); /* Use variable */
+    border: 1px solid var(--sk-card-border); /* Use variable */
     border-radius: 6px; /* Slightly smaller radius */
     padding: 15px;
     width: 100%;
@@ -146,8 +148,8 @@ body {
 }
 
 .module-card:hover {
-    border-color: #e0e0e0;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07); /* Subtle shadow */
+    border-color: var(--sk-card-hover-border); /* Use variable */
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07); /* Keep subtle shadow */
 }
 
 /* --- Info Icon Styles --- */
@@ -155,7 +157,7 @@ body {
     position: absolute;
     top: 8px; /* Adjust positioning */
     right: 8px;
-    color: #adb5bd; /* Lighter icon color */
+    color: var(--sk-secondary-foreground); /* Use variable */
     font-size: 1em; /* Adjust size */
     z-index: 10;
     opacity: 0;
@@ -171,7 +173,7 @@ body {
 
 .module-info-icon:hover {
     opacity: 1; /* Fully opaque on direct hover */
-    color: #495057; /* Darken on hover */
+    color: var(--sk-foreground); /* Use variable */
 }
 
 /* --- Tooltip Styles --- */
@@ -180,8 +182,8 @@ body {
     top: 30px; /* Adjust position relative to icon */
     right: 30px;
     transform: translateY(-100%);
-    background-color: rgba(52, 58, 64, 0.9); /* Slightly transparent dark background */
-    color: #fff;
+    background-color: var(--sk-tooltip-background); /* Use variable */
+    color: var(--sk-tooltip-foreground); /* Use variable */
     padding: 5px 8px; /* Reduced padding */
     border-radius: 4px;
     font-size: 0.75em; /* Smaller tooltip font */
@@ -206,4 +208,10 @@ body {
     display: block; /* Make <br> work like block elements */
     content: "";
     margin-top: 4px; /* Add space after line break */
+}
+
+/* Style for the "No modules active" message */
+.App-main > p {
+    color: var(--sk-secondary-foreground);
+    font-style: italic;
 }

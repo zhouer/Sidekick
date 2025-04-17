@@ -4,19 +4,21 @@
     display: flex;
     flex-direction: column;
     gap: 8px; /* Spacing between variable items */
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace; /* Monospace font */
+    font-size: 0.9em;
 }
 
 .viz-variable-item {
     padding: 8px;
-    border: 1px solid #eee;
+    border: 1px solid var(--sk-card-border); /* Use variable */
     border-radius: 4px;
-    background-color: #fdfdfd; /* Base background for the whole variable row */
+    background-color: var(--sk-card-background); /* Use variable */
     line-height: 1.4;
 }
 
 .viz-variable-name {
     font-weight: bold;
-    color: #5a2de8; /* Variable name color */
+    color: var(--sk-code-variable); /* Use variable */
     margin-right: 5px;
     vertical-align: top; /* Align with the value container */
 }
@@ -26,46 +28,51 @@
     margin-left: 5px;
     position: relative;
     padding-left: 5px; /* Indentation for nested structures */
-    border-left: 1px dotted #ccc; /* Visual guide for nesting */
+    border-left: 1px dotted var(--sk-border); /* Use variable */
     vertical-align: top; /* Align with variable name */
     border-radius: 3px; /* Apply rounding to value containers too */
+    transition: background-color 0.2s ease; /* Smooth hover */
 }
 
 .viz-value-container:hover {
-    background-color: #f9f9f9; /* Subtle hover effect */
+    background-color: color-mix(in srgb, var(--sk-card-background) 90%, var(--sk-foreground) 5%); /* Subtle hover */
 }
 
 /* Resting style for values explicitly tracked by ObservableValue */
 .observable-tracked {
-    border: 1px solid #7aa5e2; /* Blue border */
+    border: 1px solid var(--sk-observable-border); /* Use variable */
     /* Resting background color */
-    background-color: #eef4ff; /* Light blue background */
-    padding: 3px 5px; /* Padding inside the blue box */
-    /* display: inline-block; */ /* Let layout flow, might wrap */
+    background-color: var(--sk-observable-bg); /* Use variable */
+    padding: 2px 4px; /* Reduced padding */
+    border-radius: 3px;
+    /* display: inline-block; */ /* Let layout flow */
 }
 
 /* Highlighting animation */
 @keyframes viz-highlight-fade {
-    from { background-color: #e0d4ff; } /* Slightly more saturated purple - Start */
-    to { background-color: transparent; } /* Fade to transparent (will reveal resting .observable-tracked background) */
+    from { background-color: var(--sk-highlight-bg); } /* Use variable */
+    /* Fade to transparent; resting .observable-tracked background will show if applicable */
+    to { background-color: transparent; }
 }
 
 /* Class applied temporarily to the specific viz-value-container that changed */
 .viz-highlight-node {
     animation: viz-highlight-fade 1.5s ease-out; /* REMOVED 'forwards' */
-    /* Optional: slightly change border during highlight */
-    /* border-color: #b8a1f0; */
 }
-
 
 .viz-expand-button {
     background: none; border: none; cursor: pointer;
-    padding: 0 5px 0 0; font-size: 0.8em; color: #666;
+    padding: 0 5px 0 0; font-size: 0.8em;
+    color: var(--sk-secondary-foreground); /* Use variable */
     margin-right: 3px; vertical-align: middle;
+}
+.viz-expand-button:hover {
+    color: var(--sk-foreground);
 }
 
 .viz-type-indicator {
-    color: #888; font-style: italic; margin-right: 3px;
+    color: var(--sk-code-comment); /* Use variable for type hints */
+    font-style: italic; margin-right: 3px;
 }
 
 /* Styling for primitive values rendered directly */
@@ -73,19 +80,22 @@
     margin-left: 3px;
 }
 .viz-value-primitive {}
-.viz-value-string { color: #2a9d8f; }
-.viz-value-number { color: #e76f51; }
-.viz-value-boolean { color: #f4a261; font-weight: bold; }
-.viz-value-none { color: #aaa; font-style: italic; }
-.viz-type-truncated, .viz-type-error, .viz-type-recursive_ref, .viz-type-unknown-primitive { color: #e63946; font-style: italic; }
-.viz-type-object { color: #666; } /* For object type indicator */
-.viz-type-repr { color: #666; } /* For repr type indicator */
+.viz-value-string { color: var(--sk-code-string); }
+.viz-value-number { color: var(--sk-code-number); }
+.viz-value-boolean { color: var(--sk-code-boolean); font-weight: bold; }
+.viz-value-none { color: var(--sk-code-keyword); font-style: italic; } /* Use keyword color */
+.viz-type-truncated, .viz-type-error, .viz-type-recursive_ref, .viz-type-unknown-primitive {
+    color: var(--sk-status-error-fg); /* Use error color */
+    font-style: italic;
+}
+.viz-type-object { color: var(--sk-code-comment); } /* Use comment color for object types */
+.viz-type-repr { color: var(--sk-code-comment); } /* Use comment color for repr types */
 
 
 /* List/Dict/Set/Object rendering (when expanded) */
 .viz-list, .viz-dict, .viz-set, .viz-object {
     margin-left: 15px; padding-left: 10px;
-    border-left: 1px solid #eee;
+    border-left: 1px solid var(--sk-border); /* Use variable */
     display: flex; flex-direction: column; gap: 3px;
     margin-top: 3px; /* Add space below the type indicator when expanded */
 }
@@ -95,7 +105,7 @@
 }
 
 .viz-list-index {
-    color: #999;
+    color: var(--sk-secondary-foreground); /* Use secondary color */
     margin-right: 5px;
     display: inline-block;
     min-width: 1.5em; /* Align indices nicely */
@@ -109,24 +119,31 @@
     vertical-align: top;
 }
 /* Add colon *after* the key's value container */
-.viz-dict-item > .viz-dict-key::after {
+.viz-dict-item > .viz-dict-key + .viz-value-container::before {
     content: ":";
-    color: #555;
-    margin-left: 2px;
+    color: var(--sk-foreground);
+    margin-right: 5px;
     font-weight: bold;
 }
 
 /* Styling for Object Attributes */
-.viz-attr-name { color: #4a5568; font-style: italic; }
+.viz-attr-name {
+    color: var(--sk-code-attribute); /* Use variable */
+    font-style: italic;
+}
 /* Add colon *after* the attribute name span */
-.viz-object-item > .viz-dict-key.viz-attr-name::after {
+.viz-object-item > .viz-dict-key.viz-attr-name + .viz-value-container::before {
     content: ":";
-    color: #555;
-    margin-left: 2px;
+    color: var(--sk-foreground);
+    margin-right: 5px;
     font-weight: normal; /* Reset potential bolding */
     font-style: normal; /* Reset potential italics */
 }
 
 .viz-set-item {}
-.viz-error { color: red; font-style: italic; }
-.viz-empty-message { color: #888; font-style: italic; padding: 10px; }
+.viz-error { color: var(--sk-status-error-fg); font-style: italic; } /* Use error color */
+.viz-empty-message {
+    color: var(--sk-secondary-foreground); /* Use variable */
+    font-style: italic;
+    padding: 10px;
+}

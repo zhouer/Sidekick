@@ -1,9 +1,11 @@
 /* Sidekick/webapp/src/modules/canvas/CanvasComponent.css */
 
 .canvas-element {
-    border: 1px solid #ccc;
+    border: 1px solid var(--sk-border); /* Use variable */
     display: block; /* Prevent extra space below canvas */
     margin: 0 auto; /* Center canvas if container is wider */
-    background-color: #fff; /* Default background if not set by bgColor */
+    /* Default background is set inline based on state.bgColor, */
+    /* this is just a fallback if that somehow fails */
+    background-color: var(--sk-card-background); /* Use variable */
     max-width: 100%; /* Ensure canvas scales down if container is too narrow */
 }

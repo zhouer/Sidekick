@@ -52,7 +52,7 @@ const ConsoleComponent: React.FC<ConsoleComponentProps> = ({ id, state, onIntera
     };
 
     return (
-        <div>
+        <div className="console-container">
             <div className="console-output" ref={outputRef}>
                 {lines.map((line, index) => (
                     <div key={index} className="console-line">

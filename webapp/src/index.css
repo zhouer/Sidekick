@@ -4,11 +4,68 @@
   line-height: 1.5;
   font-weight: 400;
 
-  /* --- Default to Light Theme Colors --- */
-  color-scheme: light dark; /* Still declare support for both */
-  color: #213547;             /* Default dark text */
-  background-color: #ffffff; /* Default light background */
-  /* ------------------------------------- */
+  /* --- Color Scheme Definition --- */
+  color-scheme: light dark; /* Declare support for both light and dark modes */
+
+  /* --- Sidekick Semantic Color Variables (Light Theme Defaults / Fallbacks) --- */
+  /* Base */
+  --sk-foreground: var(--vscode-foreground, #213547);
+  --sk-background: var(--vscode-editor-background, #ffffff);
+  --sk-secondary-foreground: var(--vscode-descriptionForeground, #6c757d);
+  --sk-disabled-foreground: var(--vscode-disabledForeground, #6c757d);
+  /* Borders */
+  --sk-border: var(--vscode-contrastBorder, #e0e0e0);
+  --sk-focus-border: var(--vscode-focusBorder, #007bff);
+  --sk-input-border: var(--vscode-input-border, #ccc);
+  /* Components */
+  --sk-card-background: var(--vscode-sideBar-background, #ffffff);
+  --sk-card-border: var(--vscode-panel-border, #eee);
+  --sk-card-hover-border: var(--vscode-panelTitle-activeBorder, #e0e0e0);
+  --sk-header-background: var(--vscode-titleBar-activeBackground, #f8f9fa);
+  --sk-header-foreground: var(--vscode-titleBar-activeForeground, #343a40);
+  --sk-header-border: var(--vscode-panel-border, #dee2e6);
+  --sk-tooltip-background: var(--vscode-editorHoverWidget-background, rgba(52, 58, 64, 0.95));
+  --sk-tooltip-foreground: var(--vscode-editorHoverWidget-foreground, #ffffff);
+  /* Buttons */
+  --sk-button-primary-bg: var(--vscode-button-background, #007bff);
+  --sk-button-primary-fg: var(--vscode-button-foreground, #ffffff);
+  --sk-button-primary-hover-bg: var(--vscode-button-hoverBackground, #0056b3);
+  --sk-button-secondary-bg: var(--vscode-button-secondaryBackground, #6c757d);
+  --sk-button-secondary-fg: var(--vscode-button-secondaryForeground, #ffffff);
+  --sk-button-secondary-hover-bg: var(--vscode-button-secondaryHoverBackground, #5a6268);
+  --sk-button-success-bg: var(--vscode-debugIcon-startForeground, #28a745); /* Using debug green as a proxy */
+  --sk-button-success-fg: #ffffff;
+  --sk-button-success-hover-bg: var(--vscode-debugIcon-breakpointForeground, #218838); /* Using breakpoint red as proxy is wrong, find better green */
+  --sk-button-disabled-bg: var(--vscode-button-secondaryBackground, #6c757d); /* Reuse secondary */
+  --sk-button-disabled-fg: var(--vscode-button-secondaryForeground, #ffffff); /* Reuse secondary */
+  /* Inputs */
+  --sk-input-background: var(--vscode-input-background, #ffffff);
+  --sk-input-foreground: var(--vscode-input-foreground, #333333);
+  --sk-input-placeholder-fg: var(--vscode-input-placeholderForeground, #888);
+  /* Status Indicators */
+  --sk-status-success-bg: var(--vscode-statusBarItem-compactHoverBackground, #d4edda); /* Use generic hover bg, adjust */
+  --sk-status-success-fg: var(--vscode-testing-iconPassed, #155724);
+  --sk-status-success-border: var(--vscode-testing-iconPassedBorder, #c3e6cb);
+  --sk-status-error-bg: var(--vscode-statusBarItem-errorBackground, #f8d7da);
+  --sk-status-error-fg: var(--vscode-errorForeground, #721c24);
+  --sk-status-error-border: var(--vscode-inputValidation-errorBorder, #f5c6cb);
+  /* Code/Syntax-like Colors */
+  --sk-code-background: var(--vscode-textCodeBlock-background, #f8f8f8);
+  --sk-code-foreground: var(--sk-foreground);
+  --sk-code-string: var(--vscode-symbolIcon-stringForeground, #2a9d8f);
+  --sk-code-number: var(--vscode-symbolIcon-numberForeground, #e76f51);
+  --sk-code-boolean: var(--vscode-symbolIcon-booleanForeground, #f4a261);
+  --sk-code-variable: var(--vscode-symbolIcon-variableForeground, #5a2de8);
+  --sk-code-keyword: var(--vscode-symbolIcon-keywordForeground, #e63946); /* e.g., None */
+  --sk-code-comment: var(--vscode-editorLineNumber-foreground, #888); /* Use line number color for comments/types */
+  --sk-code-attribute: var(--vscode-symbolIcon-fieldForeground, #4a5568); /* For object attributes */
+  --sk-highlight-bg: var(--vscode-editor-selectionBackground, #e0d4ff); /* Use selection background */
+  --sk-observable-bg: var(--vscode-list-activeSelectionBackground, #eef4ff); /* Use list active background */
+  --sk-observable-border: var(--vscode-list-activeSelectionForeground, #7aa5e2); /* Use list active foreground */
+
+  /* --- Base Element Styling --- */
+  color: var(--sk-foreground);
+  background-color: var(--sk-background);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -16,7 +73,87 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* --- Base Button Style (Light theme default) --- */
+/* --- Dark Mode Overrides --- */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Re-assign variables using VS Code dark theme variables or dark fallbacks */
+    --sk-foreground: var(--vscode-foreground, rgba(255, 255, 255, 0.87));
+    --sk-background: var(--vscode-editor-background, #242424);
+    --sk-secondary-foreground: var(--vscode-descriptionForeground, #a0a0a0);
+    --sk-disabled-foreground: var(--vscode-disabledForeground, #888888);
+    /* Borders */
+    --sk-border: var(--vscode-contrastBorder, #444444);
+    --sk-focus-border: var(--vscode-focusBorder, #007fd4);
+    --sk-input-border: var(--vscode-input-border, #555555);
+    /* Components */
+    --sk-card-background: var(--vscode-sideBar-background, #2a2a2a);
+    --sk-card-border: var(--vscode-panel-border, #333333);
+    --sk-card-hover-border: var(--vscode-panelTitle-activeBorder, #444444);
+    --sk-header-background: var(--vscode-titleBar-activeBackground, #3c3c3c);
+    --sk-header-foreground: var(--vscode-titleBar-activeForeground, #cccccc);
+    --sk-header-border: var(--vscode-panel-border, #444444);
+    --sk-tooltip-background: var(--vscode-editorHoverWidget-background, rgba(60, 60, 60, 0.95));
+    --sk-tooltip-foreground: var(--vscode-editorHoverWidget-foreground, #cccccc);
+    /* Buttons - Use VS Code variables if available, otherwise provide dark fallbacks */
+    --sk-button-primary-bg: var(--vscode-button-background, #0e639c);
+    --sk-button-primary-fg: var(--vscode-button-foreground, #ffffff);
+    --sk-button-primary-hover-bg: var(--vscode-button-hoverBackground, #1177bb);
+    --sk-button-secondary-bg: var(--vscode-button-secondaryBackground, #5f6a79);
+    --sk-button-secondary-fg: var(--vscode-button-secondaryForeground, #ffffff);
+    --sk-button-secondary-hover-bg: var(--vscode-button-secondaryHoverBackground, #748191);
+    --sk-button-success-bg: var(--vscode-debugIcon-startForeground, #3a814a);
+    --sk-button-success-fg: #ffffff;
+    --sk-button-success-hover-bg: var(--vscode-debugIcon-breakpointForeground, #4d9f61); /* Find better green */
+    --sk-button-disabled-bg: var(--vscode-button-secondaryBackground, #5f6a79);
+    --sk-button-disabled-fg: var(--vscode-button-secondaryForeground, #ffffff);
+    /* Inputs */
+    --sk-input-background: var(--vscode-input-background, #3c3c3c);
+    --sk-input-foreground: var(--vscode-input-foreground, #cccccc);
+    --sk-input-placeholder-fg: var(--vscode-input-placeholderForeground, #777777);
+    /* Status Indicators */
+    --sk-status-success-bg: var(--vscode-statusBarItem-compactHoverBackground, rgba(21, 87, 36, 0.3));
+    --sk-status-success-fg: var(--vscode-testing-iconPassed, #89d185);
+    --sk-status-success-border: var(--vscode-testing-iconPassedBorder, #5a8e5a);
+    --sk-status-error-bg: var(--vscode-statusBarItem-errorBackground, rgba(114, 28, 36, 0.4));
+    --sk-status-error-fg: var(--vscode-errorForeground, #f48771);
+    --sk-status-error-border: var(--vscode-inputValidation-errorBorder, #a15056);
+    /* Code/Syntax-like Colors */
+    --sk-code-background: var(--vscode-textCodeBlock-background, #2a2a2a);
+    --sk-code-foreground: var(--sk-foreground);
+    --sk-code-string: var(--vscode-symbolIcon-stringForeground, #6a9955); /* Example dark theme string color */
+    --sk-code-number: var(--vscode-symbolIcon-numberForeground, #b5cea8);
+    --sk-code-boolean: var(--vscode-symbolIcon-booleanForeground, #569cd6);
+    --sk-code-variable: var(--vscode-symbolIcon-variableForeground, #9cdcfe);
+    --sk-code-keyword: var(--vscode-symbolIcon-keywordForeground, #c586c0); /* e.g., None */
+    --sk-code-comment: var(--vscode-editorLineNumber-foreground, #858585);
+    --sk-code-attribute: var(--vscode-symbolIcon-fieldForeground, #dcdcaa);
+    --sk-highlight-bg: var(--vscode-editor-selectionBackground, rgba(173, 214, 255, 0.3));
+    --sk-observable-bg: var(--vscode-list-activeSelectionBackground, #37373d);
+    --sk-observable-border: var(--vscode-list-activeSelectionForeground, #cccccc);
+  }
+}
+
+/* --- Generic Element Reset/Defaults --- */
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--sk-background);
+}
+
+a {
+  font-weight: 500;
+  color: var(--sk-focus-border); /* Use focus color for links */
+  text-decoration: inherit;
+}
+a:hover {
+  filter: brightness(1.2); /* Simple hover effect */
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
 button {
   border-radius: 8px;
   border: 1px solid transparent;
@@ -24,63 +161,16 @@ button {
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  background-color: #f9f9f9; /* Light default background */
-  color: #213547;             /* Dark default text */
+  background-color: var(--sk-button-secondary-bg); /* Default to secondary */
+  color: var(--sk-button-secondary-fg);
   cursor: pointer;
-  transition: border-color 0.25s, background-color 0.2s, color 0.2s; /* Added transitions */
+  transition: border-color 0.25s, background-color 0.2s, color 0.2s, opacity 0.2s;
 }
 button:hover {
-  border-color: #646cff;
+  background-color: var(--sk-button-secondary-hover-bg); /* Default hover */
 }
 button:focus,
 button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-/* ------------------------------------------------ */
-
-
-/* --- Dark Mode Overrides --- */
-@media (prefers-color-scheme: dark) {
-  :root { /* Apply dark variables if OS prefers dark */
-    color: rgba(255, 255, 255, 0.87);
-    background-color: #242424;
-  }
-  /* Override base button for dark mode */
-  button {
-    background-color: #1a1a1a;
-    color: rgba(255, 255, 255, 0.87);
-  }
-}
-/* Explicit Dark Theme Override (e.g., via JS toggle later) */
-html[data-theme='dark'] {
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-}
-html[data-theme='dark'] button {
-  background-color: #1a1a1a;
-  color: rgba(255, 255, 255, 0.87);
-}
-/* -------------------------- */
-
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-body {
-  margin: 0;
-  min-height: 100vh;
-  /* Use CSS variables for easier theme management if you prefer, */
-  /* otherwise, direct color application works too */
-  background-color: var(--background-color, #ffffff); /* Default to light */
-}
-
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+  outline: 2px solid var(--sk-focus-border);
+  outline-offset: 2px;
 }
