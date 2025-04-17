@@ -50,14 +50,18 @@ if not logger.hasHandlers():
 # These functions manage the underlying connection to the Sidekick UI
 # and allow for basic configuration.
 from .connection import (
-    set_url,                      # Set the WebSocket URL (call before connecting).
-    set_config,                   # Configure connection behavior (call before connecting).
-    close_connection,             # (Mostly internal) Closes the connection immediately.
-    activate_connection,          # Ensures connection is ready (blocks if not).
-    clear_all,                    # Clears all UI elements in Sidekick.
-    register_global_message_handler, # Advanced: Listen to *all* incoming messages.
-    run_forever,                  # Keeps the script alive to handle UI events.
-    shutdown,                     # Cleanly disconnects from Sidekick.
+    set_url,                          # Set the WebSocket URL (call before connecting).
+    set_config,                       # Configure connection behavior (call before connecting).
+    close_connection,                 # (Mostly internal) Closes the connection immediately.
+    activate_connection,              # Ensures connection is ready (blocks if not).
+    clear_all,                        # Clears all UI elements in Sidekick.
+    register_global_message_handler,  # Advanced: Listen to *all* incoming messages.
+    run_forever,                      # Keeps the script alive to handle UI events.
+    shutdown,                         # Cleanly disconnects from Sidekick.
+    SidekickConnectionError,          # Base class for all Sidekick connection errors. Catch this for any connection issue.
+    SidekickConnectionRefusedError,   # Raised on initial connection failure (server not found/reachable, panel not open?).
+    SidekickTimeoutError,             # Raised if connected to server, but Sidekick UI panel doesn't signal readiness in time.
+    SidekickDisconnectedError,        # Raised if the connection is lost *after* being successfully established.
 )
 
 # --- Core observable class ---
@@ -95,4 +99,9 @@ __all__ = [
     'Canvas',
     # Logger
     'logger',
+    # Errors
+    'SidekickConnectionError',
+    'SidekickConnectionRefusedError',
+    'SidekickTimeoutError',
+    'SidekickDisconnectedError',
 ]
