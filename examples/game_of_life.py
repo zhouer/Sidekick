@@ -1,4 +1,3 @@
-# game_of_life.py
 import time
 import random
 import threading
@@ -7,7 +6,6 @@ from copy import deepcopy
 from typing import List, Dict, Any, Optional
 
 import sidekick
-# Import Sidekick modules
 from sidekick import Grid, Console, Control
 
 # --- Configuration ---
@@ -19,7 +17,7 @@ DEAD_COLOR = 'white' # '#E5E7EB' # Light gray for dead cells
 
 # --- Logging Setup (Optional) ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-# logging.getLogger("SidekickConn").setLevel(logging.DEBUG) # Uncomment for detailed connection logs
+# logging.getLogger("sidekick").setLevel(logging.DEBUG)
 
 # --- Game State ---
 # Represents the grid: 0 for dead, 1 for live
@@ -272,7 +270,6 @@ if __name__ == "__main__":
         controls = Control(instance_id="gol_controls")
         controls.on_click(handle_control_click) # Register control click handler
         controls.on_error(lambda err: handle_module_error("Control", err))
-
 
         console.print("Welcome to Conway's Game of Life!")
         console.print(f"Grid Size: {GRID_WIDTH}x{GRID_HEIGHT}. Delay: {SIM_DELAY}s")

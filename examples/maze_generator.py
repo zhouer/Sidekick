@@ -1,4 +1,3 @@
-# maze.py
 import time
 import random
 import threading
@@ -6,8 +5,7 @@ import logging
 from typing import List, Tuple, Set, Optional, Dict, Any
 
 import sidekick
-# Import Sidekick modules
-from sidekick import Grid, Console, Control # Assuming 'sidekick' is the package name
+from sidekick import Grid, Console, Control
 
 # --- Configuration ---
 DEFAULT_WIDTH = 35
@@ -54,7 +52,7 @@ controls: Optional[Control] = None
 
 # --- Logging Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-# logging.getLogger("SidekickConn").setLevel(logging.DEBUG)
+# logging.getLogger("sidekick").setLevel(logging.DEBUG)
 
 # ==================================
 # == Maze Utilities               ==

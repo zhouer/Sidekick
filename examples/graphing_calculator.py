@@ -3,7 +3,6 @@ import math
 import logging
 from typing import Optional, Dict, Any, List, Tuple
 
-# Import Sidekick modules
 import sidekick
 from sidekick import Console, Canvas
 
@@ -69,11 +68,9 @@ aeval.symtable['abs'] = abs
 plotted_expressions: List[Tuple[str, str]] = []
 plot_color_index = 0 # Index for cycling through PLOT_COLORS
 
-script_running = True # Flag to keep main loop alive
-
 # --- Logging Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-# logging.getLogger("SidekickConn").setLevel(logging.DEBUG) # For detailed WS logs
+# logging.getLogger("sidekick").setLevel(logging.DEBUG)
 
 # --- Helper Functions ---
 
@@ -281,7 +278,7 @@ def display_help():
 
 def handle_console_input(input_str: str):
     """Handles input from the Console, routing to appropriate actions."""
-    global script_running, plot_color_index
+    global plot_color_index
     global x_min, x_max, y_min, y_max # Allow modification of range globals
     if not console: return
 
@@ -299,7 +296,7 @@ def handle_console_input(input_str: str):
 
         elif cmd_lower == "quit" or cmd_lower == "exit":
             console.print("Exiting...")
-            script_running = False
+            sidekick.shutdown()
 
         elif cmd_lower.startswith("plot "):
             expression = input_str[5:].strip()
@@ -409,9 +406,6 @@ def handle_module_error(module_name: str, error_message: str):
 # --- Main Execution ---
 if __name__ == "__main__":
     try:
-        # Configure Sidekick
-        sidekick.set_config(clear_on_connect=True)
-
         # Create Sidekick modules (Canvas first for visual order)
         canvas = Canvas(
             instance_id="graph_canvas",

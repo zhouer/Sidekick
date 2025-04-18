@@ -8,7 +8,7 @@ from enum import Enum, auto
 # --- Configuration ---
 DEFAULT_NUM_DISKS = 3
 MAX_DISKS_FOR_LAYOUT = 8
-MOVE_DELAY = 0.6 # Adjusted delay
+MOVE_DELAY = 0.5 # Adjusted delay
 
 # Disk Colors
 DISK_COLORS = [
