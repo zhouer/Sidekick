@@ -14,7 +14,7 @@
   --sk-secondary-foreground: var(--vscode-descriptionForeground, #6c757d);
   --sk-disabled-foreground: var(--vscode-disabledForeground, #6c757d);
   /* Borders */
-  --sk-border: var(--vscode-contrastBorder, #e0e0e0);
+  --sk-border: var(--vscode-contrastBorder, #666666);
   --sk-focus-border: var(--vscode-focusBorder, #007bff);
   --sk-input-border: var(--vscode-input-border, #ccc);
   /* Components */
@@ -82,7 +82,7 @@
     --sk-secondary-foreground: var(--vscode-descriptionForeground, #a0a0a0);
     --sk-disabled-foreground: var(--vscode-disabledForeground, #888888);
     /* Borders */
-    --sk-border: var(--vscode-contrastBorder, #444444);
+    --sk-border: var(--vscode-contrastBorder, #999999);
     --sk-focus-border: var(--vscode-focusBorder, #007fd4);
     --sk-input-border: var(--vscode-input-border, #555555);
     /* Components */

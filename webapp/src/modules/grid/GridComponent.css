@@ -10,15 +10,15 @@
 .grid-canvas {
     display: grid;
     /* grid-template-columns will be set dynamically via inline styles */
-    /* --- Spacing --- */
+    /* --- gap and padding for cell border --- */
     gap: 1px;
+    padding: 1px;
     /* Set the background color of the grid container to create the "line" color */
     background-color: var(--sk-border); /* Use variable for grid lines */
     /* --- Sizing & Centering --- */
     width: fit-content; /* Adjust width to content */
     max-width: 100%; /* Prevent grid from exceeding container */
     margin: 0 auto;    /* Center the grid canvas */
-    border: 1px solid var(--sk-border); /* Add a border around the whole grid */
 }
 
 .grid-cell {

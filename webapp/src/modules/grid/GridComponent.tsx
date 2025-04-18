@@ -7,7 +7,8 @@ import './GridComponent.css';
 // --- Constants ---
 const DESIRED_CELL_SIZE = 50; // px
 const MIN_CELL_SIZE = 10; // px (prevent extremely small cells)
-const GRID_GAP = 1; // px (Must match CSS gap value)
+const GRID_GAP = 1; // px (must match CSS gap value)
+const CANVAS_PADDING = 1; // px (must match CSS padding for canvas)
 const MIN_FONT_SIZE = 10; // px
 
 // --- Helper Component for Cell Content & Font Sizing ---
@@ -83,7 +84,7 @@ const GridComponent: React.FC<GridComponentProps> = ({ id, state, onInteraction 
             return DESIRED_CELL_SIZE; // Default if no width or columns
         }
         const totalGapWidth = (numColumns - 1) * GRID_GAP;
-        const widthWithoutGaps = width - totalGapWidth;
+        const widthWithoutGaps = width - 2 * CANVAS_PADDING - totalGapWidth;
         // Calculate max size based on width, ensure it's at least MIN_CELL_SIZE
         const maxPossibleWidth = Math.max(MIN_CELL_SIZE, Math.floor(widthWithoutGaps / numColumns));
         // Choose the smaller of desired size and max possible size
@@ -155,9 +156,9 @@ const GridComponent: React.FC<GridComponentProps> = ({ id, state, onInteraction 
                 const key = `${x},${y}`;
                 const cellData = cells[key];
                 const cellStyle: React.CSSProperties = {
-                    backgroundColor: cellData?.color || 'white',
                     width: `${cellSize}px`,
                     height: `${cellSize}px`,
+                    ...(cellData?.color && { backgroundColor: cellData.color }),
                 };
 
                 gridCells.push(
