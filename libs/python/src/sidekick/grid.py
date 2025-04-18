@@ -172,7 +172,7 @@ class Grid(BaseModule):
             ...     grid.set_color(x, y, "yellow")
             ...
             >>> grid = sidekick.Grid(5, 5)
-            >>> grid.on_ckick(handle_cell_click) # Corrected method name
+            >>> grid.on_click(handle_cell_click)
             >>>
             >>> # Important: Keep the script running to listen for clicks!
             >>> sidekick.run_forever()
