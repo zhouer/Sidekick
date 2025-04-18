@@ -22,8 +22,8 @@
 .control-button {
     padding: 8px 16px;
     font-size: 0.95em;
-    background-color: var(--sk-button-secondary-bg); /* Use variable */
-    color: var(--sk-button-secondary-fg); /* Use variable */
+    background-color: var(--sk-button-primary-bg); /* Use variable */
+    color: var(--sk-button-primary-fg); /* Use variable */
     border: none;
     border-radius: 4px;
     cursor: pointer;
@@ -31,7 +31,7 @@
 }
 
 .control-button:hover {
-    background-color: var(--sk-button-secondary-hover-bg); /* Use variable */
+    background-color: var(--sk-button-primary-hover-bg); /* Use variable */
 }
 
 .control-button:active {
