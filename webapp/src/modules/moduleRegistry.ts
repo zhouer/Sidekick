@@ -25,6 +25,7 @@ registry.set('grid', {
     component: GridComponent,
     getInitialState: gridLogic.getInitialState,
     updateState: gridLogic.updateState,
+    imperativeUpdate: false, // Default or explicitly false
 });
 
 registry.set('console', {
@@ -33,6 +34,7 @@ registry.set('console', {
     component: ConsoleComponent,
     getInitialState: consoleLogic.getInitialState,
     updateState: consoleLogic.updateState,
+    imperativeUpdate: false,
 });
 
 registry.set('viz', {
@@ -41,6 +43,7 @@ registry.set('viz', {
     component: VizComponent,
     getInitialState: vizLogic.getInitialState,
     updateState: vizLogic.updateState,
+    imperativeUpdate: false, // Viz uses state updates for reactivity
 });
 
 registry.set('canvas', {
@@ -48,7 +51,8 @@ registry.set('canvas', {
     displayName: 'Canvas',
     component: CanvasComponent,
     getInitialState: canvasLogic.getInitialState,
-    updateState: canvasLogic.updateState,
+    updateState: canvasLogic.updateState, // Keep for consistency, but it won't be used for updates
+    imperativeUpdate: true, // <-- Enable imperative updates for Canvas
 });
 
 registry.set('control', {
@@ -57,10 +61,11 @@ registry.set('control', {
     component: ControlComponent,
     getInitialState: controlLogic.getInitialState,
     updateState: controlLogic.updateState,
+    imperativeUpdate: false,
 });
 
 // Export the registry for use in the main application
 export const moduleRegistry = registry;
 
 // Log registered modules on initialization (useful for debugging)
-console.log('Module Registry initialized with types:', Array.from(moduleRegistry.keys()));
+console.log('Module Registry initialized with types:', Array.from(moduleRegistry.entries()).map(([key, value]) => ({ type: key, imperative: !!value.imperativeUpdate })));

@@ -14,8 +14,9 @@ The library operates under a specific connection model:
 2.  **Blocking Connection Establishment:** The *first* operation requiring communication (e.g., creating a `sidekick.Grid()` or sending the first message) will **block** the Python script's execution until:
     *   A WebSocket connection to the Sidekick server is successfully established.
     *   The Sidekick UI panel signals back that it's online and ready.
-3.  **Synchronous Sends:** Once the connection is ready, messages sent via module methods (like `grid.set_color()`) are attempted immediately. There is no internal queue or buffering if the connection is not ready; connection establishment blocks instead.
+3.  **Synchronous Sends:** Once the connection is ready, messages sent via module methods (like `grid.set_color()` or `canvas.draw_line()`) are attempted immediately. There is no internal queue or buffering if the connection is not ready; connection establishment blocks instead.
 4.  **Exception-Based Error Handling:** Connection failures (initial refusal, timeout waiting for UI, disconnection during operation) will immediately **raise specific `SidekickConnectionError` exceptions**, halting the operation. The library does **not** attempt automatic reconnection. The user's script must handle these exceptions if recovery is desired (though typically the script would exit).
+5.  **Canvas Double Buffering:** The `Canvas` module provides an optional double buffering mechanism via a context manager (`with canvas.buffer() as buf:`) for smoother animations.
 
 ## 2. Development Setup
 
@@ -74,6 +75,7 @@ The `connection.py` module orchestrates the WebSocket communication and connecti
     *   `close_connection(is_exception, reason)`: The core cleanup function. Sets `_stop_event` to signal the listener thread, clears internal state (`_ws_connection`, status, handlers), attempts to send 'offline' announce and 'clearAll' (only on clean shutdown), closes the actual WebSocket socket, and joins the listener thread (waits for it to exit). Crucially, if called with `is_exception=True` (due to an error), it prepares a `SidekickDisconnectedError` to be raised *after* cleanup, unless `_shutdown_event` indicates a clean shutdown was requested concurrently.
     *   `shutdown()`: The public function for clean shutdown. Sets the `_shutdown_event` (to stop `run_forever`) and calls `close_connection(is_exception=False)`.
     *   `atexit.register(shutdown)`: Ensures `shutdown()` is called automatically when the Python script exits normally.
+*   **Command ID Generation (`get_next_command_id()`):** Provides a simple sequential counter (module-level, not thread-safe but usually sufficient for typical single-threaded use) to generate unique IDs for commands that require strict ordering, primarily used by the `Canvas` module.
 
 ### 3.2. Peer Discovery (`system/announce`)
 
@@ -92,27 +94,29 @@ The `connection.py` module orchestrates the WebSocket communication and connecti
 ### 3.4. Message Handling & Callbacks (`_listen_for_messages`, `BaseModule`)
 
 *   **Dispatch:** The `_listen_for_messages` thread receives messages. If a message has `type: "event"` or `type: "error"` and a `src` field (indicating the source UI module instance ID), it looks up the corresponding handler function in the `_message_handlers` dictionary using the `src` ID as the key.
-*   **Handler Registration:** Each instance of a `BaseModule` subclass (like `Grid`, `Console`) registers its own `_internal_message_handler` method with the `connection` module during its `__init__`, using its unique `target_id`.
+*   **Handler Registration:** Each instance of a `BaseModule` subclass (like `Grid`, `Console`, `Canvas`) registers its own `_internal_message_handler` method with the `connection` module during its `__init__`, using its unique `target_id`.
 *   **`BaseModule._internal_message_handler`:** This method receives the raw message dictionary from the dispatcher.
     *   It checks for `type: "error"` and calls the user's `_error_callback` (registered via `module.on_error()`) if it exists.
-    *   Subclasses override this method to add logic for handling specific `type: "event"` messages (e.g., checking `payload['event'] == 'click'`), parsing relevant data from the `payload`, and calling the appropriate user callback (e.g., `self._click_callback`, `self._input_text_callback`).
-*   **User Callbacks:** These are the functions provided by the user to methods like `grid.on_click()`, `console.on_input_text()`, `control.on_click()`, etc. They are stored as instance attributes (e.g., `self._click_callback`) on the module object.
+    *   Subclasses override this method to add logic for handling specific `type: "event"` messages (e.g., checking `payload['event'] == 'click'` in `Grid` or `Canvas`, or `payload['event'] == 'inputText'` in `Console` or `Control`), parsing relevant data from the `payload`, and calling the appropriate user callback (e.g., `self._click_callback`, `self._input_text_callback`).
+*   **User Callbacks:** These are the functions provided by the user to methods like `grid.on_click()`, `console.on_input_text()`, `control.on_click()`, `canvas.on_click()`, etc. They are stored as instance attributes (e.g., `self._click_callback`) on the module object.
 *   **Callback Exception Handling:** If an exception occurs *inside* a user's callback function when it's invoked by the listener thread, the library catches the exception, logs it using `logger.exception`, but **does not** crash the listener thread. This prevents one faulty callback from stopping the entire event processing system.
 
-### 3.5. Module Interaction (`BaseModule`, `_send_command`)
+### 3.5. Module Interaction (`BaseModule`, `_send_command`, `_send_update`)
 
 *   **`BaseModule`:** Provides the common foundation for all visual module classes.
     *   **`__init__`:** The constructor of any `BaseModule` subclass (like `Grid()`, `Console()`) **implicitly triggers `connection.activate_connection()`**. This means simply creating the first module instance in your script is enough to initiate the blocking connection establishment process. It also generates the `target_id` and registers the instance's message handler.
-    *   **`_send_command(type, payload)` / `_send_update(payload)`:** Internal helper methods used by public methods (like `set_color`, `print`, `add_button`). They construct the message dictionary (expecting the `payload` to already have `camelCase` keys where needed) and then call `connection.send_message()` to send it. They rely entirely on `send_message` for connection readiness checks and error handling.
-    *   **`remove()`:** Unregisters the message handler, calls `_reset_specific_callbacks()` for subclass cleanup, and sends a `remove` command via `_send_command()`.
+    *   **`_send_command(type, payload)`:** Internal helper used only for `spawn` and `remove`. Constructs the message and calls `connection.send_message()`.
+    *   **`_send_update(payload)`:** Internal helper used by most module methods that modify state (e.g., `grid.set_color`, `console.print`, `canvas.draw_line`). It constructs the full `update` message (including `type: "update"` and the provided `payload` which *must* already contain the module-specific `action` and `options`) and calls `connection.send_message()`.
+    *   **`remove()`:** Unregisters the message handler, calls `_reset_specific_callbacks()` for subclass cleanup, and sends a `remove` command via `_send_command()`. May also trigger module-specific cleanup (like destroying canvas buffers).
     *   **`on_error(callback)`:** Registers the user's error handler.
 *   **`_reset_specific_callbacks()`:** A virtual method in `BaseModule` that subclasses override to clear their specific callback attributes (like `_click_callback`) during `remove()`.
 
 ### 3.6. Protocol Compliance: `snake_case` to `camelCase` Conversion
 
-*   **Responsibility:** The conversion from Pythonic `snake_case` (used in public API arguments like `num_columns`) to the protocol-required `camelCase` (like `numColumns`) for keys within the JSON `payload` happens **within the public API methods of the specific module classes** (e.g., `Grid.__init__`, `Grid.set_color`, `Console.print`, `Control.add_button`, `Canvas._send_canvas_command`, `Viz.show`).
-*   **Implementation:** These methods construct the `payload` dictionary (and any nested dictionaries like `options` or `config`) ensuring that all keys intended for the JSON message adhere to the `camelCase` convention defined in the [protocol specification](./protocol.md).
-*   **`connection.send_message` Role:** The `connection` module **does not perform any case conversion**. It receives the fully constructed dictionary (with `camelCase` keys already in the `payload`) from the module method and sends it as JSON.
+*   **Responsibility:** The conversion from Pythonic `snake_case` (used in public API arguments like `num_columns`, `line_color`) to the protocol-required `camelCase` (like `numColumns`, `lineColor`) for keys within the JSON `payload` (specifically within the `options` or `config` sub-dictionaries) happens **within the public API methods of the specific module classes** (e.g., `Grid.__init__`, `Grid.set_color`, `Canvas.draw_line`, `Viz.show`).
+*   **Implementation:** These methods construct the `payload` dictionary (usually containing `action` and `options`) ensuring that all keys *within `options`* intended for the JSON message adhere to the `camelCase` convention defined in the [protocol specification](./protocol.md).
+*   **`connection.send_message` Role:** The `connection` module **does not perform any case conversion**. It receives the fully constructed message dictionary (with `camelCase` keys already in the `payload.options`) from the module method and sends it as JSON.
+*   **Canvas Specifics:** The `Canvas` module methods now also handle constructing the correct `action` name (e.g., `drawLine`) and ensuring the required `bufferId` and optional style parameters (as `camelCase`) are included in the `options` dictionary within the payload sent via `_send_update`. They also add the `commandId` to the payload before sending.
 
 ### 3.7. Reactivity (`ObservableValue`, `Viz`)
 
@@ -122,7 +126,18 @@ The `connection.py` module orchestrates the WebSocket communication and connecti
 *   **Unsubscription:** When `Viz.remove_variable(name)` or `Viz.remove()` is called, the stored `unsubscribe` function for the corresponding `ObservableValue` is called to stop listening for changes.
 *   **`_get_representation()`:** This crucial recursive helper function handles the conversion of arbitrary Python data into the specific nested JSON structure (`VizRepresentation`) required by the Viz UI component, applying depth/item limits and detecting recursion.
 
-### 3.8. Lifecycle & Synchronization Functions
+### 3.8. Canvas Double Buffering (`canvas.py`)
+
+*   **Context Manager:** The `Canvas` class provides a `buffer()` method returning a context manager (`_CanvasBufferContextManager`). Using `with canvas.buffer() as buf:` provides a `_CanvasBufferProxy` object (`buf`).
+*   **Proxy Object:** The `_CanvasBufferProxy` mirrors the Canvas drawing methods but automatically targets an acquired offscreen buffer ID.
+*   **Buffer Pool:** `Canvas` maintains an internal pool (`_buffer_pool`) of offscreen buffer IDs managed via `_acquire_buffer_id` and `_release_buffer_id`.
+*   **Protocol Commands:**
+    *   `__enter__`: Acquires a buffer ID, sends `createBuffer` if needed, sends `clear` to the *offscreen* buffer.
+    *   `buf.draw_*()`: Sends drawing commands with the acquired *offscreen* `bufferId`.
+    *   `__exit__`: Sends `drawBuffer` (to draw the offscreen buffer onto the onscreen one) and releases the buffer ID back to the pool.
+*   **Cleanup:** The `Canvas.remove()` method now attempts to send `destroyBuffer` commands for all known offscreen buffers.
+
+### 3.9. Lifecycle & Synchronization Functions
 
 *   **`run_forever()`:**
     *   Its primary role is to **block the main script thread** after ensuring the connection is ready.
@@ -135,9 +150,9 @@ The `connection.py` module orchestrates the WebSocket communication and connecti
 
 ## 4. API Design Notes
 
-*   **Public API:** Uses standard Python `snake_case` for function and method names (e.g., `set_color`, `run_forever`).
+*   **Public API:** Uses standard Python `snake_case` for function and method names (e.g., `set_color`, `run_forever`, `draw_line`).
 *   **Error Handling Strategy:**
-    *   **Argument Errors:** Methods generally raise standard Python exceptions like `ValueError`, `TypeError`, or `IndexError` for invalid user input (e.g., non-positive grid dimensions, out-of-bounds indices).
+    *   **Argument Errors:** Methods generally raise standard Python exceptions like `ValueError`, `TypeError`, or `IndexError` for invalid user input (e.g., non-positive grid dimensions, out-of-bounds indices, invalid Canvas parameters like negative radius).
     *   **Connection Errors:** Failures related to establishing or maintaining the WebSocket connection (refused, timeout, disconnect) now primarily raise specific `SidekickConnectionError` subclasses. **These are generally unrecoverable by the library and require script-level handling if the script shouldn't terminate.**
     *   **Errors from Sidekick UI:** Messages with `type: "error"` received *from* the Sidekick UI (indicating a problem processing a command on the frontend) are routed to the `on_error` callback registered on the specific module instance. They do *not* typically raise Python exceptions.
     *   **User Callback Errors:** Exceptions occurring *inside* user-provided callback functions (`on_click`, `on_input_text`, etc.) are caught by the library's listener thread, logged using `logger.exception`, but **do not** stop the listener or raise exceptions that would halt `run_forever`.
@@ -148,35 +163,3 @@ The `connection.py` module orchestrates the WebSocket communication and connecti
 *   The root logger for the library is named `"sidekick"`.
 *   A `logging.NullHandler` is added by default. This means library logs won't appear anywhere unless the user explicitly configures logging in their script (e.g., using `logging.basicConfig(level=logging.DEBUG)` or adding specific handlers to the `"sidekick"` logger).
 *   Using `level=logging.DEBUG` is highly recommended when troubleshooting library issues.
-
-## 6. Troubleshooting
-
-*   **`SidekickConnectionRefusedError` on startup:**
-    *   **Cause:** Cannot make initial WebSocket connection.
-    *   **Check:** Is the Sidekick panel **open** in VS Code *before* running the script? Is the VS Code extension enabled and running? Is the configured URL (`sidekick.set_url()` or default `ws://localhost:5163`) correct? Is another process using that port (check VS Code "Sidekick Server" Output Channel for `EADDRINUSE`)? Check firewall settings.
-*   **`SidekickTimeoutError` on startup:**
-    *   **Cause:** Connected to the server, but the Sidekick UI panel didn't send its "online" announce message within the timeout (~2s).
-    *   **Check:** Is the Sidekick panel **visible** and fully loaded in VS Code? Check the VS Code Developer Tools (Help -> Toggle Developer Tools) and the Webview Developer Tools (Open Sidekick Panel -> Command Palette -> "Developer: Open Webview Developer Tools") for errors related to the webapp loading or executing.
-*   **`SidekickDisconnectedError` during script run:**
-    *   **Cause:** Connection lost *after* being established.
-    *   **Check:** Did the Sidekick panel remain open? Was VS Code closed or the extension disabled? Check the network connection. Check library DEBUG logs (`logging.basicConfig(level=logging.DEBUG)`) and the "Sidekick Server" Output Channel in VS Code for preceding errors (e.g., send/receive failures, ping timeouts).
-*   **Commands Sent but No Effect in UI:**
-    *   **Check for Exceptions:** Did a `SidekickConnectionError` get raised earlier, stopping execution before the command was fully processed? Wrap potentially failing Sidekick calls in `try...except SidekickConnectionError`.
-    *   **Inspect Messages:** Use the Webview Developer Tools (Network -> WS tab) to inspect the actual JSON messages being sent. Verify `module`, `type`, `target`. **Critically, verify that all keys within the `payload` object are `camelCase` as required by the protocol.**
-    *   **Check UI Console:** Look for errors in the Webview Developer Tools Console tab - the React app might be logging errors if it receives invalid commands.
-    *   **Check Library Logs:** Enable DEBUG logging (`logging.basicConfig(level=logging.DEBUG)`) to see if `send_message` logs the attempt.
-*   **Callbacks Not Firing (`on_click`, `on_input_text`, etc.):**
-    *   **Is `run_forever()` called?** The script must be kept alive via `run_forever()` (or a similar blocking mechanism) for the listener thread to process incoming events and trigger callbacks.
-    *   **Callback Correctly Registered?** Double-check the `module.on_click(my_handler)` call.
-    *   **Check Library Logs:** Enable DEBUG logging. Look for logs indicating a message was received and dispatched to the correct handler (`Invoking handler for instance...`).
-    *   **Add Logging in Callback:** Put a simple `print()` or `logger.info()` statement inside your callback function itself to confirm it's being entered.
-    *   **Check for Callback Exceptions:** Look in the script's output/logs for logged exceptions originating *from within* your callback function (the library logs these but doesn't crash).
-*   **Script Doesn't Exit After `run_forever()`:**
-    *   Normal exit requires pressing Ctrl+C or calling `sidekick.shutdown()` from a callback.
-    *   Check if any other non-daemon threads created by your script are preventing the main process from exiting.
-*   **`Viz` Not Updating Automatically:**
-    *   Are you using `sidekick.ObservableValue` to wrap the list/dict/set?
-    *   Are you modifying the data *through the ObservableValue wrapper* methods (`.append()`, `[key]=`, `.add()`, `.update()`)? Modifying the *original* object after wrapping it won't trigger updates. Modifying attributes of objects *inside* the wrapped collection also won't trigger automatically unless those nested objects are *also* ObservableValues or you call `.set()` on the parent.
-    *   Check DEBUG logs for messages like `"Received observable update..."` from `_handle_observable_update`.
-    *   Check Webview DevTools (Network -> WS) to see if the granular `update` messages (with `action` like 'setitem', 'append') are being sent from Python to the UI.
-    *   If complex objects aren't displaying correctly, review the `_get_representation` logic and its limitations (depth, item count, attribute skipping).

@@ -152,8 +152,6 @@ _listener_started: bool = False
 # A dictionary mapping module instance IDs (e.g., "grid-1") to the function
 # that should handle messages for that specific instance.
 _message_handlers: Dict[str, Callable[[Dict[str, Any]], None]] = {}
-# A simple counter used by sidekick.Canvas to generate unique command IDs.
-_command_counter: int = 0
 
 # A unique ID generated for this specific run of the Python script ("Hero").
 _peer_id: Optional[str] = None
@@ -1125,22 +1123,6 @@ def register_global_message_handler(handler: Optional[Callable[[Dict[str, Any]],
             _global_message_handler = handler
         else:
             raise TypeError("Global message handler must be callable or None.")
-
-def get_next_command_id() -> int:
-    """Generates the next sequential ID for Canvas drawing commands. (Internal use).
-
-    The Sidekick Canvas protocol requires each drawing command (`line`, `rect`, etc.)
-    to have a unique, sequential ID within the connection session. This function
-    provides those IDs.
-
-    Returns:
-        int: The next unique command ID.
-    """
-    global _command_counter
-    # Use lock for thread safety, although typically only called from main thread.
-    with _connection_lock:
-        _command_counter += 1
-        return _command_counter
 
 # --- Automatic Cleanup on Exit ---
 # Register the main shutdown() function to be called automatically when the

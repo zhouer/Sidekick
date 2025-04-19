@@ -1,7 +1,8 @@
 // Sidekick/webapp/src/modules/viz/VizComponent.tsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, forwardRef, useImperativeHandle } from 'react';
 import './VizComponent.css';
 import { VizRepresentation, VizDictKeyValuePair, Path, VizChangeInfo, VizState } from './types';
+import { ModuleHandle, SentMessage } from '../../types';
 
 // --- Constants ---
 const HIGHLIGHT_DURATION = 1500; // ms, Duration for the highlight animation
@@ -10,6 +11,8 @@ const HIGHLIGHT_DURATION = 1500; // ms, Duration for the highlight animation
 interface VizComponentProps {
     id: string; // Instance ID
     state: VizState; // State specific to the Viz module
+    onInteraction?: (message: SentMessage) => void;
+    onReady?: (id: string) => void;
 }
 
 // --- Type Guards & Helpers ---
@@ -178,36 +181,38 @@ const RenderValue: React.FC<RenderValueProps> = React.memo(({ data, currentPath,
 RenderValue.displayName = 'RenderValue'; // Add display name for React DevTools
 
 // --- Main Viz Module Component ---
-const VizComponent: React.FC<VizComponentProps> = ({ id, state }) => {
-    // Ensure state exists before destructuring
-    const { variables, lastChanges } = state || { variables: {}, lastChanges: {} };
-    // Memoize sorted variable names to prevent recalculation on every render
-    const sortedVarNames = useMemo(() => Object.keys(variables).sort(), [variables]);
+const VizComponent = forwardRef<ModuleHandle, VizComponentProps>(
+    ({ id, state }, ref) => {
+        // Ensure state exists before destructuring
+        const { variables, lastChanges } = state || { variables: {}, lastChanges: {} };
+        // Memoize sorted variable names to prevent recalculation on every render
+        const sortedVarNames = useMemo(() => Object.keys(variables).sort(), [variables]);
 
-    return (
-        <div className="viz-variable-list">
-            {/* Handle empty state */}
-            {sortedVarNames.length === 0 && (
-                <p className="viz-empty-message">No variables shown yet.</p>
-            )}
-            {/* Render each variable */}
-            {sortedVarNames.map(varName => {
-                const representation = variables[varName];
-                // Basic validation for representation structure
-                if (!representation || typeof representation !== 'object' || representation === null || !('id' in representation)) {
-                    return (<div key={varName} className="viz-variable-item viz-error">Error displaying variable '{varName}'</div>);
-                }
-                const changeInfo = lastChanges[varName];
-                return (
-                    <div key={varName} className={`viz-variable-item`}>
-                        <span className="viz-variable-name">{varName} =</span>
-                        {/* Render the top-level value representation */}
-                        <RenderValue data={representation} currentPath={[]} lastChangeInfo={changeInfo} depth={0} parentRepId={id} />
-                    </div>
-                );
-            })}
-        </div>
-    );
-};
+        return (
+            <div className="viz-variable-list">
+                {/* Handle empty state */}
+                {sortedVarNames.length === 0 && (
+                    <p className="viz-empty-message">No variables shown yet.</p>
+                )}
+                {/* Render each variable */}
+                {sortedVarNames.map(varName => {
+                    const representation = variables[varName];
+                    // Basic validation for representation structure
+                    if (!representation || typeof representation !== 'object' || representation === null || !('id' in representation)) {
+                        return (<div key={varName} className="viz-variable-item viz-error">Error displaying variable '{varName}'</div>);
+                    }
+                    const changeInfo = lastChanges[varName];
+                    return (
+                        <div key={varName} className={`viz-variable-item`}>
+                            <span className="viz-variable-name">{varName} =</span>
+                            {/* Render the top-level value representation */}
+                            <RenderValue data={representation} currentPath={[]} lastChangeInfo={changeInfo} depth={0} parentRepId={id} />
+                        </div>
+                    );
+                })}
+            </div>
+        );
+    }
+);
 
 export default VizComponent;

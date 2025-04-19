@@ -120,11 +120,13 @@ export interface ModuleDefinition<
     /** Unique string identifier for the module type (e.g., "grid", "console"). */
     type: string;
     /** React functional component responsible for rendering the module's UI. */
-    component: React.FC<{
-        id: string; // Instance ID
-        state: TState; // Module-specific state
-        onInteraction?: (message: SentMessage) => void; // Callback to send messages back
-    }>;
+    component: React.ForwardRefExoticComponent<
+        React.PropsWithoutRef<{
+            id: string;
+            state: TState;
+            onInteraction?: (message: SentMessage) => void;
+        }> & React.RefAttributes<ModuleHandle> // Supports forwarding ref of type ModuleHandle
+    >;
     /**
      * Pure function to calculate the initial state for a new module instance.
      * Should validate the payload and throw an error if invalid.
@@ -137,6 +139,7 @@ export interface ModuleDefinition<
      * Pure function to calculate the next state based on the current state and an update payload.
      * Should validate the payload and return the current state if the update is invalid or causes no change.
      * MUST return a new object reference if the state changes, otherwise return the original currentState object.
+     * **Note:** This is NOT called for modules where `imperativeUpdate` is true.
      * @param currentState The current state of the module instance.
      * @param payload The payload received from the 'update' command.
      * @returns The new state object if changes occurred, otherwise the original currentState.
@@ -144,4 +147,22 @@ export interface ModuleDefinition<
     updateState: (currentState: TState, payload: TUpdatePayload) => TState;
     /** Optional user-friendly display name for the module type (e.g., in tooltips). */
     displayName?: string;
+    /**
+     * If true, 'update' messages for this module type will be sent directly
+     * to the component instance via an imperative handle, bypassing the reducer.
+     * Defaults to false.
+     */
+    imperativeUpdate?: boolean;
+}
+
+/**
+ * Interface for the imperative handle exposed by modules supporting direct updates.
+ */
+export interface ModuleHandle {
+    /**
+     * Processes an 'update' payload directly.
+     * Called by the App component for modules with `imperativeUpdate: true`.
+     * @param payload The payload from the 'update' message.
+     */
+    processUpdate: (payload: any) => void;
 }
