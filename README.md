@@ -65,7 +65,7 @@ Let's make a simple interactive grid!
 ## Why Sidekick?
 
 *   **Instant Visualization:** Stop guessing, start seeing! Visualize algorithms on a `Grid`, track output in a `Console`, draw on a `Canvas`, or inspect data with `Viz`.
-*   **Interactive Feedback:** Build programs that react! Create `Control` buttons that trigger Python functions, get user input from the `Console`, or respond to `Grid` clicks.
+*   **Interactive Feedback:** Build programs that react! Create `Control` buttons that trigger Python functions, get user input from the `Console`, or respond to `Canvas` and `Grid` clicks.
 *   **Simple Python API:** Focus on your logic, not complex UI code. Sidekick provides an intuitive, beginner-friendly Python library (`sidekick-py`).
 *   **Seamless VS Code Integration:** Works where you work. Sidekick lives in the VS Code side panel, keeping your code and its visual output together.
 *   **Live Variable Explorer:** Use `Viz.show()` to inspect variables and data structures. Magically updates when you use `ObservableValue` – watch lists grow and dictionaries change automatically!
@@ -90,7 +90,7 @@ These are the building blocks you create and control from Python:
 *   **`sidekick.Grid`:** A 2D grid of cells. Perfect for maps, boards, or pixel art. Control cell color (`set_color`), text (`set_text`), and react to clicks (`on_click`).
 *   **`sidekick.Console`:** A text output area, like Python's `print`, but inside Sidekick. Optionally includes a text input field. Use `print()`/`log()` for output and `on_input_text()` for user input.
 *   **`sidekick.Control`:** Add UI controls like buttons (`add_button`) and text inputs (`add_text_input`). React to interactions using `on_click()` and `on_input_text()` callbacks.
-*   **`sidekick.Canvas`:** A 2D drawing surface. Draw lines (`draw_line`), rectangles (`draw_rect`), circles (`draw_circle`), and configure styles (`config`).
+*   **`sidekick.Canvas`:** A 2D drawing surface. Draw lines (`draw_line`), rectangles (`draw_rect`), circles (`draw_circle`), `draw_text()` etc., to create graphics programmatically. Includes a `buffer()` context manager for smooth, flicker-free animations (double buffering). React to clicks with `on_click()`.
 *   **`sidekick.Viz`:** An interactive tree view for inspecting variables (lists, dicts, objects). Use `show()` to display. **Crucially, use `sidekick.ObservableValue` to make the display automatically update when your data changes!**
 
 ### 2. Interaction via Callbacks
@@ -101,6 +101,7 @@ Make your visualizations responsive! Sidekick lets your Python code react to UI 
 *   `console.on_input_text(callback)`: Process text submitted from the console.
 *   `control.on_click(callback)`: Trigger functions when buttons are pressed.
 *   `control.on_input_text(callback)`: Handle text submitted from control inputs.
+*   `canvas.on_click(callback)`: Run code when the canvas is clicked.
 *   **Remember:** Your Python script must be running for callbacks to work (see Lifecycle Management).
 
 ### 3. Reactive Visualization with `ObservableValue`

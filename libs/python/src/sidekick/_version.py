@@ -1,7 +1,14 @@
-"""
-Stores the version number for the Sidekick Python library.
+"""Stores the version number for the Sidekick Python library.
 
-This is used by the packaging setup and allows users to check the
-installed version using `sidekick.__version__`.
+This module simply defines the `__version__` constant, which contains the
+current version string for the `sidekick-py` package. This is used during
+package building and allows users to check the installed version like this:
+
+Examples:
+    >>> import sidekick
+    >>> print(sidekick.__version__)
+    0.0.4 # Or the currently installed version
 """
+
+# The single source of truth for the package version.
 __version__ = "0.0.4"
