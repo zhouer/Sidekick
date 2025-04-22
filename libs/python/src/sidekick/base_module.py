@@ -54,7 +54,7 @@ class BaseModule:
         """Initializes the base module, preparing it for interaction.
 
         This constructor is called automatically when you create an instance
-        of a specific module class (e.g., `my_grid = sidekick.Grid()`).
+        of a specific module class (e.g., `my_grid = sidekick.Grid(5, 5)`).
         It sets up the unique ID, registers the instance with the connection
         manager so it can receive messages, and optionally sends the initial
         'spawn' command to create the visual element in the Sidekick UI.
@@ -188,7 +188,7 @@ class BaseModule:
             >>> def my_grid_error_handler(message):
             ...     print(f"Oh no, the grid reported an error: {message}")
             ...
-            >>> my_grid = sidekick.Grid()
+            >>> my_grid = sidekick.Grid(5, 5)
             >>> my_grid.on_error(my_grid_error_handler)
             >>>
             >>> # Later, to remove the handler:
@@ -270,7 +270,7 @@ class BaseModule:
             None: This method initiates removal but doesn't return anything.
 
         Examples:
-            >>> my_grid = sidekick.Grid()
+            >>> my_grid = sidekick.Grid(5, 5)
             >>> # ... use the grid ...
             >>> my_grid.remove() # Remove the grid from the UI
             >>>

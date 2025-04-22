@@ -26,8 +26,8 @@ Then, save and run the following Python script:
 ```python
 import sidekick
 
-# 1. Create a default 16x16 Grid
-grid = sidekick.Grid()
+# 1. Create a 16x16 Grid
+grid = sidekick.Grid(16, 16)
 
 # 2. Define what happens when a cell is clicked
 def handle_click(x, y):

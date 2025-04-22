@@ -20,9 +20,10 @@ class Grid(BaseModule):
     """Represents an interactive Grid module instance in the Sidekick UI.
 
     Create an instance of this class to make a grid of cells appear in Sidekick.
-    You can then use methods like `set_color()` and `set_text()` to change the
-    appearance of individual cells. You can also use `on_click()` to specify
-    a function that should run when the user clicks a cell in the UI.
+    You must specify the number of columns and rows. You can then use methods
+    like `set_color()` and `set_text()` to change the appearance of individual
+    cells. You can also use `on_click()` to specify a function that should run
+    when the user clicks a cell in the UI.
 
     Coordinate System:
         Methods like `set_color`, `set_text`, `clear_cell`, and the `on_click`
@@ -37,8 +38,8 @@ class Grid(BaseModule):
     """
     def __init__(
         self,
-        num_columns: int = 16,
-        num_rows: int = 16,
+        num_columns: int,
+        num_rows: int,
         instance_id: Optional[str] = None,
         spawn: bool = True
     ):
@@ -48,9 +49,9 @@ class Grid(BaseModule):
 
         Args:
             num_columns (int): The number of columns the grid should have.
-                Must be a positive integer. Defaults to 16.
+                Must be a positive integer.
             num_rows (int): The number of rows the grid should have.
-                Must be a positive integer. Defaults to 16.
+                Must be a positive integer.
             instance_id (Optional[str]): A specific ID for this grid instance.
                 - If `spawn=True` (default): Optional. Auto-generated if None.
                 - If `spawn=False`: **Required**. Must match the ID of an existing grid.
@@ -62,15 +63,16 @@ class Grid(BaseModule):
         Raises:
             ValueError: If `num_columns` or `num_rows` are not positive integers,
                         or if `spawn` is False and `instance_id` is not provided.
+            TypeError: If `num_columns` or `num_rows` are missing.
             SidekickConnectionError (or subclass): If the connection to Sidekick
                 cannot be established.
 
         Examples:
-            >>> # Create a default 16x16 grid
-            >>> grid1 = sidekick.Grid()
+            >>> # Create a 10x5 grid
+            >>> grid1 = sidekick.Grid(num_columns=10, num_rows=5)
             >>>
-            >>> # Create a smaller 10x5 grid
-            >>> grid2 = sidekick.Grid(num_columns=10, num_rows=5)
+            >>> # Create another 8x8 grid
+            >>> grid2 = sidekick.Grid(8, 8)
             >>>
             >>> # Attach to an existing grid named "game-board" (assuming it's 20x20)
             >>> board = sidekick.Grid(instance_id="game-board", spawn=False,
@@ -290,7 +292,7 @@ class Grid(BaseModule):
             None
 
         Examples:
-            >>> grid = sidekick.Grid()
+            >>> grid = sidekick.Grid(4,4)
             >>> grid.set_color(3, 3, "purple")
             >>> grid.set_text(3, 3, "Value")
             >>> # Reset cell (3, 3) completely

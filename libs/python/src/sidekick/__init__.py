@@ -18,7 +18,7 @@ as your Python code runs.
 Getting Started:
 1. Make sure the Sidekick VS Code extension is installed and the panel is open.
 2. Import the library: `import sidekick`
-3. Create visual elements: `grid = sidekick.Grid()`
+3. Create visual elements: `grid = sidekick.Grid(5, 5)`
 4. Control them: `grid.set_color(0, 0, 'red')`
 5. If you need to handle clicks or input, keep your script alive: `sidekick.run_forever()`
 
