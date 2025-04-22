@@ -3,7 +3,7 @@ Provides the Console class for displaying text output in Sidekick.
 
 Use the `sidekick.Console` class to create a text area in the Sidekick panel,
 similar to the standard Python terminal or console window. You can print messages
-to it from your script.
+to it from your script using the `print()` method.
 
 Optionally, you can include a text input field at the bottom, allowing the user
 to type commands or data back into your running Python script.
@@ -17,7 +17,7 @@ class Console(BaseModule):
     """Represents a Console module instance in the Sidekick UI panel.
 
     This creates a scrollable text area where you can send output using the
-    `print()` or `log()` methods. Think of it as a dedicated output window for
+    `print()` method. Think of it as a dedicated output window for
     your script within the Sidekick panel.
 
     You can also configure it to show an input box (`show_input=True`), allowing
@@ -149,16 +149,16 @@ class Console(BaseModule):
 
         Examples:
             >>> def process_user_command(command):
-            ...     print(f"You entered: {command}")
+            ...     console.print(f"You entered: {command}")
             ...     if command.lower() == "quit":
-            ...         print("Okay, shutting down.")
+            ...         console.print("Okay, shutting down.")
             ...         sidekick.shutdown()
             ...     else:
-            ...         print(f"Running command: {command}...")
+            ...         console.print(f"Running command: {command}...")
             ...
-            >>> command_console = sidekick.Console(show_input=True)
-            >>> command_console.on_input_text(process_user_command)
-            >>> command_console.print("Enter a command (or 'quit' to exit):")
+            >>> console = sidekick.Console(show_input=True)
+            >>> console.on_input_text(process_user_command)
+            >>> console.print("Enter a command (or 'quit' to exit):")
             >>>
             >>> # Important: Keep the script running to listen for input!
             >>> sidekick.run_forever()
@@ -172,13 +172,14 @@ class Console(BaseModule):
     # Inherits on_error(callback) method from BaseModule. Use this to handle
     # potential errors reported by the Console UI element itself.
 
-    def print(self, *args: Any, sep: str = ' ', end: str = ''):
-        """Prints messages to this console instance in the Sidekick UI.
+    def print(self, *args: Any, sep: str = ' ', end: str = '\n'):
+        """Prints messages to this console instance in the Sidekick UI, adding a newline by default.
 
         This works very similarly to Python's built-in `print()` function.
         It converts all arguments (`args`) to strings, joins them together
-        using the `sep` separator, and appends the `end` string. The resulting
-        string is then displayed as a new line or appended text in the Sidekick console.
+        using the `sep` separator, and appends the `end` string (which defaults
+        to a newline character `\\n`). The resulting string is then displayed
+        as appended text in the Sidekick console.
 
         Args:
             *args (Any): One or more objects to print. They will be automatically
@@ -186,8 +187,8 @@ class Console(BaseModule):
             sep (str): The separator string inserted between arguments. Defaults
                 to a single space (' ').
             end (str): The string appended after the last argument. Defaults to
-                an empty string (''). To add a newline like the standard Python
-                `print`, use `end='\\n'`.
+                a newline character ('\\n'). To print without adding a newline,
+                use `end=''`.
 
         Returns:
             None
@@ -195,11 +196,8 @@ class Console(BaseModule):
         Examples:
             >>> console = sidekick.Console()
             >>> name = "Alice"
-            >>> age = 30
-            >>> console.print("Hello,", name, "!") # Prints "Hello, Alice !"
-            >>> console.print("Age:", age)        # Prints "Age: 30"
-            >>> console.print("Processing", "file", sep="-") # Prints "Processing-file"
-            >>> console.print("Done.", end="\\n") # Prints "Done." and adds a newline
+            >>> console.print("Hello, ", end="")
+            >>> console.print(name, "!")
         """
         # Convert all arguments to strings and join them.
         text_to_print = sep.join(map(str, args)) + end
@@ -212,27 +210,6 @@ class Console(BaseModule):
         }
         # Send the command.
         self._send_update(payload)
-
-    def log(self, message: Any):
-        """A convenience shortcut for printing a single message object.
-
-        This is equivalent to calling `console.print(message, end='')`.
-        It simply prints the string representation of the given `message`
-        without adding any extra spaces or newlines by default.
-
-        Args:
-            message (Any): The object to print (will be converted to string).
-
-        Returns:
-            None
-
-        Examples:
-            >>> console.log("Starting calculation...")
-            >>> result = 123
-            >>> console.log(f"Calculation result: {result}")
-        """
-        # Internally calls the print method.
-        self.print(message, end='') # Keep default end='' for consistency
 
     def clear(self):
         """Removes all previously printed text from this console instance in Sidekick.

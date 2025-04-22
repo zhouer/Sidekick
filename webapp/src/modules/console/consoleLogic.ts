@@ -28,6 +28,7 @@ export function getInitialState(instanceId: string, payload: ConsoleSpawnPayload
 
 /**
  * Updates the state of a Console module based on an update payload.
+ * Mimics terminal behavior regarding newlines.
  * Returns a new state object if changes were made.
  * @param currentState - The current state of the console.
  * @param payload - The update payload containing action and options.
@@ -38,14 +39,31 @@ export function updateState(currentState: ConsoleState, payload: ConsoleUpdatePa
 
     if (action === 'append') {
         // Validate options for append
-        if (!options || options.text === undefined) {
-            console.warn(`ConsoleLogic: Invalid 'append' options for state update.`, options);
+        if (!options || typeof options.text !== 'string') { // Ensure text is a string
+            console.warn(`ConsoleLogic: Invalid 'append' options for state update. Expected options.text to be a string.`, options);
             return currentState; // Return unchanged state
         }
-        // Create a new lines array with the appended text (immutability)
-        const updatedLines = [...currentState.lines, options.text];
-        // Return the new state object (keeping existing showInput)
-        return { ...currentState, lines: updatedLines };
+
+        const newText = options.text;
+        const currentLines = currentState.lines;
+
+        // If no lines exist yet, or if the last line ended with a newline
+        if (currentLines.length === 0 || currentLines[currentLines.length - 1].endsWith('\n')) {
+            // Append the new text as a new line item
+            const updatedLines = [...currentLines, newText];
+            return { ...currentState, lines: updatedLines };
+        } else {
+            // The last line did *not* end with a newline, so concatenate
+            const lastLineIndex = currentLines.length - 1;
+            const updatedLastLine = currentLines[lastLineIndex] + newText;
+            // Create a new array with the modified last line
+            const updatedLines = [
+                ...currentLines.slice(0, lastLineIndex), // Lines before the last one
+                updatedLastLine                             // The updated last line
+            ];
+            return { ...currentState, lines: updatedLines };
+        }
+
     } else if (action === 'clear') {
         // Only update if there are lines to clear
         if (currentState.lines.length > 0) {
