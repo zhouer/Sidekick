@@ -208,15 +208,6 @@ def handle_grid_click(x: int, y: int):
         else:
             console.print(f"WARN: Click outside grid bounds ({x},{y})")
 
-def handle_module_error(module_name: str, error_message: str):
-    """Generic error handler for modules."""
-    logging.error(f"Error from {module_name}: {error_message}")
-    if console:
-        try:
-            console.print(f"ERROR [{module_name}]: {error_message}")
-        except Exception:
-            pass # Avoid errors during error reporting
-
 # ==================================
 # == Simulation Thread Logic      ==
 # ==================================
@@ -259,28 +250,20 @@ def simulation_loop():
 
 if __name__ == "__main__":
     try:
-        # Create Sidekick modules
-        console = Console(instance_id="gol_console")
-        console.on_error(lambda err: handle_module_error("Console", err))
+        controls = Control(instance_id="gol_controls")
+        controls.on_click(handle_control_click) # Register control click handler
+        controls.add_button(control_id='start_btn', button_text='Start')
+        controls.add_button(control_id='stop_btn', button_text='Stop')
+        controls.add_button(control_id='step_btn', button_text='Step')
+        controls.add_button(control_id='random_btn', button_text='Randomize')
+        controls.add_button(control_id='clear_btn', button_text='Clear')
 
         grid = Grid(num_columns=GRID_WIDTH, num_rows=GRID_HEIGHT, instance_id="gol_grid")
         grid.on_click(handle_grid_click) # Register grid click handler
-        grid.on_error(lambda err: handle_module_error("Grid", err))
 
-        controls = Control(instance_id="gol_controls")
-        controls.on_click(handle_control_click) # Register control click handler
-        controls.on_error(lambda err: handle_module_error("Control", err))
-
+        console = Console(instance_id="gol_console")
         console.print("Welcome to Conway's Game of Life!")
         console.print(f"Grid Size: {GRID_WIDTH}x{GRID_HEIGHT}. Delay: {SIM_DELAY}s")
-
-        # Add control buttons
-        controls.add_button(control_id='start_btn', text='Start')
-        controls.add_button(control_id='stop_btn', text='Stop')
-        controls.add_button(control_id='step_btn', text='Step')
-        controls.add_button(control_id='random_btn', text='Randomize')
-        controls.add_button(control_id='clear_btn', text='Clear')
-        console.print("Controls added. Click on grid cells to toggle.")
 
         # Initialize and draw the initial grid state
         initialize_grid(GRID_WIDTH, GRID_HEIGHT, randomize=True)
@@ -295,11 +278,6 @@ if __name__ == "__main__":
         # Keep the main thread alive to handle callbacks and keyboard interrupt
         console.print("Simulation thread started. Use controls or Ctrl+C to exit.")
         sidekick.run_forever()
-    except Exception as e:
-        logging.exception(f"An unexpected error occurred: {e}")
-        if console:
-             try: console.print(f"FATAL ERROR: {e}")
-             except: pass # Ignore errors during final error reporting
     finally:
         # Attempt to stop the simulation cleanly if it was running
         with run_lock:

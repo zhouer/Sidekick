@@ -404,52 +404,24 @@ def handle_control_click(control_id: str):
     else:
         logging.warning(f"Unknown control click: {control_id}")
 
-def handle_module_error(module_name: str, error_message: str):
-    """Generic error handler for modules."""
-    logging.error(f"Error from {module_name}: {error_message}")
-    if console:
-        try:
-            console.print(f"ERROR [{module_name}]: {error_message}")
-        except Exception:
-            pass # Avoid errors during error reporting
-
 # ==================================
 # == Main Execution               ==
 # ==================================
 if __name__ == "__main__":
-    console_instance = None
-    grid_instance = None
-    controls_instance = None
     try:
-        console_instance = Console(instance_id="maze_console")
-        console = console_instance
-        console.on_error(lambda err: handle_module_error("Console", err))
-
-        grid_instance = Grid(num_columns=grid_width, num_rows=grid_height, instance_id="maze_grid")
-        grid = grid_instance
-        grid.on_error(lambda err: handle_module_error("Grid", err))
-        # Grid clicks are not used for interaction in this maze example currently
-
-        controls_instance = Control(instance_id="maze_controls") # Removed on_message
-        controls = controls_instance
-        # Register specific handlers
+        controls = Control(instance_id="maze_controls")
         controls.on_click(handle_control_click)
-        controls.on_error(lambda err: handle_module_error("Control", err))
+        controls.add_button(control_id='generate_btn', button_text='Generate Maze (Prim\'s)') # Updated label
+        controls.add_button(control_id='solve_btn', button_text='Solve Maze (DFS)')
 
+        grid = Grid(num_columns=grid_width, num_rows=grid_height, instance_id="maze_grid")
+
+        console = Console(instance_id="maze_console")
         console.print("Maze Generator & Solver Initialized.")
         console.print(f"Grid Size: {grid_width}x{grid_height}")
 
-        controls.add_button(control_id='generate_btn', text='Generate Maze (Prim)') # Updated label
-        controls.add_button(control_id='solve_btn', text='Solve Maze (DFS)')
-        console.print("Controls added. Click 'Generate Maze (Prim)' to start.")
-
         logging.info("Main thread waiting. Use Sidekick controls or Ctrl+C to exit.")
         sidekick.run_forever()
-    except Exception as e:
-        logging.exception(f"An unexpected error occurred in the main thread: {e}")
-        if console:
-             try: console.print(f"FATAL ERROR: {e}")
-             except: pass # Ignore errors during final error reporting
     finally:
         logging.info("Initiating cleanup...")
         # Signal background threads to stop

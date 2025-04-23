@@ -64,7 +64,7 @@ class HanoiVisualizer:
         self.controls.on_click(click_handler)
         self.controls.on_error(lambda msg: sidekick.logger.error(f"Controls Error: {msg}"))
 
-        self.status_console = sidekick.Console(initial_text="--- Hanoi Log ---") # Initial title
+        self.status_console = sidekick.Console(initial_text="--- Hanoi Log ---\n") # Initial title
         self.status_console.on_error(lambda msg: sidekick.logger.error(f"Status Console Error: {msg}"))
 
         self.grid = None
