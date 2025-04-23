@@ -7,10 +7,9 @@ export interface ControlDefinition {
     id: string;         // Unique ID for this specific control instance
     type: ControlType;  // Type of control (button or textInput)
     config: {           // Configuration specific to the control type
-        text?: string;         // Text for button
         placeholder?: string; // Placeholder for text input
         initialValue?: string;// Initial value for text input
-        buttonText?: string;  // Text for the submit button next to text input
+        buttonText?: string;  // Text for the button control or the button next to text input
     };
 }
 

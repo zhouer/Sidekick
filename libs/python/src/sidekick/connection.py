@@ -1040,7 +1040,7 @@ def run_forever():
         ...         sidekick.shutdown() # Stop run_forever from callback
         ...     else:
         ...         console.print(f"You typed: {text}")
-        >>> console.on_input_text(handle_input)
+        >>> console.input_text_handler(handle_input)
         >>> console.print("Enter text or type 'quit' to exit.")
         >>>
         >>> # Keep script running to listen for input

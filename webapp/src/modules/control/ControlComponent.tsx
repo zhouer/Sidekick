@@ -132,7 +132,7 @@ const ControlComponent = forwardRef<ModuleHandle, ControlComponentProps>(
                                     onClick={() => handleButtonClick(control.id)}
                                     className="control-button"
                                 >
-                                    {control.config?.text || control.id}
+                                    {control.config?.buttonText || control.id}
                                 </button>
                             )}
                             {control.type === 'textInput' && (

@@ -242,7 +242,7 @@ class Control(BaseModule):
             ...         # Process parameter B...
             ...         print(f"Setting B to {submitted_value}")
             ...
-            >>> controls.on_input_text(input_handler)
+            >>> controls.input_text_handler(input_handler)
             >>> sidekick.run_forever() # Keep script running
         """
         if callback is not None and not callable(callback):
@@ -256,7 +256,7 @@ class Control(BaseModule):
     # called if the Control panel UI element itself reports an error back to Python
     # (e.g., if it failed to process an 'add' or 'remove' command internally).
 
-    def add_button(self, control_id: str, text: str):
+    def add_button(self, control_id: str, button_text: str):
         """Adds a clickable button to this control panel in the Sidekick UI.
 
         Creates a button element within this `Control` instance's panel area.
@@ -269,7 +269,7 @@ class Control(BaseModule):
                 within this control panel. This ID is chosen by you and is crucial
                 for identifying which button was pressed in the `on_click` callback.
                 It must be a non-empty string.
-            text (str): The text label that will appear visibly on the button in the UI.
+            button_text (str): The text label that will appear visibly on the button in the UI.
 
         Raises:
             ValueError: If `control_id` is empty or not a string.
@@ -287,7 +287,7 @@ class Control(BaseModule):
             logger.error(msg)
             raise ValueError(msg)
         # Ensure text is explicitly a string for the payload.
-        button_label = str(text)
+        button_label = str(button_text)
 
         # Prepare the payload for the 'update' command to add the control.
         # Keys must be camelCase for the communication protocol.
@@ -295,9 +295,9 @@ class Control(BaseModule):
             "action": "add",          # Command type: add a new control
             "controlId": control_id,  # The unique ID for this new button
             "options": {
-                "controlType": "button", # Specify the type of control being added
-                "config": {              # Configuration settings specific to this control type
-                    "text": button_label # The text label for the button
+                "controlType": "button",       # Specify the type of control being added
+                "config": {                    # Configuration settings specific to this control type
+                    "buttonText": button_label # The text label for the button
                 }
             }
         }
@@ -310,7 +310,7 @@ class Control(BaseModule):
         control_id: str,
         placeholder: str = "",
         initial_value: str = "",
-        button_text: str = "Submit" # Changed from text to button_text for clarity
+        button_text: str = ""
     ):
         """Adds a text input field paired with a submit button to the control panel.
 
@@ -330,8 +330,8 @@ class Control(BaseModule):
                 Defaults to "".
             initial_value (str): Optional text pre-filled in the input field when it
                 first appears in the UI. Defaults to "".
-            button_text (str): The text label displayed on the submit button that's
-                associated with this input field. Defaults to "Submit".
+            button_text (str): Optional text label displayed on the submit button that's
+                associated with this input field.
 
         Raises:
             ValueError: If `control_id` is empty or not a string.
@@ -366,8 +366,7 @@ class Control(BaseModule):
                 "config": {                 # Configuration settings specific to text inputs
                     "placeholder": input_placeholder,
                     "initialValue": input_initial_value,
-                    # Protocol expects buttonText for the submit button label within textInput config
-                    "text": submit_button_label # Changed key to text, based on protocol in docs
+                    "buttonText": submit_button_label,
                 }
             }
         }

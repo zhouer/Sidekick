@@ -284,7 +284,7 @@ These message types facilitate the control of specific visual module instances a
                *  Text label displayed on the button. If omitted for a button, the UI might default
                *  to showing the `controlId`. If omitted for `textInput`, the submit button
                *  gets a default label like "Submit". */
-              text?: string; // Renamed from buttonText for consistency across types
+              buttonText?: string;
               /** Optional (used for `textInput`): Placeholder text displayed inside the
                *  input field when it is empty. If omitted, no placeholder is shown. */
               placeholder?: string;

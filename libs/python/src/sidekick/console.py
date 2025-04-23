@@ -34,7 +34,7 @@ Interactive Usage:
     ...     if user_text.lower() == 'quit':
     ...         sidekick.shutdown() # Example: stop the script
     ...
-    >>> console.on_input_text(handle_command)
+    >>> console.input_text_handler(handle_command)
     >>> sidekick.run_forever() # Keep script running to listen for input
 """
 
@@ -198,7 +198,7 @@ class Console(BaseModule):
             ...         console.print("Exiting now.")
             ...         sidekick.shutdown() # Stop run_forever
             ...
-            >>> console.on_input_text(process_user_input)
+            >>> console.input_text_handler(process_user_input)
             >>> console.print("Enter commands below (type 'quit' to exit):")
             >>>
             >>> # Keep the script running to listen for the user's input!
