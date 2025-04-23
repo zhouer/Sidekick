@@ -75,7 +75,7 @@ const ConsoleComponent = forwardRef<ModuleHandle, ConsoleComponentProps>(
                             value={inputValue}
                             onChange={handleInputChange}
                             onKeyDown={handleKeyDown}
-                            placeholder="Enter command or text..."
+                            placeholder=""
                             className="console-input"
                             aria-label="Console Input"
                         />
