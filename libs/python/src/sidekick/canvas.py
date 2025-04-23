@@ -219,13 +219,9 @@ class _CanvasBufferContextManager:
 
         Performs the crucial steps to display the drawn content and clean up:
         1. Checks if an exception occurred within the `with` block.
-        2. **If no exception occurred:**
-           a. Sends a command to **clear the main visible (onscreen) canvas**. This
-              is important to ensure correct blending if the offscreen buffer used
-              transparency, effectively replacing the previous visible content.
-           b. Sends a command to draw the entire content of the completed hidden
-              offscreen buffer onto the now-cleared visible canvas. This is the
-              "flip" or "blit" step that makes the new frame visible at once.
+        2. **If no exception occurred:** Sends a command to draw the entire content
+           of the completed hidden offscreen buffer onto the visible canvas. This is
+           the "flip" or "blit" step that makes the new frame visible at once.
         3. **Always (whether an exception occurred or not):** Releases the offscreen
            buffer ID back to the parent canvas's internal pool (`_release_buffer_id`),
            making it available for reuse in subsequent `with canvas.buffer():` blocks.
@@ -249,12 +245,8 @@ class _CanvasBufferContextManager:
         try:
             # Only perform the drawing operations if the 'with' block completed without errors.
             if exc_type is None:
-                logger.debug(f"Canvas '{self._canvas.target_id}': Exiting buffer context normally. Clearing screen and drawing buffer {self._buffer_id} to screen.")
-                # --- Double Buffering Core Logic ---
-                # 1. Clear the visible (onscreen) canvas first. This prevents drawing
-                #    over old content if the new frame has transparency.
-                self._canvas.clear(buffer_id=self._canvas.ONSCREEN_BUFFER_ID) # Target buffer 0
-                # 2. Draw the completed offscreen buffer onto the (now clear) onscreen canvas.
+                logger.debug(f"Canvas '{self._canvas.target_id}': Exiting buffer context normally. Drawing buffer {self._buffer_id} to screen.")
+                # Draw the completed offscreen buffer onto the onscreen canvas.
                 self._canvas._send_draw_buffer(source_buffer_id=self._buffer_id, target_buffer_id=self._canvas.ONSCREEN_BUFFER_ID)
             else:
                 # If an error occurred inside the 'with' block, log it. Critically, DO NOT
@@ -267,7 +259,6 @@ class _CanvasBufferContextManager:
         except Exception as e_exit:
              # Catch any other unexpected errors during exit operations.
              logger.exception(f"Canvas '{self._canvas.target_id}': Unexpected error during buffer __exit__: {e_exit}")
-
 
         # CRITICAL: Always release the buffer ID back to the pool, regardless of
         # whether an error occurred inside the 'with' block or during the exit drawing.
