@@ -1,8 +1,8 @@
 {
   "name": "sidekick-coding",
   "displayName": "Sidekick - Your Visual Coding Buddy",
-  "description": "Provides a visual panel to interact with your code.",
-  "version": "0.0.4",
+  "description": "See your code come to life, right inside VS Code!",
+  "version": "0.0.5",
   "publisher": "sidekick-coding",
   "engines": {
     "vscode": "^1.75.0"

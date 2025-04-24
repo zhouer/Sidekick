@@ -44,13 +44,8 @@ from enum import Enum, auto
 from typing import Optional, Dict, Any, Callable, Set
 
 # --- Import logger and Version ---
-from . import logger # Use the central logger defined in __init__.py
-try:
-    # Try to get the version number from the _version.py file
-    from ._version import __version__
-except ImportError:
-    # If _version.py isn't found (e.g., during development setup), use a fallback.
-    __version__ = 'unknown'
+from . import logger
+from ._version import __version__
 
 # --- Custom Exceptions ---
 # Define specific error types for connection problems, making it easier
