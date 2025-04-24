@@ -5,7 +5,7 @@
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/sidekick-coding.sidekick-coding?label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=sidekick-coding.sidekick-coding)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**See your Python code come alive, right inside VS Code!**
+**See your code come to life, right inside VS Code!**
 
 Sidekick is your friendly visual assistant for programming. It tackles the challenge of abstract code by providing an **interactive panel** directly within your VS Code editor. Watch loops draw patterns, data structures change in real-time, without leaving your development environment.
 
@@ -13,77 +13,96 @@ Perfect for **learners**, **educators**, **parents teaching coding**, and anyone
 
 ## Quick Start
 
-Follow these steps to get Sidekick running:
+1.  **Install the Python Library:** 
 
-1.  **Install Python Library:** Open your terminal and install the necessary `sidekick-py` library:
-    ```bash
+    ```shell
     pip install sidekick-py
     ```
-    *(Requires Python 3)*
 
-2.  **Install VS Code Extension:** Install this "Sidekick - Your Visual Coding Buddy" extension from the VS Code Marketplace.
+2.  **Install the VS Code Extension:** 
 
-3.  **Show Sidekick Panel:** In VS Code, open the Command Palette (`Ctrl+Shift+P` or `Cmd+Shift+P`) and run the command: **`Sidekick: Show Panel`**. This will open the Sidekick panel, typically beside your editor.
+    Get "Sidekick - Your Visual Coding Buddy" from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=sidekick-coding.sidekick-coding)
 
-4.  **Create a Python Script:** Save the following code as a Python file (e.g., `hello_sidekick.py`):
+3.  **Open Sidekick Panel:** 
+
+    Use the command palette (`Ctrl+Shift+P`) and run `Sidekick: Show Panel`.
+
+4.  **Run the sample code**:
 
     ```python
     import sidekick
     import random
 
-    # 1. Create a 5x5 Grid
+    # Create a 5x5 Grid
     grid = sidekick.Grid(5, 5)
-    grid.set_text(2, 2, "Click!")
 
-    # 2. Define what happens on click
+    # Define what happens on click
     def handle_click(x, y):
-        colors = ["#FFADAD", "#FFD6A5", "#FDFFB6", "#CAFFBF", "#9BF6FF", "#A0C4FF", "#BDB2FF", "#FFC6FF"]
+        colors = ["khaki", "lavender", "peachpuff", "pink", "plum", "powderblue"]
         random_color = random.choice(colors)
-        print(f"Cell ({x},{y}) clicked! Setting color to {random_color}")
-        grid.set_color(x, y, random_color) # Update Sidekick UI
-        grid.set_text(x, y, "") # Clear text on click
+        grid.set_color(x, y, random_color)
 
-    # 3. Register the click handler
+    # Register the click handler
     grid.on_click(handle_click)
 
-    # 4. Keep the script running to listen for clicks!
-    #    Without this, the script would end, and clicks wouldn't be handled.
+    # Keep your script running to listen for clicks!
     sidekick.run_forever()
     ```
 
-5.  **Run the Script:** Open a terminal within VS Code (`Ctrl+`\`), navigate to where you saved the file, and run:
-    ```bash
-    python hello_sidekick.py
-    ```
+    Run your script using `python your_file.py` in the terminal, or click the `Run` button in VS Code.
 
-6.  **Interact:** Click on the cells within the Sidekick panel in VS Code. Observe the terminal output and the visual changes in the grid! Press `Ctrl+C` in the terminal to stop the script.
+5.  **Interact:** 
 
-## Why Sidekick?
+    Click cells in the Sidekick panel to see colors change (press `Ctrl+C` to stop)
 
-*   **Instant Visualization:** Stop guessing, start seeing! Visualize algorithms on a `Grid`, track output in a `Console`, draw on a `Canvas`, or inspect data with `Viz`.
-*   **Interactive Feedback:** Build programs that react! Create `Control` buttons that trigger Python functions, get user input from the `Console`, or respond to `Canvas` and `Grid` clicks.
-*   **Simple Python API:** Focus on your logic, not complex UI code. Sidekick provides an intuitive, beginner-friendly Python library (`sidekick-py`).
-*   **Seamless VS Code Integration:** Works where you work. Sidekick lives in the VS Code side panel, keeping your code and its visual output together.
-*   **Live Variable Explorer:** Use `Viz.show()` to inspect variables and data structures. Magically updates when you use `ObservableValue` – watch lists grow and dictionaries change automatically!
-*   **Modular & Combinable:** Simple building blocks (`Grid`, `Console`, `Control`, `Canvas`, `Viz`) that you can combine creatively to suit your needs.
+## Why Choose Sidekick?
 
-## Core Visualization Modules
+*   **Real-time Visual Feedback:** See your code in action instantly with interactive visualizations. Watch data structures change, algorithms execute, and user interactions trigger responses in real-time.
+*   **Intuitive, Pythonic Syntax:** Focus on learning concepts rather than UI programming. Sidekick's intuitive, beginner-friendly API keeps your code clean and readable with minimal boilerplate.
+*   **Integrated Development Experience:** Seamlessly embedded in VS Code, Sidekick lets you see results immediately without switching applications, all within your complete development environment.
+*   **Building Blocks, Not Frameworks:** Sidekick doesn't aim to be a complete UI framework like Qt or Tkinter. Instead, it provides essential building blocks that let you create unlimited possibilities with your imagination.
 
-Use these building blocks from the `sidekick-py` library to control the Sidekick panel:
+## Features
 
-*   **`sidekick.Grid`:** A 2D grid of cells. Perfect for maps, boards, or pixel art. Control cell color (`set_color`), text (`set_text`), and react to clicks (`on_click`).
-*   **`sidekick.Console`:** A text output area, like Python's `print`, but inside Sidekick. Optionally includes a text input field. Use `print()`/`log()` for output and `on_input_text()` for user input.
-*   **`sidekick.Control`:** Add UI controls like buttons (`add_button`) and text inputs (`add_text_input`). React to interactions using `on_click()` and `on_input_text()` callbacks.
-*   **`sidekick.Canvas`:** A 2D drawing surface. Draw lines (`draw_line`), rectangles (`draw_rect`), circles (`draw_circle`), `draw_text()` etc., to create graphics programmatically. Includes a `buffer()` context manager for smooth, flicker-free animations (double buffering). React to clicks with `on_click()`.
-*   **`sidekick.Viz`:** An interactive tree view for inspecting variables (lists, dicts, objects). Use `show()` to display. **Crucially, use `sidekick.ObservableValue` to make the display automatically update when your data changes!**
+### 1. [`Grid`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.grid) - Interactive Cell-Based Visualizations
 
-## VS Code Integration Details
+*   `Grid(num_columns, num_rows)`: Create a grid with specified dimensions
+*   `set_color()`, `set_text()`: Set colors and text
+*   `on_click()`: Handle user interaction
 
-*   **Command:** Use `Sidekick: Show Panel` from the Command Palette (`Ctrl+Shift+P`) to open or focus the Sidekick view.
-*   **Configuration:** You can adjust the WebSocket connection settings used internally if needed (e.g., if the default port `5163` conflicts):
-    *   `sidekick.websocket.port` (default: `5163`)
-    *   `sidekick.websocket.host` (default: `localhost`)
-        These settings are accessible via VS Code's standard settings UI (File > Preferences > Settings, search for "Sidekick").
+### 2. [`Console`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.console) - Text-Based Input and Output
+
+*   `Console(show_input=False)`: Create a console that optionally includes input field
+*   `print()`: Display output
+*   `on_input_text()`: Collect user input
+
+### 3. [`Control`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.control) - Interactive UI Components
+
+*   `Control()`: Create a control panel for UI components
+*   `add_button()`: Create buttons
+*   `add_text_input()`: Add text inputs
+*   `on_click()`: Handle button clicks
+*   `on_input_text()`: Process text input
+
+### 4. [`Canvas`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.canvas) - 2D Graphics and Animation
+
+*   `Canvas(width, height)`: Create a drawing canvas with specified dimensions
+*   `draw_line()`, `draw_polyline()`: Draw lines
+*   `draw_rect()`, `draw_circle()`, `draw_polygon()`, `draw_ellipse()`: Draw shapes
+*   `draw_text()`: Add text
+*   `buffer()`: Create smooth animations with this context manager
+*   `on_click()`: Respond to clicks
+
+### 5. [`Viz`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.viz) - Data Structure Visualization
+
+*   `Viz()`: Create a visualization panel for data structures
+*   `show()`: Display complex data
+*   `ObservableValue`: Wrap data structures to update visualizations automatically
+
+### 6. Managing Script Lifecycle
+
+*   `sidekick.run_forever()`: Keep your script running to handle interactions
+*   `sidekick.shutdown()`: Gracefully stop the script when needed
 
 ## Learn More
 

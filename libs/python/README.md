@@ -7,43 +7,49 @@
 
 This library provides the Python interface for interacting with the [Sidekick Visual Coding Buddy](https://github.com/zhouer/Sidekick) frontend UI, typically running within VS Code. It allows your Python scripts to easily create, update, and interact with visual modules like grids (`Grid`), consoles (`Console`), variable visualizers (`Viz`), drawing canvases (`Canvas`), and UI controls (`Control`).
 
-## Installation
+## Quick Start
 
-Install the library using pip:
+1.  **Install the Python Library:** 
 
-```bash
-pip install sidekick-py
-```
+    ```shell
+    pip install sidekick-py
+    ```
 
-You will also need the [Sidekick VS Code extension](https://marketplace.visualstudio.com/items?itemName=sidekick-coding.sidekick-coding) installed and running in VS Code.
+2.  **Install the VS Code Extension:** 
 
-## Minimal Usage Example
+    Get "Sidekick - Your Visual Coding Buddy" from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=sidekick-coding.sidekick-coding)
 
-**First, open the Sidekick panel** in VS Code (Press `Ctrl+Shift+P`, search for and run `Sidekick: Show Panel`).
+3.  **Open Sidekick Panel:** 
 
-Then, save and run the following Python script:
+    Use the command palette (`Ctrl+Shift+P`) and run `Sidekick: Show Panel`.
 
-```python
-import sidekick
+4.  **Run the sample code**:
 
-# 1. Create a 16x16 Grid
-grid = sidekick.Grid(16, 16)
+    ```python
+    import sidekick
+    import random
 
-# 2. Define what happens when a cell is clicked
-def handle_click(x, y):
-    # Update the clicked cell in the Sidekick UI
-    grid.set_color(x, y, 'red')
-    print(f"Cell ({x}, {y}) clicked!") # Optional: Print to terminal
+    # Create a 5x5 Grid
+    grid = sidekick.Grid(5, 5)
 
-# 3. Register the click handler
-grid.on_click(handle_click)
+    # Define what happens on click
+    def handle_click(x, y):
+        colors = ["khaki", "lavender", "peachpuff", "pink", "plum", "powderblue"]
+        random_color = random.choice(colors)
+        grid.set_color(x, y, random_color)
 
-# 4. Keep the script running to listen for clicks!
-#    Without this, the script would end, and clicks wouldn't be handled.
-sidekick.run_forever()
-```
+    # Register the click handler
+    grid.on_click(handle_click)
 
-After running the script, clicking the grid cells in the Sidekick panel will turn them red. Press `Ctrl+C` in the terminal to stop.
+    # Keep your script running to listen for clicks!
+    sidekick.run_forever()
+    ```
+
+    Run your script using `python your_file.py` in the terminal, or click the `Run` button in VS Code.
+
+5.  **Interact:** 
+
+    Click cells in the Sidekick panel to see colors change (press `Ctrl+C` to stop)
 
 ## Learn More
 
