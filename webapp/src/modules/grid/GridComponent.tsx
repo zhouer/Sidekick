@@ -5,7 +5,7 @@ import { SentMessage, ModuleEventMessage, ModuleHandle } from '../../types';
 import './GridComponent.css';
 
 // --- Constants ---
-const DESIRED_CELL_SIZE = 50; // px
+const DESIRED_CELL_SIZE = 100; // px
 const MIN_CELL_SIZE = 10; // px (prevent extremely small cells)
 const GRID_GAP = 1; // px (must match CSS gap value)
 const CANVAS_PADDING = 1; // px (must match CSS padding for canvas)
