@@ -73,7 +73,10 @@ from .connection import (
     register_global_message_handler,  # Advanced: Listen to *all* incoming messages (for debugging).
     run_forever,                      # Keeps the script alive to handle UI events (clicks, input).
     shutdown,                         # Cleanly disconnects from Sidekick.
-    # Exception classes users might need to catch
+)
+
+# Import exception classes users might need to catch
+from .errors import (
     SidekickConnectionError,          # Base class for all Sidekick connection errors.
     SidekickConnectionRefusedError,   # Raised on initial connection failure (server not found/reachable?).
     SidekickTimeoutError,             # Raised if connected to server, but Sidekick UI doesn't respond in time.

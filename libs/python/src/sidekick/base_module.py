@@ -34,6 +34,7 @@ Note:
 
 from . import logger
 from . import connection # Import the connection management module
+from .errors import SidekickConnectionError
 from .utils import generate_unique_id # For generating default instance IDs
 from typing import Optional, Dict, Any, Callable
 
@@ -389,7 +390,7 @@ class BaseModule:
         #    The payload for 'remove' is typically None/omitted according to protocol.
         try:
              self._send_command("remove", payload=None)
-        except connection.SidekickConnectionError as e:
+        except SidekickConnectionError as e:
              # Log a warning if sending the remove command fails, but don't stop
              # the Python-side cleanup that has already happened.
              logger.warning(f"Failed to send 'remove' command for module '{self.target_id}' "

@@ -60,7 +60,8 @@ import math # Used in examples, good to keep imported
 from typing import Optional, Dict, Any, Callable, List, Tuple, ContextManager, Union
 
 from . import logger
-from . import connection # For connection errors
+from . import connection
+from .errors import SidekickConnectionError
 from .base_module import BaseModule
 
 # Type hint for a list of points used in polylines/polygons
@@ -253,7 +254,7 @@ class _CanvasBufferContextManager:
                 # draw the buffer to the screen, as it might contain an incomplete or
                 # incorrect frame due to the error.
                 logger.warning(f"Canvas '{self._canvas.target_id}': Exiting buffer context due to an exception ({exc_type}). The content of buffer {self._buffer_id} will NOT be drawn to the screen.")
-        except connection.SidekickConnectionError as e:
+        except SidekickConnectionError as e:
              # Log connection errors during the exit draw/clear operations but proceed to release buffer.
              logger.error(f"Canvas '{self._canvas.target_id}': Connection error during buffer __exit__: {e}")
         except Exception as e_exit:
@@ -1232,7 +1233,7 @@ class Canvas(BaseModule):
                          action="destroyBuffer",
                          options={"bufferId": buffer_id}
                      )
-                 except connection.SidekickConnectionError as e:
+                 except SidekickConnectionError as e:
                      # Log the error but continue trying to remove other buffers and the main canvas.
                      logger.warning(f"Canvas '{self.target_id}': Failed to send destroy command for offscreen buffer {buffer_id} during removal: {e}")
                  except Exception as e_destroy:
