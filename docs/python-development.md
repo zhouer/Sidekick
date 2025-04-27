@@ -10,9 +10,9 @@ The library's primary goal is to offer a high-level, intuitive Python API that a
 
 The library operates under a specific connection model:
 
-1.  **Mandatory Sidekick Presence:** The Sidekick VS Code panel and its internal WebSocket server **must** be running *before* the Python script attempts to establish a connection.
+1.  **Mandatory Sidekick Presence:** The Sidekick VS Code panel and its communication server **must** be running *before* the Python script attempts to establish a connection.
 2.  **Blocking Connection Establishment:** The *first* operation requiring communication (e.g., creating a `sidekick.Grid()` or sending the first message) will **block** the Python script's execution until:
-    *   A WebSocket connection to the Sidekick server is successfully established.
+    *   A connection to the Sidekick server is successfully established (via WebSocket or MessageChannel).
     *   The Sidekick UI panel signals back that it's online and ready.
 3.  **Synchronous Sends:** Once the connection is ready, messages sent via module methods (like `grid.set_color()` or `canvas.draw_line()`) are attempted immediately. There is no internal queue or buffering if the connection is not ready; connection establishment blocks instead.
 4.  **Exception-Based Error Handling:** Connection failures (initial refusal, timeout waiting for UI, disconnection during operation) will immediately **raise specific `SidekickConnectionError` exceptions**, halting the operation. The library does **not** attempt automatic reconnection. The user's script must handle these exceptions if recovery is desired (though typically the script would exit).
@@ -33,39 +33,58 @@ To work on the library code:
     ```bash
     # Install if you don't have it already
     pip install websocket-client
+
+    # For testing Pyodide support, you'll need to set up a Pyodide environment
+    # This typically involves using a tool like pyodide-build or running in a browser context
     ```
 
 Editable mode (`-e`) links the installed package directly to your source code in `libs/python/src/sidekick`, so any changes you make are immediately reflected when you run Python scripts that import `sidekick`.
 
-## 3. Core Implementation Details (`connection.py`)
+## 3. Core Implementation Details
 
-The `connection.py` module orchestrates the WebSocket communication and connection lifecycle.
+### 3.0. Communication Channel Abstraction
 
-### 3.1. Connection Management & Lifecycle
+The library now uses an abstract communication channel interface to support different communication methods:
 
-*   **Shared State:** Manages a single, shared WebSocket connection (`_ws_connection`) and associated state using module-level variables.
-*   **Thread Safety:** Uses a `threading.RLock` (`_connection_lock`) to protect access to shared state variables (like `_connection_status`, `_ws_connection`, `_message_handlers`) from race conditions between the main thread and the background listener thread.
+*   **`CommunicationChannel` (Abstract Base Class):** Defined in `channel.py`, this abstract class provides the interface that all communication channel implementations must follow. It includes methods for connecting, sending messages, closing the connection, and handling incoming messages.
+
+*   **`WebSocketChannel` Implementation:** Defined in `websocket_channel.py`, this class implements the `CommunicationChannel` interface using WebSockets. It's used in standard Python environments and communicates with the Sidekick server via WebSocket.
+
+*   **`PyodideMessageChannel` Implementation:** Defined in `pyodide_channel.py`, this class implements the `CommunicationChannel` interface using the JavaScript MessageChannel API. It's used when the library is running in a Pyodide environment (Python in the browser).
+
+*   **Factory Function (`create_communication_channel`):** This function in `channel.py` detects the environment and creates the appropriate communication channel implementation. It checks if the code is running in Pyodide and returns either a `PyodideMessageChannel` or a `WebSocketChannel` accordingly.
+
+### 3.1. Connection Management & Lifecycle (`connection.py`)
+
+The `connection.py` module orchestrates the communication channel and connection lifecycle.
+
+*   **Shared State:** Manages a single, shared communication channel (`_channel`) and associated state using module-level variables.
+*   **Thread Safety:** Uses a `threading.RLock` (`_connection_lock`) to protect access to shared state variables (like `_connection_status`, `_channel`, `_message_handlers`) from race conditions between the main thread and the background listener thread.
 *   **State Machine (`ConnectionStatus` Enum):** Tracks the connection's current state:
     *   `DISCONNECTED`: Initial state, or after `shutdown()` / error.
-    *   `CONNECTING`: Actively trying to establish the WebSocket connection.
+    *   `CONNECTING`: Actively trying to establish the connection.
     *   `CONNECTED_WAITING_SIDEKICK`: Connected to the server, but waiting for the UI panel's 'online' signal.
     *   `CONNECTED_READY`: Fully connected and confirmed that a Sidekick UI is ready to receive commands.
 *   **Blocking Activation (`activate_connection()`):**
     *   This is the **central function** ensuring the connection is ready before any communication attempt. It's called automatically by methods like `send_message` (used by module methods) and `run_forever`.
-    *   If the status is `DISCONNECTED`, it calls the internal `_ensure_connection()` to attempt the WebSocket connection and start the listener thread.
+    *   If the status is `DISCONNECTED`, it calls the internal `_ensure_connection()` to create the appropriate communication channel, establish the connection, and set up message handling.
     *   If `_ensure_connection()` succeeds (status becomes `CONNECTED_WAITING_SIDEKICK`), `activate_connection()` then **blocks** the calling thread by waiting on a `threading.Event` called `_ready_event`.
-    *   The `_ready_event` is set **only** by the listener thread when it receives the first `system/announce` message with `role: "sidekick"` and `status: "online"`.
+    *   The `_ready_event` is set **only** by the message handler when it receives the first `system/announce` message with `role: "sidekick"` and `status: "online"`.
     *   If the initial connection via `_ensure_connection()` fails, it raises `SidekickConnectionRefusedError`.
     *   If the wait for the `_ready_event` exceeds `_SIDEKICK_WAIT_TIMEOUT` (default 2 seconds), it triggers cleanup and raises `SidekickTimeoutError`.
-*   **Listener Thread (`_listen_for_messages()`):**
-    *   Runs as a background **daemon thread** (`daemon=True`), meaning it won't prevent the main script from exiting if the main thread finishes.
-    *   Enters a loop, using `websocket.recv()` with a short timeout (`_LISTENER_RECV_TIMEOUT`) to periodically check if the `_stop_event` has been set.
-    *   Receives incoming JSON messages from the server.
-    *   Parses the JSON.
-    *   **Handles `system/announce` messages:** Tracks which Sidekick UI peers (`role: "sidekick"`) are online. When the *first* Sidekick UI announces itself as `online` *and* the connection status is `CONNECTED_WAITING_SIDEKICK`, it performs the crucial step of transitioning the status to `CONNECTED_READY` and **setting the `_ready_event`**, which unblocks the main thread waiting in `activate_connection()`.
-    *   **Handles `event` and `error` messages:** Looks up the handler function registered for the message's `src` instance ID in the `_message_handlers` dictionary and calls it (typically the `_internal_message_handler` of the corresponding `BaseModule` subclass instance).
-    *   Calls the optional `_global_message_handler` if registered.
-    *   **Handles Unexpected Disconnection/Errors:** If the `recv()` call fails (e.g., server closes connection, network error) or an unexpected exception occurs within the listener loop, and if the `_stop_event` wasn't set (meaning it wasn't a planned shutdown), it triggers `close_connection(is_exception=True, ...)` in a *separate thread* to initiate cleanup and ensure a `SidekickDisconnectedError` is likely raised eventually.
+*   **Message Handling:**
+    *   Each communication channel implementation handles receiving messages differently:
+        *   **WebSocketChannel:** Uses a background **daemon thread** that enters a loop, using `websocket.recv()` with a short timeout to periodically check if the stop event has been set.
+        *   **PyodideMessageChannel:** Uses JavaScript event listeners to handle incoming messages asynchronously.
+    *   Both implementations:
+        *   Receive incoming JSON messages from the server or UI.
+        *   Parse the JSON.
+        *   Call the registered message handler function with the parsed message data.
+    *   The message handler function (`_handle_incoming_message`):
+        *   **Handles `system/announce` messages:** Tracks which Sidekick UI peers (`role: "sidekick"`) are online. When the *first* Sidekick UI announces itself as `online` *and* the connection status is `CONNECTED_WAITING_SIDEKICK`, it performs the crucial step of transitioning the status to `CONNECTED_READY` and **setting the `_ready_event`**, which unblocks the main thread waiting in `activate_connection()`.
+        *   **Handles `event` and `error` messages:** Looks up the handler function registered for the message's `src` instance ID in the `_message_handlers` dictionary and calls it (typically the `_internal_message_handler` of the corresponding `BaseModule` subclass instance).
+        *   Calls the optional `_global_message_handler` if registered.
+    *   **Handles Unexpected Disconnection/Errors:** If receiving messages fails (e.g., server closes connection, network error) or an unexpected exception occurs, and if it wasn't a planned shutdown, it triggers `close_connection(is_exception=True, ...)` in a *separate thread* to initiate cleanup and ensure a `SidekickDisconnectedError` is likely raised eventually.
 *   **Error Handling & Exceptions:**
     *   `SidekickConnectionRefusedError`: Raised by `_ensure_connection` (via `activate_connection`) if the initial WebSocket `create_connection` fails. Indicates the server is likely not running or unreachable.
     *   `SidekickTimeoutError`: Raised by `activate_connection` if the connection to the server succeeds, but the `_ready_event` isn't set by the listener (because no Sidekick UI announced itself) within `_SIDEKICK_WAIT_TIMEOUT`.

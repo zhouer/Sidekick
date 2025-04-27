@@ -62,10 +62,10 @@ if not logger.hasHandlers():
 
 
 # --- Core connection/configuration/lifecycle functions ---
-# These functions manage the underlying WebSocket connection to the Sidekick UI
+# These functions manage the underlying communication channel to the Sidekick UI
 # and allow for basic configuration and script lifecycle control.
 from .connection import (
-    set_url,                          # Set the WebSocket URL (call before connecting).
+    set_url,                          # Set the server URL (call before connecting).
     set_config,                       # Configure connection behavior (call before connecting).
     # close_connection is mostly internal, prefer shutdown()
     activate_connection,              # Ensures connection is ready (blocks if not, called implicitly).

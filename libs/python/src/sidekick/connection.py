@@ -1,4 +1,4 @@
-"""Manages the WebSocket connection between your Python script and the Sidekick UI.
+"""Manages the communication channel between your Python script and the Sidekick UI.
 
 This module acts as the central communication hub for the Sidekick library. It
 handles the technical details of establishing and maintaining a real-time
@@ -16,10 +16,9 @@ Key Responsibilities:
 *   **Sending Commands:** Provides the mechanism (`send_message`, used internally
     by modules like Grid, Console) to send instructions (like "set color", "print text")
     to the Sidekick UI.
-*   **Receiving Events:** Runs a background thread (`_listen_for_messages`) to listen
-    for messages coming *from* the Sidekick UI (like button clicks or text input)
-    and routes them to the correct handler function in your script (e.g., the
-    function you provided to `grid.on_click`).
+*   **Receiving Events:** Handles incoming messages from the Sidekick UI (like button 
+    clicks or text input) and routes them to the correct handler function in your 
+    script (e.g., the function you provided to `grid.on_click`).
 *   **Error Handling:** Raises specific `SidekickConnectionError` exceptions if it
     cannot connect, if the UI doesn't respond, or if the connection is lost later.
 *   **Lifecycle Management:** Handles clean shutdown procedures, ensuring resources
@@ -34,7 +33,6 @@ Note:
     if the connection is lost after being established.
 """
 
-import websocket # The library used for WebSocket communication (websocket-client)
 import json
 import threading
 import atexit # Used to automatically call shutdown() when the script exits normally
@@ -55,12 +53,15 @@ from .errors import (
     SidekickDisconnectedError
 )
 
+# --- Import Channel Abstraction ---
+from .channel import CommunicationChannel, create_communication_channel
+
 # --- Connection Status Enum ---
 class ConnectionStatus(Enum):
-    """Represents the different states of the WebSocket connection internally."""
+    """Represents the different states of the communication channel internally."""
     DISCONNECTED = auto()               # Not connected. Initial state, or after closing/error.
-    CONNECTING = auto()                 # Actively trying to establish the WebSocket link.
-    CONNECTED_WAITING_SIDEKICK = auto() # WebSocket link established, waiting for UI panel 'ready' signal.
+    CONNECTING = auto()                 # Actively trying to establish the connection.
+    CONNECTED_WAITING_SIDEKICK = auto() # Connection established, waiting for UI panel 'ready' signal.
     CONNECTED_READY = auto()            # Fully connected and confirmed UI panel is ready. Safe to send messages.
 
 # --- Configuration and State (Internal Variables) ---
@@ -69,16 +70,11 @@ class ConnectionStatus(Enum):
 
 # Default WebSocket URL. Can be changed via sidekick.set_url().
 _ws_url: str = "ws://localhost:5163"
-# Holds the active websocket.WebSocket object once connected.
-_ws_connection: Optional[websocket.WebSocket] = None
-# A reentrant lock to protect access to shared state variables (status, connection object, handlers, etc.)
-# from race conditions between the main thread and the listener thread. RLock allows the same thread
-# to acquire the lock multiple times.
+# Holds the active communication channel once connected.
+_channel: Optional[CommunicationChannel] = None
+# A reentrant lock to protect access to shared state variables (status, channel object, handlers, etc.)
+# from race conditions between threads. RLock allows the same thread to acquire the lock multiple times.
 _connection_lock = threading.RLock()
-# The background thread object responsible for listening for incoming messages.
-_listener_thread: Optional[threading.Thread] = None
-# Internal flag to track if the listener thread has been started for the current connection cycle.
-_listener_started: bool = False
 # Maps module instance IDs (e.g., "grid-1") to their specific message handler function
 # (usually the _internal_message_handler method of the module instance).
 _message_handlers: Dict[str, Callable[[Dict[str, Any]], None]] = {}
@@ -126,33 +122,28 @@ def _generate_peer_id() -> str:
         logger.info(f"Generated Hero Peer ID: {_peer_id}")
     return _peer_id
 
-def _send_raw(ws: websocket.WebSocket, message_dict: Dict[str, Any]):
-    """Safely serializes a dictionary to JSON and sends it over the WebSocket. Internal use.
-
-    Handles JSON encoding and raises SidekickDisconnectedError if the send fails.
+def _send_raw(channel: CommunicationChannel, message_dict: Dict[str, Any]):
+    """Safely sends a dictionary message through the communication channel. Internal use.
 
     Args:
-        ws: The active WebSocket connection object.
+        channel: The active communication channel.
         message_dict: The Python dictionary payload to send.
 
     Raises:
-        SidekickDisconnectedError: If sending fails due to WebSocket-level issues
-            (e.g., connection closed, broken pipe, OS errors during send).
-        Exception: For other unexpected errors like JSON serialization problems.
+        SidekickDisconnectedError: If sending fails due to connection issues.
+        Exception: For other unexpected errors.
     """
     try:
-        # Convert the dictionary to a JSON string (UTF-8 encoded by default).
-        message_json = json.dumps(message_dict)
-        logger.debug(f"Sending raw: {message_json}")
-        # Send the JSON string via the WebSocket connection.
-        ws.send(message_json)
-    except (websocket.WebSocketException, BrokenPipeError, OSError) as e:
-        # These errors typically indicate the connection is no longer viable.
-        logger.error(f"WebSocket send error: {e}. Connection likely lost.")
-        # Raise our specific error to signal disconnection to the caller (send_message).
-        raise SidekickDisconnectedError(f"Send failed: {e}")
+        logger.debug(f"Sending raw: {message_dict}")
+        # Send the message via the communication channel.
+        channel.send_message(message_dict)
+    except SidekickDisconnectedError as e:
+        # These errors indicate the connection is no longer viable.
+        logger.error(f"Channel send error: {e}. Connection likely lost.")
+        # Re-raise the error to signal disconnection to the caller.
+        raise
     except Exception as e:
-        # Catch other potential errors (e.g., json.dumps failure if data is not serializable).
+        # Catch other potential errors.
         logger.exception(f"Unexpected error sending message: {e}")
         # Treat unexpected send errors as a disconnection as well.
         raise SidekickDisconnectedError(f"Unexpected send error: {e}")
@@ -166,13 +157,13 @@ def _send_system_announce(status: str):
     Args:
         status (str): Either "online" or "offline".
     """
-    # Acquire lock for safe access to shared connection object.
+    # Acquire lock for safe access to shared channel object.
     with _connection_lock:
-        ws = _ws_connection # Get the current WebSocket object reference.
+        channel = _channel # Get the current channel object reference.
         peer_id = _generate_peer_id() # Ensure we have our unique ID.
 
-        # Only proceed if we have a seemingly valid, connected WebSocket.
-        if ws and ws.connected and peer_id:
+        # Only proceed if we have a seemingly valid, connected channel.
+        if channel and channel.is_connected() and peer_id:
             # Construct the payload according to the protocol specification.
             announce_payload = {
                 "peerId": peer_id,          # Our unique identifier.
@@ -190,7 +181,7 @@ def _send_system_announce(status: str):
             }
             try:
                 # Use the safe sending helper.
-                _send_raw(ws, message)
+                _send_raw(channel, message)
                 logger.info(f"Sent system announce: {status}")
             except SidekickDisconnectedError as e:
                 # It's possible sending announce fails (e.g., during shutdown if connection
@@ -203,235 +194,130 @@ def _send_system_announce(status: str):
              logger.debug("Cannot send offline announce, connection already closed or closing.")
         else:
              # If trying to send 'online' but not connected, that's an issue.
-             logger.warning(f"Cannot send system announce '{status}', WebSocket is not connected.")
+             logger.warning(f"Cannot send system announce '{status}', channel is not connected.")
 
-def _listen_for_messages():
-    """The main function executed by the background listener thread. Internal use.
+def _handle_incoming_message(message_data: Dict[str, Any]):
+    """Handles incoming messages from the communication channel.
 
-    Continuously waits for incoming messages from the WebSocket server, parses
-    the JSON, and dispatches them to the appropriate handlers (_global_message_handler
-    or specific module instance handlers registered in _message_handlers).
+    This function processes messages received from the channel and dispatches them
+    to the appropriate handlers. It specifically handles system/announce messages
+    to track UI readiness.
 
-    It also specifically handles `system/announce` messages from the Sidekick UI
-    to track its readiness and update the `_connection_status` and `_ready_event`.
-
-    This function runs until `_stop_event` is set or an unrecoverable connection
-    error occurs. If an unexpected error happens, it initiates the `close_connection`
-    process.
+    Args:
+        message_data (Dict[str, Any]): The parsed message data.
     """
-    global _connection_status, _message_handlers, _sidekick_peers_online, _listener_started, _global_message_handler
-    logger.info("Listener thread started.")
-    ws = None # Holds the reference to the WebSocket connection for this loop iteration.
-    disconnect_reason = "Listener thread terminated normally" # Default exit reason.
+    global _connection_status, _message_handlers, _sidekick_peers_online, _global_message_handler
 
-    # Loop indefinitely until the stop signal is received.
-    while not _stop_event.is_set():
-        # --- Check Connection State Safely (Under Lock) ---
-        with _connection_lock:
-            # If the connection status was changed externally (e.g., by shutdown()), exit the loop.
-            if _connection_status == ConnectionStatus.DISCONNECTED:
-                disconnect_reason = "Status became DISCONNECTED"
-                break
-            # Ensure we still have a valid WebSocket object and it thinks it's connected.
-            if _ws_connection and _ws_connection.connected:
-                ws = _ws_connection # Use the current connection object.
-            else:
-                # If the connection object is gone or disconnected, exit the loop.
-                disconnect_reason = "WebSocket connection lost or object is None"
-                # Only log a warning if this wasn't a planned stop.
-                if not _stop_event.is_set():
-                    logger.warning("Listener: WebSocket connection lost or unavailable.")
-                break
+    try:
+        # --- 1. Call Global Handler (if registered) ---
+        # Used for debugging/advanced scenarios.
+        if _global_message_handler:
+            try:
+                # Pass the raw parsed message dictionary.
+                _global_message_handler(message_data)
+            except Exception as e:
+                # Log errors in the global handler but don't crash the handler.
+                logger.exception(f"Error in global message handler: {e}")
 
-        # Check ws again outside the lock (mostly redundant, but safe).
-        if not ws:
-            disconnect_reason = "WebSocket object is None (checked outside lock)"
-            if not _stop_event.is_set():
-                logger.warning("Listener: WebSocket object is None, stopping loop.")
-            break
+        # --- 2. Message Dispatch Logic ---
+        module = message_data.get('module')
+        msg_type = message_data.get('type')
+        payload = message_data.get('payload') # Note: Payload keys should be camelCase per protocol.
 
-        # --- Receive Message ---
-        try:
-            # Wait for an incoming message, with a timeout.
-            # The timeout (_LISTENER_RECV_TIMEOUT) is crucial: it prevents recv()
-            # from blocking forever, allowing the loop to periodically check _stop_event.
-            ws.settimeout(_LISTENER_RECV_TIMEOUT)
-            message_str = ws.recv()
+        # --- Handle System Announce (Sidekick UI Ready?) ---
+        if module == 'system' and msg_type == 'announce' and payload:
+            peer_id = payload.get('peerId')
+            role = payload.get('role')
+            status = payload.get('status')
 
-            # Check if stop was signaled *while* we were blocked waiting for recv().
-            if _stop_event.is_set():
-                disconnect_reason = "Stop event set during receive wait"
-                break
+            # Only process announcements from 'sidekick' peers (the UI).
+            if peer_id and role == 'sidekick':
+                if status == 'online':
+                    # A Sidekick UI panel just connected or announced readiness.
+                    # Check if this is the *first* Sidekick UI we've seen.
+                    with _connection_lock:
+                        was_empty = not _sidekick_peers_online
+                        # Add it to our set of known online UIs.
+                        _sidekick_peers_online.add(peer_id)
 
-            # An empty message usually signifies the server closed the connection gracefully.
-            if not message_str:
-                disconnect_reason = "Server closed connection (received empty message)"
-                if not _stop_event.is_set():
-                    logger.info("Listener: Server closed the WebSocket connection.")
-                break
+                    logger.info(f"Sidekick peer online: {peer_id}")
 
-            logger.debug(f"Listener: Received raw message: {message_str}")
-            # Parse the incoming JSON string into a Python dictionary.
-            message_data = json.loads(message_str)
+                    # CRITICAL: If this is the first UI and we were waiting...
+                    if was_empty and _connection_status == ConnectionStatus.CONNECTED_WAITING_SIDEKICK:
+                        logger.info(f"First Sidekick UI '{peer_id}' announced online. Connection is now READY.")
+                        # Transition the state to fully ready.
+                        _connection_status = ConnectionStatus.CONNECTED_READY
+                        # If configured, send a 'clearAll' command now that the UI is ready.
+                        if _clear_on_connect:
+                            logger.info("clear_on_connect is True, sending global/clearAll.")
+                            try:
+                                # Can call clear_all directly now, connection assumed ready.
+                                clear_all()
+                            except SidekickConnectionError as e_clr:
+                                # Log if the clear fails, but don't stop the handler.
+                                logger.error(f"Failed to send clearAll on connect: {e_clr}")
+                        # IMPORTANT: Signal the main thread (waiting in activate_connection)
+                        # by setting the _ready_event. This unblocks the script.
+                        _ready_event.set()
 
-            # --- Process Message Safely (Under Lock) ---
-            # Re-acquire the lock to safely access/modify shared state (status, handlers)
-            # while processing the received message.
+                elif status == 'offline':
+                    # A Sidekick UI panel disconnected or went offline.
+                    with _connection_lock:
+                        if peer_id in _sidekick_peers_online:
+                            _sidekick_peers_online.discard(peer_id)
+                            logger.info(f"Sidekick peer offline: {peer_id}")
+                            # Note: The connection status remains CONNECTED_READY even if all UIs leave.
+                            # A disconnect error will only occur if the underlying connection
+                            # breaks or if a subsequent send/receive operation fails.
+
+        # --- Handle Module Event/Error (Dispatch to Specific Instance) ---
+        elif msg_type in ['event', 'error']:
+            # These messages originate *from* a specific module instance in the UI.
+            # The 'src' field in the message identifies which instance.
+            instance_id = message_data.get('src')
+            # Check if we have a handler registered for this specific instance ID.
             with _connection_lock:
-                # Final check: if status changed or stop signaled while parsing, exit.
-                if _stop_event.is_set() or _connection_status == ConnectionStatus.DISCONNECTED:
-                    break
+                handler = _message_handlers.get(instance_id) if instance_id else None
 
-                # --- 1. Call Global Handler (if registered) ---
-                # Used for debugging/advanced scenarios.
-                if _global_message_handler:
-                     try:
-                         # Pass the raw parsed message dictionary.
-                         _global_message_handler(message_data)
-                     except Exception as e:
-                         # Log errors in the global handler but don't crash the listener.
-                         logger.exception(f"Listener: Error in global message handler: {e}")
+            if handler:
+                try:
+                    logger.debug(f"Invoking handler for instance '{instance_id}' (type: {msg_type}).")
+                    # Call the instance's registered handler (e.g., Grid._internal_message_handler).
+                    handler(message_data)
+                except Exception as e:
+                    # Catch errors within the user's callback or the internal handler logic.
+                    # Log the error but continue processing.
+                    logger.exception(f"Error executing handler for instance '{instance_id}': {e}")
+            elif instance_id:
+                # Received a message for an instance we don't know (e.g., removed).
+                logger.debug(f"No handler registered for instance '{instance_id}' for message type '{msg_type}'. Ignoring.")
+            else:
+                # Malformed message missing the 'src' identifier.
+                logger.warning(f"Received '{msg_type}' message without required 'src' field: {message_data}")
+        else:
+            # Received a message type the handler doesn't handle directly (e.g., 'spawn' from UI).
+            logger.debug(f"Received unhandled message type: module='{module}', type='{msg_type}'")
 
-                # --- 2. Message Dispatch Logic ---
-                module = message_data.get('module')
-                msg_type = message_data.get('type')
-                payload = message_data.get('payload') # Note: Payload keys should be camelCase per protocol.
-
-                # --- Handle System Announce (Sidekick UI Ready?) ---
-                if module == 'system' and msg_type == 'announce' and payload:
-                    peer_id = payload.get('peerId')
-                    role = payload.get('role')
-                    status = payload.get('status')
-
-                    # Only process announcements from 'sidekick' peers (the UI).
-                    if peer_id and role == 'sidekick':
-                        if status == 'online':
-                            # A Sidekick UI panel just connected or announced readiness.
-                            # Check if this is the *first* Sidekick UI we've seen.
-                            was_empty = not _sidekick_peers_online
-                            # Add it to our set of known online UIs.
-                            _sidekick_peers_online.add(peer_id)
-                            logger.info(f"Sidekick peer online: {peer_id}")
-
-                            # CRITICAL: If this is the first UI and we were waiting...
-                            if was_empty and _connection_status == ConnectionStatus.CONNECTED_WAITING_SIDEKICK:
-                                logger.info(f"First Sidekick UI '{peer_id}' announced online. Connection is now READY.")
-                                # Transition the state to fully ready.
-                                _connection_status = ConnectionStatus.CONNECTED_READY
-                                # If configured, send a 'clearAll' command now that the UI is ready.
-                                if _clear_on_connect:
-                                    logger.info("clear_on_connect is True, sending global/clearAll.")
-                                    try:
-                                        # Can call clear_all directly now, connection assumed ready.
-                                        clear_all()
-                                    except SidekickConnectionError as e_clr:
-                                        # Log if the clear fails, but don't stop the listener.
-                                        logger.error(f"Failed to send clearAll on connect: {e_clr}")
-                                # IMPORTANT: Signal the main thread (waiting in activate_connection)
-                                # by setting the _ready_event. This unblocks the script.
-                                _ready_event.set()
-
-                        elif status == 'offline':
-                            # A Sidekick UI panel disconnected or went offline.
-                            if peer_id in _sidekick_peers_online:
-                                _sidekick_peers_online.discard(peer_id)
-                                logger.info(f"Sidekick peer offline: {peer_id}")
-                                # Note: The connection status remains CONNECTED_READY even if all UIs leave.
-                                # A disconnect error will only occur if the underlying WebSocket connection
-                                # breaks or if a subsequent send/receive operation fails.
-
-                # --- Handle Module Event/Error (Dispatch to Specific Instance) ---
-                elif msg_type in ['event', 'error']:
-                    # These messages originate *from* a specific module instance in the UI.
-                    # The 'src' field in the message identifies which instance.
-                    instance_id = message_data.get('src')
-                    # Check if we have a handler registered for this specific instance ID.
-                    if instance_id and instance_id in _message_handlers:
-                        handler = _message_handlers[instance_id]
-                        try:
-                             logger.debug(f"Listener: Invoking handler for instance '{instance_id}' (type: {msg_type}).")
-                             # Call the instance's registered handler (e.g., Grid._internal_message_handler).
-                             handler(message_data)
-                        except Exception as e:
-                             # Catch errors within the user's callback or the internal handler logic.
-                             # Log the error but continue the listener loop.
-                             logger.exception(f"Listener: Error executing handler for instance '{instance_id}': {e}")
-                    elif instance_id:
-                        # Received a message for an instance we don't know (e.g., removed).
-                         logger.debug(f"Listener: No handler registered for instance '{instance_id}' for message type '{msg_type}'. Ignoring.")
-                    else:
-                        # Malformed message missing the 'src' identifier.
-                         logger.warning(f"Listener: Received '{msg_type}' message without required 'src' field: {message_data}")
-                else:
-                    # Received a message type the listener doesn't handle directly (e.g., 'spawn' from UI).
-                    logger.debug(f"Listener: Received unhandled message type: module='{module}', type='{msg_type}'")
-
-        except websocket.WebSocketTimeoutException:
-            # This is expected due to ws.settimeout(). It's not an error.
-            # Simply continue the loop to check _stop_event and wait again.
-            continue
-        except websocket.WebSocketConnectionClosedException:
-            # The server actively closed the connection while we were listening.
-            disconnect_reason = "WebSocketConnectionClosedException"
-            if not _stop_event.is_set(): # Log only if it wasn't expected.
-                logger.info("Listener: WebSocket connection closed by server.")
-            break # Exit the loop.
-        except (json.JSONDecodeError, TypeError) as e:
-            # Received data that wasn't valid JSON or had unexpected types.
-            logger.error(f"Listener: Failed to parse incoming JSON or invalid data type: {message_str}. Error: {e}")
-            continue # Try to recover and continue listening.
-        except OSError as e:
-            # Catch lower-level OS errors (e.g., network issues, bad file descriptor).
-            # Ignore "Bad file descriptor" (errno 9) if we are stopping, as it's expected.
-            if not (_stop_event.is_set() and e.errno == 9):
-                disconnect_reason = f"OS error ({e})"
-                if not _stop_event.is_set():
-                     logger.warning(f"Listener: OS error occurred ({e}), likely connection lost.")
-                break # Exit the loop on significant OS errors.
-        except Exception as e:
-            # Catch any other unexpected error during the loop.
-            disconnect_reason = f"Unexpected error: {e}"
-            if not _stop_event.is_set(): # Log only if unexpected.
-                 logger.exception(f"Listener: Unexpected error occurred: {e}")
-            break # Exit the loop.
-
-    # --- Listener Loop Exit ---
-    logger.info(f"Listener thread finished. Reason: {disconnect_reason}")
-    # Ensure the flag reflects that the listener is no longer running.
-    with _connection_lock:
-        _listener_started = False # Allow listener to potentially restart on next connection attempt.
-
-    # If the loop exited *unexpectedly* (i.e., not because _stop_event was set)...
-    if not _stop_event.is_set():
-        logger.warning("Listener thread terminated unexpectedly. Initiating disconnect cleanup.")
-        # Trigger the full cleanup process. This will likely lead to a
-        # SidekickDisconnectedError being raised for the main thread eventually.
-        # Crucially, run close_connection in a *separate non-daemon thread*
-        # This avoids potential deadlocks if close_connection needs to acquire locks held
-        # elsewhere, and ensures cleanup completes even if the main script exits.
-        # Marking as an exception scenario.
-        cleanup_thread = threading.Thread(
-            target=close_connection,
-            args=(False, True, disconnect_reason), # log_info=False, is_exception=True
-            daemon=False # Make sure cleanup finishes
-        )
-        cleanup_thread.start()
+    except Exception as e:
+        # Catch any other unexpected error during message handling.
+        logger.exception(f"Unexpected error handling message: {e}")
+        # We don't want to crash the handler, so just log the error and continue.
 
 
 def _ensure_connection():
-    """Establishes the initial WebSocket connection and starts the listener. Internal use.
+    """Establishes the initial connection using the appropriate channel. Internal use.
 
     Called only by `activate_connection` when the status is `DISCONNECTED`.
-    It handles the `websocket.create_connection` call and starts the `_listen_for_messages`
-    thread if the connection is successful.
+    It creates the appropriate communication channel based on the environment
+    and connects to the Sidekick server.
 
     Note:
         This function assumes the caller (`activate_connection`) holds the `_connection_lock`.
 
     Raises:
-        SidekickConnectionRefusedError: If the initial WebSocket `create_connection` fails.
+        SidekickConnectionRefusedError: If the initial connection fails.
     """
-    global _ws_connection, _listener_thread, _listener_started, _connection_status
+    global _channel, _connection_status
 
     # Safety check: Should only be called when DISCONNECTED.
     if _connection_status != ConnectionStatus.DISCONNECTED:
@@ -439,7 +325,7 @@ def _ensure_connection():
         logger.warning(f"_ensure_connection called unexpectedly while status is {_connection_status.name}")
         return
 
-    logger.info(f"Attempting to connect to Sidekick server at {_ws_url}...")
+    logger.info(f"Attempting to connect to Sidekick server...")
     # --- Prepare for New Connection Attempt ---
     _connection_status = ConnectionStatus.CONNECTING # Update state
     _sidekick_peers_online.clear() # Reset known UI peers for this new connection.
@@ -448,58 +334,39 @@ def _ensure_connection():
     _ready_event.clear()
     _shutdown_event.clear()
 
-    # --- Attempt WebSocket Connection ---
+    # --- Create and Connect Channel ---
     try:
-        # This is the blocking call that tries to establish the WebSocket connection.
-        # It uses the configured URL and initial connection timeout.
-        # It also configures automatic background ping/pong handling.
-        _ws_connection = websocket.create_connection(
-            _ws_url,
-            timeout=_INITIAL_CONNECT_TIMEOUT,
-            ping_interval=_PING_INTERVAL, # Send pings if connection idle
-            ping_timeout=_PING_TIMEOUT    # Timeout if pong not received
-        )
-        logger.info("Successfully connected to Sidekick server (WebSocket established).")
+        # Create the appropriate communication channel based on the environment
+        _channel = create_communication_channel(_ws_url)
+
+        # Register a message handler for the channel
+        _channel.register_message_handler(_handle_incoming_message)
+
+        # Connect the channel
+        _channel.connect()
+        logger.info("Successfully connected to Sidekick server.")
 
         # --- Connection Succeeded ---
         # Immediately send our 'online' announcement to identify ourselves.
         _send_system_announce("online")
-        # Update status: WebSocket connected, but waiting for UI panel confirmation.
+        # Update status: Connected, but waiting for UI panel confirmation.
         _connection_status = ConnectionStatus.CONNECTED_WAITING_SIDEKICK
 
-        # Start the listener thread if it's not already running (e.g., from a previous failed attempt).
-        # Check both the flag and the thread's alive status for robustness.
-        if not _listener_started and not (_listener_thread and _listener_thread.is_alive()):
-            logger.info("Starting WebSocket listener thread.")
-            # Create the thread. Set daemon=True so it doesn't prevent script exit
-            # if the main thread finishes without calling shutdown().
-            _listener_thread = threading.Thread(target=_listen_for_messages, daemon=True)
-            _listener_thread.start()
-            _listener_started = True # Mark that the listener is running for this cycle.
-        elif _listener_started:
-             # This state should ideally not be reached if status management is correct.
-             logger.warning("_ensure_connection: Listener thread already marked as started (unexpected).")
-
     # --- Handle Connection Errors ---
-    except (websocket.WebSocketException, ConnectionRefusedError, OSError, TimeoutError) as e:
+    except SidekickConnectionRefusedError as e:
         # Catch specific errors indicating failure to connect.
-        logger.error(f"Failed to connect to Sidekick server at {_ws_url}: {e}")
-        # Clean up state: Mark as disconnected, clear connection object.
-        _ws_connection = None
+        logger.error(f"Failed to connect to Sidekick server: {e}")
+        # Clean up state: Mark as disconnected, clear channel object.
+        _channel = None
         _connection_status = ConnectionStatus.DISCONNECTED
-        # Signal the listener thread (if it somehow started before failing) to stop.
-        _stop_event.set()
-        _listener_started = False
-        # Raise the specific error for activate_connection to catch and report to the user.
-        raise SidekickConnectionRefusedError(_ws_url, e)
+        # Raise the error for activate_connection to catch and report to the user.
+        raise
     except Exception as e:
         # Catch any other unexpected errors during the connection process.
         logger.exception(f"Unexpected error during Sidekick connection setup: {e}")
         # Perform similar cleanup.
-        _ws_connection = None
+        _channel = None
         _connection_status = ConnectionStatus.DISCONNECTED
-        _stop_event.set()
-        _listener_started = False
         # Wrap the unexpected error in our specific connection error type.
         raise SidekickConnectionRefusedError(_ws_url, e)
 
@@ -507,7 +374,7 @@ def _ensure_connection():
 # --- Public API Functions ---
 
 def set_url(url: str):
-    """Sets the WebSocket URL where the Sidekick server is expected to be listening.
+    """Sets the URL where the Sidekick server is expected to be listening.
 
     You **must** call this function *before* creating any Sidekick modules
     (like `sidekick.Grid()`) or calling any other Sidekick function that might
@@ -598,12 +465,12 @@ def activate_connection():
 
     1. Checking the current connection status.
     2. If disconnected, initiating the connection attempt (`_ensure_connection`).
-    3. **Blocking** execution if the WebSocket is connected but the UI panel hasn't
+    3. **Blocking** execution if the connection is established but the UI panel hasn't
        signaled readiness yet (waiting on `_ready_event`).
     4. Returning only when the status is `CONNECTED_READY`.
 
     Raises:
-        SidekickConnectionRefusedError: If the initial WebSocket connection attempt fails.
+        SidekickConnectionRefusedError: If the initial connection attempt fails.
         SidekickTimeoutError: If the connection to the server succeeds, but the Sidekick
                               UI panel doesn't signal readiness within the timeout period.
         SidekickDisconnectedError: If the connection state becomes invalid or disconnected
@@ -684,7 +551,7 @@ def send_message(message_dict: Dict[str, Any]):
     You typically don't call this directly.
 
     It ensures the connection is ready via `activate_connection()` before attempting
-    to serialize the message to JSON and send it over the WebSocket.
+    to send the message through the communication channel.
 
     Args:
         message_dict (Dict[str, Any]): A Python dictionary representing the message.
@@ -697,7 +564,7 @@ def send_message(message_dict: Dict[str, Any]):
         SidekickTimeoutError: If waiting for the UI times out during activation.
         SidekickDisconnectedError: If the connection is lost *before* or *during* the send attempt.
         TypeError: If `message_dict` is not a dictionary.
-        Exception: For other unexpected errors (e.g., JSON serialization failure).
+        Exception: For other unexpected errors.
     """
     if not isinstance(message_dict, dict):
         raise TypeError("message_dict must be a dictionary")
@@ -705,13 +572,13 @@ def send_message(message_dict: Dict[str, Any]):
     # 1. Ensure connection is fully ready. This blocks or raises errors if necessary.
     activate_connection() # Raises SidekickConnectionError subclasses on failure.
 
-    # 2. Acquire lock for safe access to the WebSocket object for sending.
+    # 2. Acquire lock for safe access to the channel object for sending.
     with _connection_lock:
-        ws = _ws_connection
+        channel = _channel
         # Double-check status *after* acquiring the lock, as a safety measure against
         # rare race conditions where the connection might drop between activate_connection returning
         # and this lock being acquired.
-        if _connection_status != ConnectionStatus.CONNECTED_READY or not ws or not ws.connected:
+        if _connection_status != ConnectionStatus.CONNECTED_READY or not channel or not channel.is_connected():
             disconnect_reason = f"Connection became invalid ({_connection_status.name}) immediately before sending"
             logger.error(disconnect_reason)
             # If not already disconnected, trigger cleanup.
@@ -721,19 +588,19 @@ def send_message(message_dict: Dict[str, Any]):
 
         # 3. Attempt the send using the internal raw helper.
         try:
-            # _send_raw handles JSON conversion and raises SidekickDisconnectedError on WebSocket errors.
-            _send_raw(ws, message_dict)
+            # _send_raw handles sending and raises SidekickDisconnectedError on channel errors.
+            _send_raw(channel, message_dict)
         except SidekickDisconnectedError as e:
              # If _send_raw indicated a disconnection, log it and initiate cleanup.
-             logger.error(f"Send message failed due to disconnection: {e.reason}")
+             logger.error(f"Send message failed due to disconnection: {e}")
              # Trigger cleanup if not already disconnected.
              if _connection_status != ConnectionStatus.DISCONNECTED:
                   # Use a thread for cleanup to avoid potential deadlocks.
-                  threading.Thread(target=close_connection, args=(False, True, f"Send failed: {e.reason}"), daemon=True).start()
+                  threading.Thread(target=close_connection, args=(False, True, f"Send failed: {e}"), daemon=True).start()
              # Re-raise the error to inform the caller (e.g., the Grid method).
-             raise e
+             raise
         except Exception as e:
-             # Catch other unexpected errors during send (e.g., JSON serialization).
+             # Catch other unexpected errors during send.
              disconnect_reason = f"Unexpected error during send: {e}"
              logger.exception(disconnect_reason)
              # Assume connection is compromised, trigger cleanup.
@@ -764,14 +631,14 @@ def clear_all():
     send_message(message)
 
 def close_connection(log_info=True, is_exception=False, reason=""):
-    """Closes the WebSocket connection and cleans up resources. (Internal use).
+    """Closes the communication channel and cleans up resources. (Internal use).
 
-    This is the core cleanup function. It stops the listener thread, closes the
-    WebSocket socket, sends final 'offline'/'clearAll' messages (best-effort),
-    and resets internal state variables.
+    This is the core cleanup function. It closes the communication channel,
+    sends final 'offline'/'clearAll' messages (best-effort), and resets internal
+    state variables.
 
     It's called automatically by `shutdown()` and the `atexit` handler for clean
-    exits, and also triggered internally by the listener thread or `send_message`
+    exits, and also triggered internally by error handlers in `send_message`
     if an unrecoverable error (`is_exception=True`) is detected.
 
     **Users should typically call `sidekick.shutdown()` instead of this directly.**
@@ -779,14 +646,14 @@ def close_connection(log_info=True, is_exception=False, reason=""):
     Args:
         log_info (bool): If True, logs status messages during the closure process.
         is_exception (bool): If True, indicates this closure was triggered by an
-                             error condition (e.g., listener crash, send failure).
+                             error condition (e.g., channel error, send failure).
                              This may influence whether a final `SidekickDisconnectedError`
                              is raised after cleanup, depending on whether a clean
                              `shutdown()` was also requested concurrently.
         reason (str): Optional description of why the connection is closing, used
                       for logging and potentially included in error messages.
     """
-    global _ws_connection, _listener_thread, _listener_started, _connection_status, _message_handlers, _sidekick_peers_online
+    global _channel, _connection_status, _message_handlers, _sidekick_peers_online
 
     disconnect_exception_to_raise: Optional[SidekickDisconnectedError] = None # Prepare potential exception
 
@@ -797,11 +664,11 @@ def close_connection(log_info=True, is_exception=False, reason=""):
             if log_info: logger.debug("Connection already closed or closing.")
             return
 
-        if log_info: logger.info(f"Closing Sidekick WebSocket connection... (Exception: {is_exception}, Reason: '{reason}')")
+        if log_info: logger.info(f"Closing Sidekick connection... (Exception: {is_exception}, Reason: '{reason}')")
         initial_status = _connection_status # Remember status before changing it for logic below.
 
-        # --- 1. Signal Listener Thread to Stop ---
-        _stop_event.set() # Tell the _listen_for_messages loop to exit.
+        # --- 1. Signal to Stop ---
+        _stop_event.set() # Signal any waiting threads to stop.
         _ready_event.clear() # Connection is no longer ready.
 
         # --- 2. Update Internal State Immediately ---
@@ -812,13 +679,13 @@ def close_connection(log_info=True, is_exception=False, reason=""):
         # Attempt to send final messages ('clearAll' if configured, 'offline' announce)
         # ONLY if this is a clean shutdown (not an error) AND we were actually connected.
         # These are best-effort and might fail if the connection is already broken.
-        ws_temp = _ws_connection # Get reference under lock
-        if not is_exception and ws_temp and ws_temp.connected and initial_status != ConnectionStatus.CONNECTING:
+        channel_temp = _channel # Get reference under lock
+        if not is_exception and channel_temp and channel_temp.is_connected() and initial_status != ConnectionStatus.CONNECTING:
              # Send clearAll if configured for disconnect.
              if _clear_on_disconnect:
                   logger.debug("Attempting to send global/clearAll on disconnect (best-effort).")
                   clear_all_msg = {"id": 0, "module": "global", "type": "clearAll", "payload": None}
-                  try: _send_raw(ws_temp, clear_all_msg)
+                  try: _send_raw(channel_temp, clear_all_msg)
                   # Ignore failures here, as connection might be closing.
                   except Exception: logger.warning("Failed to send clearAll during disconnect (ignored).")
 
@@ -828,59 +695,32 @@ def close_connection(log_info=True, is_exception=False, reason=""):
              # Ignore failures here as well.
              except Exception: logger.warning("Failed to send offline announce during disconnect (ignored).")
 
-        # --- 4. Close the WebSocket Socket ---
-        if ws_temp:
+        # --- 4. Close the Channel ---
+        if channel_temp:
             try:
-                # Give the close operation a short timeout.
-                ws_temp.settimeout(0.5)
-                ws_temp.close()
+                channel_temp.close()
             except Exception as e:
                  # Log errors during close but continue cleanup.
-                 logger.warning(f"Error occurred during WebSocket close(): {e}")
-        # Clear the global reference to the connection object.
-        _ws_connection = None
+                 logger.warning(f"Error occurred during channel close(): {e}")
+        # Clear the global reference to the channel object.
+        _channel = None
 
         # --- 5. Prepare Exception (if closure was due to an error) ---
         # If this close was triggered by an error (is_exception=True), create the
-        # exception object now. We will raise it *after* releasing the lock and
-        # joining the listener thread, but only if a clean shutdown wasn't also requested.
+        # exception object now. We will raise it *after* releasing the lock,
+        # but only if a clean shutdown wasn't also requested.
         if is_exception:
             disconnect_exception_to_raise = SidekickDisconnectedError(reason or "Connection closed due to an error")
 
-        # --- 6. Clear Listener Thread References ---
-        # Store reference to potentially running thread for joining outside the lock.
-        listener_thread_temp = _listener_thread
-        _listener_thread = None # Clear global reference.
-        _listener_started = False # Allow listener to restart if connect is called again.
-
-    # --- 7. Join Listener Thread (Outside the main lock) ---
-    # Wait for the listener thread to finish its execution cleanly.
-    # This is done outside the lock to avoid deadlocks if the listener needs the lock to exit.
-    if listener_thread_temp and listener_thread_temp.is_alive():
-        if log_info: logger.debug("Waiting for listener thread to stop...")
-        try:
-            # Wait a bit longer than the listener's receive timeout.
-            join_timeout = _LISTENER_RECV_TIMEOUT + 0.5
-            listener_thread_temp.join(timeout=join_timeout)
-            # Check if it actually stopped.
-            if listener_thread_temp.is_alive():
-                 logger.warning(f"Listener thread did not stop gracefully after join timeout ({join_timeout}s).")
-            elif log_info:
-                 logger.debug("Listener thread stopped.")
-        except Exception as e:
-             logger.warning(f"Error joining listener thread: {e}")
-    elif log_info:
-        logger.debug("Listener thread was not running or already finished.")
-
-    # --- 8. Clear Instance Message Handlers ---
-    # Do this after the listener is stopped, outside the main lock.
+    # --- 6. Clear Instance Message Handlers ---
+    # Do this outside the main lock.
     if _message_handlers:
         logger.debug(f"Clearing {len(_message_handlers)} instance message handlers.")
         _message_handlers.clear()
 
-    if log_info: logger.info("Sidekick WebSocket connection closed and resources cleaned up.")
+    if log_info: logger.info("Sidekick connection closed and resources cleaned up.")
 
-    # --- 9. Raise Exception (if applicable) ---
+    # --- 7. Raise Exception (if applicable) ---
     # If this cleanup was triggered by an error (`is_exception` was True),
     # check if a clean shutdown was *also* requested concurrently (e.g., via Ctrl+C
     # setting _shutdown_event). If NOT requested, raise the disconnect error now
@@ -1005,8 +845,7 @@ def shutdown():
     - Signals `run_forever()` (if it's currently running) to stop its waiting loop.
     - Attempts to send a final 'offline' announcement to the Sidekick server.
     - Attempts to send a 'clearAll' command to the UI (if configured via `set_config`).
-    - Closes the underlying WebSocket connection.
-    - Stops the background listener thread.
+    - Closes the underlying communication channel.
     - Clears internal state and message handlers.
 
     It's safe to call this function multiple times; subsequent calls after the
@@ -1054,7 +893,7 @@ def register_message_handler(instance_id: str, handler: Callable[[Dict[str, Any]
     (like `Grid`, `Console`) is created. It maps the module's unique `instance_id`
     to its `_internal_message_handler` method.
 
-    The listener thread uses this mapping to dispatch incoming 'event' and 'error'
+    The message handler uses this mapping to dispatch incoming 'event' and 'error'
     messages from the UI to the correct Python object.
 
     Args:
@@ -1116,8 +955,8 @@ def register_global_message_handler(handler: Optional[Callable[[Dict[str, Any]],
 
     Args:
         handler (Optional[Callable[[Dict[str, Any]], None]]): The function to call
-            with each raw message dictionary received from the WebSocket. It should
-            accept one argument (the message dict). Pass `None` to remove any
+            with each raw message dictionary received from the communication channel. 
+            It should accept one argument (the message dict). Pass `None` to remove any
             currently registered global handler.
 
     Raises:

@@ -20,10 +20,34 @@ sidekick.canvas module
    :show-inheritance:
    :undoc-members:
 
+sidekick.channel module
+-----------------------
+
+.. automodule:: sidekick.channel
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
 sidekick.connection module
 --------------------------
 
 .. automodule:: sidekick.connection
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+sidekick.pyodide_channel module
+------------------------------
+
+.. automodule:: sidekick.pyodide_channel
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+sidekick.websocket_channel module
+--------------------------------
+
+.. automodule:: sidekick.websocket_channel
    :members:
    :show-inheritance:
    :undoc-members:
