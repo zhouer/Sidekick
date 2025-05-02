@@ -12,6 +12,11 @@ const wsHost = 'localhost';
 const wsPort = 5163;
 const wsUrl = JSON.stringify(`ws://${wsHost}:${wsPort}`);
 
+// Define communication mode based on environment
+// Use process.env.SCRIPT_URL if provided, otherwise default to websocket mode
+const communicationMode = JSON.stringify(process.env.SCRIPT_URL ? 'script' : 'websocket');
+const scriptUrl = JSON.stringify(process.env.SCRIPT_URL || '');
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -20,6 +25,11 @@ export default defineConfig({
   ],
   define: {
     '__APP_VERSION__': appVersion,
+    '__COMMUNICATION_MODE__': communicationMode,
     '__WS_URL__': wsUrl,
+    '__SCRIPT_URL__': scriptUrl,
+  },
+  worker: {
+    format: 'es' // Use ES modules format instead of IIFE for workers
   },
 })

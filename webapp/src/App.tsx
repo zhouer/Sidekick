@@ -8,7 +8,7 @@ import React, {
     useEffect,
     createRef // Used for creating refs for imperative modules
 } from 'react';
-import { useWebSocket } from './hooks/useWebSocket'; // WebSocket management hook
+import { useCommunication, CommunicationMode } from './hooks/useCommunication'; // Communication management hook
 import { moduleRegistry } from './modules/moduleRegistry'; // Maps module type to definition
 import {
     // Message Types
@@ -261,12 +261,12 @@ function App() {
         }
     }, []); // This callback has no dependencies as it only interacts with refs
 
-    // --- Callback: Handle Incoming WebSocket Messages ---
+    // --- Callback: Handle Incoming Sidekick Messages ---
     // This function decides whether to dispatch to the reducer or call an imperative handle
-    const handleWebSocketMessage = useCallback((messageData: any) => {
+    const handleSidekickMessage = useCallback((messageData: any) => {
         // Basic message structure validation
         if (typeof messageData !== 'object' || messageData === null || !messageData.module || !messageData.type) {
-            console.error("App: Received invalid message structure from WebSocket:", messageData);
+            console.error("App: Received invalid message structure from Sidekick:", messageData);
             return;
         }
 
@@ -323,8 +323,15 @@ function App() {
 
     }, [/* No dependencies: uses refs and dispatch (stable) */]);
 
-    // --- WebSocket Connection Setup ---
-    const { isConnected, status, sendMessage } = useWebSocket(handleWebSocketMessage);
+    // --- Communication Setup (WebSocket or Pyodide) ---
+    const { 
+        mode, 
+        isConnected, 
+        status, 
+        sendMessage, 
+        runScript, 
+        stopScript
+    } = useCommunication(handleSidekickMessage);
 
     // --- Effect: Clean Up Refs and Pending Queues for Removed Modules ---
     useEffect(() => {
@@ -392,15 +399,8 @@ function App() {
 
     // --- Render Helper: Render Status Indicators in Header ---
     const renderStatus = () => {
-        // Determine WebSocket status text based on the 'status' state variable
-        let wsStatusText = 'Unknown';
-        switch (status) {
-            case 'connecting': wsStatusText = 'Connecting...'; break;
-            case 'connected': wsStatusText = 'Connected'; break;
-            case 'disconnected': wsStatusText = 'Disconnected'; break;
-            case 'reconnecting': wsStatusText = 'Reconnecting...'; break;
-        }
-        const wsStatusClass = isConnected ? 'status-connected' : 'status-disconnected';
+        // Get Sidekick (this webapp) version from injected variable
+        const sidekickStatusText = `Sidekick (v${__APP_VERSION__})`;
 
         // Determine Hero status text and class
         let heroStatusText = 'Hero: Offline';
@@ -411,16 +411,47 @@ function App() {
             heroStatusClass = 'hero-status-online'; // Apply online style class
         }
 
-        // Get Sidekick (this webapp) version from injected variable
-        const sidekickStatusText = `Sidekick (v${__APP_VERSION__})`;
+        if (mode === 'websocket') {
+            // Determine WebSocket status text based on the 'status' state variable
+            let wsStatusText = 'Unknown';
+            switch (status) {
+                case 'connecting': wsStatusText = 'Connecting'; break;
+                case 'connected': wsStatusText = 'Connected'; break;
+                case 'disconnected': wsStatusText = 'Disconnected'; break;
+                case 'reconnecting': wsStatusText = 'Reconnecting'; break;
+            }
+            const wsStatusClass = isConnected ? 'status-connected' : 'status-disconnected';
 
-        return (
-            <>
-                <p className={wsStatusClass}>WebSocket: {wsStatusText}</p>
-                <p className={heroStatusClass}>{heroStatusText}</p>
-                <p className="app-version">{sidekickStatusText}</p>
-            </>
-        );
+            return (
+                <>
+                    <p className={wsStatusClass}>WebSocket: {wsStatusText}</p>
+                    <p className={heroStatusClass}>{heroStatusText}</p>
+                    <p className="app-version">{sidekickStatusText}</p>
+                </>
+            );
+        } else {
+            // Script mode status
+            let scriptStatusText = 'Script: Unknown';
+            let scriptStatusClass = 'status-neutral';
+
+            switch (status) {
+                case 'initializing': scriptStatusText = 'Script: Initializing'; scriptStatusClass = 'status-neutral'; break;
+                case 'ready': scriptStatusText = 'Script: Ready'; scriptStatusClass = 'status-connected'; break;
+                case 'running': scriptStatusText = 'Script: Running'; scriptStatusClass = 'status-connected'; break;
+                case 'stopping': scriptStatusText = 'Script: Stopping'; scriptStatusClass = 'status-neutral'; break;
+                case 'stopped': scriptStatusText = 'Script: Stopped'; scriptStatusClass = 'status-neutral'; break;
+                case 'error': scriptStatusText = 'Script: Error'; scriptStatusClass = 'status-disconnected'; break;
+                case 'terminated': scriptStatusText = 'Script: Terminated'; scriptStatusClass = 'status-neutral'; break;
+            }
+
+            return (
+                <>
+                    <p className={scriptStatusClass}>{scriptStatusText}</p>
+                    <p className={heroStatusClass}>{heroStatusText}</p>
+                    <p className="app-version">{sidekickStatusText}</p>
+                </>
+            );
+        }
     };
 
     // --- Render Helper: Render Active Modules ---
@@ -509,13 +540,39 @@ function App() {
                 <div className="status-indicators">
                     {renderStatus()} {/* Render dynamic status indicators */}
                 </div>
-                <button
-                    onClick={clearAllModulesUI}
-                    disabled={moduleOrder.length === 0} // Disable button if no modules are present
-                    title="Clear all modules from the UI"
-                >
-                    Clear UI
-                </button>
+                {mode === 'websocket' ? (
+                    <button
+                        onClick={clearAllModulesUI}
+                        disabled={moduleOrder.length === 0} // Disable button if no modules are present
+                        title="Clear all modules from the UI"
+                    >
+                        Clear UI
+                    </button>
+                ) : (
+                    <div className="script-controls">
+                        <button
+                            onClick={runScript}
+                            disabled={status !== 'ready' && status !== 'stopped' && status !== 'terminated' && status !== 'error'} // Only enable when ready
+                            title="Run the Python script"
+                        >
+                            Run
+                        </button>
+                        <button
+                            onClick={stopScript}
+                            disabled={status !== 'running'} // Only enable when running
+                            title="Stop the Python script"
+                        >
+                            Stop
+                        </button>
+                        <button
+                            onClick={clearAllModulesUI}
+                            disabled={moduleOrder.length === 0} // Disable button if no modules are present
+                            title="Clear all modules from the UI"
+                        >
+                            Clear UI
+                        </button>
+                    </div>
+                )}
             </header>
 
             {/* Main Content Area */}

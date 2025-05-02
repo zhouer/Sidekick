@@ -18,12 +18,16 @@ type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'reconnect
  * Custom React hook to manage a persistent WebSocket connection with automatic reconnection.
  *
  * @param onMessageCallback - A callback function that will be invoked with parsed incoming WebSocket messages.
+ * @param options - Optional configuration for the WebSocket connection.
  * @returns An object containing:
  *  - `isConnected` (boolean): Whether the WebSocket is currently connected.
  *  - `status` (ConnectionStatus): The current detailed connection status.
  *  - `sendMessage` (function): A stable function to send messages over the WebSocket.
  */
-export function useWebSocket(onMessageCallback: (message: any) => void) {
+export function useWebSocket(
+  onMessageCallback: (message: any) => void,
+  options: { enabled: boolean } = { enabled: true }
+) {
     // --- State ---
     /** Current connection state (true if OPEN, false otherwise). */
     const [isConnected, setIsConnected] = useState(false);
@@ -53,6 +57,11 @@ export function useWebSocket(onMessageCallback: (message: any) => void) {
 
     /** Effect to attempt initial connection on mount and handle cleanup on unmount. */
     useEffect(() => {
+        if (!options.enabled) {
+            console.log("[useWebSocket] WebSocket disabled by options.");
+            return;
+        }
+
         manualDisconnect.current = false; // Ensure flag is reset on mount
         console.log("[useWebSocket] Initial connection effect triggered.");
         connect(); // Attempt initial connection
@@ -63,7 +72,7 @@ export function useWebSocket(onMessageCallback: (message: any) => void) {
             disconnect(); // Perform manual disconnect and cleanup
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Run only once on mount (connect/disconnect are stable due to useCallback)
+    }, [options.enabled]); // Run when enabled changes (connect/disconnect are stable due to useCallback)
 
     /** Effect to reset the manual disconnect flag if the connection successfully establishes later. */
     useEffect(() => {

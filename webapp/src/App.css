@@ -47,7 +47,7 @@ body {
     display: flex;
     align-items: center;
     gap: 12px; /* Space between individual status items */
-    font-size: 0.8em; /* Smaller font for status */
+    font-size: 0.85em; /* Smaller font for status */
     color: var(--sk-secondary-foreground); /* Use variable */
     flex-grow: 1; /* Allow status to take up space */
     justify-content: flex-end; /* Align status to the right */
@@ -58,13 +58,15 @@ body {
 
 .status-indicators p {
     margin: 0; /* Remove default paragraph margin */
-    padding: 2px 6px; /* Small padding for badges */
-    border-radius: 3px; /* Subtle rounding */
+    padding: 5px; /* Slightly increased padding for better visibility */
+    border-radius: 4px; /* Slightly increased rounding */
     white-space: nowrap; /* Prevent wrapping inside status */
     line-height: 1.4; /* Adjust line height */
     display: flex; /* Use flex for icon alignment if needed */
     align-items: center;
     border: 1px solid transparent; /* Base border */
+    font-weight: 500; /* Slightly bolder text for better readability */
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1); /* Subtle shadow for better visibility */
 }
 
 /* Specific status styles using data attributes or classes */
@@ -78,6 +80,11 @@ body {
     color: var(--sk-status-error-fg); /* Use variable */
     border-color: var(--sk-status-error-border); /* Use variable */
 }
+.status-neutral { /* Class for neutral status indicators */
+    background-color: var(--sk-status-neutral-bg); /* Use variable */
+    color: var(--sk-status-neutral-fg); /* Use variable */
+    border-color: var(--sk-status-neutral-border); /* Use variable */
+}
 
 .hero-status-online { /* Class on the Hero status <p> */
     background-color: var(--sk-status-success-bg); /* Use variable */
@@ -85,16 +92,22 @@ body {
     border-color: var(--sk-status-success-border); /* Use variable */
 }
 .hero-status-offline { /* Class on the Hero status <p> */
-    background-color: var(--sk-status-error-bg); /* Use variable */
-    color: var(--sk-status-error-fg); /* Use variable */
-    border-color: var(--sk-status-error-border); /* Use variable */
+    background-color: var(--sk-status-neutral-bg); /* Use neutral color */
+    color: var(--sk-status-neutral-fg); /* Use neutral color */
+    border-color: var(--sk-status-neutral-border); /* Use neutral color */
 }
 
 .app-version {
-    color: var(--sk-secondary-foreground); /* Use variable */
-    padding: 2px 0 !important; /* Override badge padding */
-    border: none !important;
-    background-color: transparent !important;
+    background-color: var(--sk-status-neutral-bg); /* Use neutral background */
+    color: var(--sk-status-neutral-fg); /* Use neutral color */
+    border-color: var(--sk-status-neutral-border); /* Use neutral border */
+}
+
+/* Script Controls Styling */
+.script-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
 }
 
 /* Header Button Styling */
@@ -109,6 +122,26 @@ body {
     transition: background-color 0.2s ease, opacity 0.2s ease;
     white-space: nowrap; /* Prevent button text wrapping */
     flex-shrink: 0; /* Don't allow button to shrink */
+}
+
+/* Run button styling */
+.script-controls button:nth-child(1) {
+    background-color: var(--sk-button-success-bg, #28a745);
+    color: var(--sk-button-success-fg, white);
+}
+
+.script-controls button:nth-child(1):hover {
+    background-color: var(--sk-button-success-hover-bg, #218838);
+}
+
+/* Stop button styling */
+.script-controls button:nth-child(2) {
+    background-color: var(--sk-button-danger-bg, #dc3545);
+    color: var(--sk-button-danger-fg, white);
+}
+
+.script-controls button:nth-child(2):hover {
+    background-color: var(--sk-button-danger-hover-bg, #c82333);
 }
 
 .App-header button:hover {
