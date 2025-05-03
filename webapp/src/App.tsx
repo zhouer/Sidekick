@@ -50,8 +50,7 @@ type AppAction =
     | { type: 'PROCESS_SPAWN'; message: ModuleControlMessage }        // Add a new module
     | { type: 'PROCESS_REMOVE'; message: ModuleControlMessage }       // Remove an existing module
     | { type: 'PROCESS_SYSTEM_ANNOUNCE'; message: SystemAnnounceMessage } // Handle Hero online/offline status
-    | { type: 'PROCESS_GLOBAL_CLEAR'; message: GlobalClearMessage }   // Clear all modules (from backend command)
-    | { type: 'CLEAR_ALL_MODULES_UI' }; // Clear all modules (from UI button)
+    | { type: 'PROCESS_GLOBAL_CLEAR'; message: GlobalClearMessage };  // Clear all modules (from backend command)
 
 // =============================================================================
 // == Main Application Reducer ==
@@ -186,16 +185,6 @@ const rootReducer: Reducer<AppState, AppAction> = (state, action): AppState => {
         case 'PROCESS_GLOBAL_CLEAR': {
             console.log("Reducer: Processing global/clearAll command from backend.");
             // Only update if there are modules to clear
-            if (state.modulesById.size > 0 || state.moduleOrder.length > 0) {
-                // Reset maps and order, keep hero status
-                return { ...initialState, heroStatus: state.heroStatus };
-            }
-            return state; // Already cleared
-        }
-
-        // --- Handle Clear All (from UI button) ---
-        case 'CLEAR_ALL_MODULES_UI': {
-            console.log("Reducer: Clearing all modules via UI action.");
             if (state.modulesById.size > 0 || state.moduleOrder.length > 0) {
                 // Reset maps and order, keep hero status
                 return { ...initialState, heroStatus: state.heroStatus };
@@ -388,15 +377,6 @@ function App() {
         }
     }, [sendMessage]); // Dependency: sendMessage ensures stability
 
-    // --- Callback: Handle UI "Clear All" Button Click ---
-    const clearAllModulesUI = useCallback(() => {
-        // Dispatch action to clear local UI state
-        dispatch({ type: 'CLEAR_ALL_MODULES_UI' });
-        // Note: This only clears the UI state. It does not send a global/clearAll
-        // command to the backend by default. That's typically handled by the
-        // Python side's connection logic (clear_on_connect/disconnect) or explicit calls.
-    }, []);
-
     // --- Render Helper: Render Status Indicators in Header ---
     const renderStatus = () => {
         // Get Sidekick (this webapp) version from injected variable
@@ -540,19 +520,11 @@ function App() {
                 <div className="status-indicators">
                     {renderStatus()} {/* Render dynamic status indicators */}
                 </div>
-                {mode === 'websocket' ? (
-                    <button
-                        onClick={clearAllModulesUI}
-                        disabled={moduleOrder.length === 0} // Disable button if no modules are present
-                        title="Clear all modules from the UI"
-                    >
-                        Clear UI
-                    </button>
-                ) : (
+                {mode === 'script' && (
                     <div className="script-controls">
                         <button
                             onClick={runScript}
-                            disabled={status !== 'ready' && status !== 'stopped' && status !== 'terminated' && status !== 'error'} // Only enable when ready
+                            disabled={status !== 'ready' && status !== 'stopped' && status !== 'terminated' && status !== 'error'}
                             title="Run the Python script"
                         >
                             Run
@@ -563,13 +535,6 @@ function App() {
                             title="Stop the Python script"
                         >
                             Stop
-                        </button>
-                        <button
-                            onClick={clearAllModulesUI}
-                            disabled={moduleOrder.length === 0} // Disable button if no modules are present
-                            title="Clear all modules from the UI"
-                        >
-                            Clear UI
                         </button>
                     </div>
                 )}
