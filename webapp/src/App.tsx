@@ -406,7 +406,7 @@ function App() {
                 <>
                     <p className={wsStatusClass}>WebSocket: {wsStatusText}</p>
                     <p className={heroStatusClass}>{heroStatusText}</p>
-                    <p className="app-version">{sidekickStatusText}</p>
+                    {/*<p className="app-version">{sidekickStatusText}</p>*/}
                 </>
             );
         } else {
@@ -428,7 +428,7 @@ function App() {
                 <>
                     <p className={scriptStatusClass}>{scriptStatusText}</p>
                     <p className={heroStatusClass}>{heroStatusText}</p>
-                    <p className="app-version">{sidekickStatusText}</p>
+                    {/*<p className="app-version">{sidekickStatusText}</p>*/}
                 </>
             );
         }
