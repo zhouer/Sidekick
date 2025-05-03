@@ -49,16 +49,19 @@ export function useWebSocket(
     // --- Effects ---
     /** Generate a unique Peer ID for this client instance on initial mount. */
     useEffect(() => {
+        if (!options.enabled) {
+            return;
+        }
+
         if (!peerIdRef.current) {
             peerIdRef.current = `sidekick-${uuidv4()}`;
             console.log(`[useWebSocket] Generated Sidekick Peer ID: ${peerIdRef.current}`);
         }
-    }, []);
+    }, [options.enabled]);
 
     /** Effect to attempt initial connection on mount and handle cleanup on unmount. */
     useEffect(() => {
         if (!options.enabled) {
-            console.log("[useWebSocket] WebSocket disabled by options.");
             return;
         }
 
@@ -76,10 +79,14 @@ export function useWebSocket(
 
     /** Effect to reset the manual disconnect flag if the connection successfully establishes later. */
     useEffect(() => {
+        if (!options.enabled) {
+            return;
+        }
+
         if (status === 'connected') {
             manualDisconnect.current = false;
         }
-    }, [status]);
+    }, [status, options.enabled]);
 
     // --- Callback Functions (Memoized) ---
 
