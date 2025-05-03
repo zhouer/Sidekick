@@ -387,7 +387,8 @@ function App() {
         let heroStatusClass = 'hero-status-offline'; // Default class
         if (heroStatus?.status === 'online') {
             // Include version if available
-            heroStatusText = `Hero: Online (v${heroStatus.version || '?'})`;
+            // heroStatusText = `Hero: Online (v${heroStatus.version || '?'})`;
+            heroStatusText = `Hero: Online`;
             heroStatusClass = 'hero-status-online'; // Apply online style class
         }
 
