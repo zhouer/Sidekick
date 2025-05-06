@@ -1,5 +1,3 @@
-// Sidekick/webapp/src/modules/console/types.ts
-
 // --- State ---
 export interface ConsoleState {
     lines: string[];

@@ -8,10 +8,10 @@ It defines the structure and meaning of messages exchanged between the **Hero** 
 Adherence to this protocol is **crucial** for interoperability between all components. Implementers of Hero libraries or Sidekick UI components **must** strictly follow this specification.
 
 The protocol enables:
-*   Peer Discovery & Status Management (`system` module)
-*   Global Operations (`global` module)
-*   Module Instance Control (creating, updating, removing UI elements)
-*   Module Feedback (sending user interaction events and errors back to the Hero)
+*   Peer Discovery & Status Management (`system` component)
+*   Global Operations (`global` component)
+*   Component Instance Control (creating, updating, removing UI elements)
+*   Component Feedback (sending user interaction events and errors back to the Hero)
 
 ## 2. Transport Layer
 
@@ -28,13 +28,13 @@ All messages exchanged over the WebSocket are JSON objects adhering to the follo
 interface BaseMessage {
   /** Reserved for future use. Currently defaults to 0. */
   id: number;
-  /** Identifies the target/source module type (e.g., "system", "global", "grid", "console", "control", "canvas", "viz"). */
-  module: string;
+  /** Identifies the target/source component type (e.g., "system", "global" modules, or visual components like "grid", "console", "control", "canvas", "viz"). */
+  component: string;
   /** Specifies the action or event type (e.g., "spawn", "update", "remove", "announce", "event", "error", "clearAll"). */
   type: string;
-  /** Target module instance ID (Required for Hero -> Sidekick module control messages: spawn, update, remove). */
+  /** Target component instance ID (Required for Hero -> Sidekick component control messages: spawn, update, remove). */
   target?: string;
-  /** Source module instance ID (Required for Sidekick -> Hero feedback messages: event, error). */
+  /** Source component instance ID (Required for Sidekick -> Hero feedback messages: event, error). */
   src?: string;
   /** Contains message-type-specific data. Keys MUST use camelCase. Can be null or omitted if no data is needed. */
   payload?: object | null;
@@ -49,7 +49,7 @@ This convention ensures consistency between the JavaScript-based frontend/server
 Hero libraries (like `sidekick-py`) are responsible for converting their native conventions (e.g., `snake_case`) to `camelCase` before sending messages. Sidekick UI components expect to receive and send `camelCase` payloads.
 **Failure to adhere to this will likely cause messages to be ignored or result in errors.**
 
-## 4. Connection Lifecycle & Peer Discovery (`system` Module)
+## 4. Connection Lifecycle & Peer Discovery (`system` Component)
 
 Handles peer status announcements and discovery via the central Server.
 
@@ -76,7 +76,7 @@ interface SystemAnnouncePayload {
 
 interface SystemAnnounceMessage {
   id: number; // 0
-  module: "system";
+  component: "system";
   type: "announce";
   payload: SystemAnnouncePayload;
   target?: never;
@@ -94,21 +94,21 @@ interface SystemAnnounceMessage {
 6.  **Announce Offline (Graceful):** Before intentionally closing the connection, a Peer **SHOULD** send a `system/announce` message with `status: "offline"`. The Server relays this.
 7.  **Abnormal Disconnect:** If a Peer disconnects without sending an offline announce (e.g., crash, network loss), the Server detects the closure. It then generates an `offline` announce message on behalf of the disconnected Peer and broadcasts it to remaining Peers.
 
-## 5. Global Operations (`global` Module)
+## 5. Global Operations (`global` Component)
 
-Affect the entire Sidekick UI state, not specific module instances.
+Affect the entire Sidekick UI state, not specific component instances.
 
 ### 5.1 Message: `global/clearAll`
 
 *   **Direction:** Hero -> Sidekick
-*   **Purpose:** Instructs the Sidekick UI to remove all currently displayed module instances, effectively resetting the panel.
+*   **Purpose:** Instructs the Sidekick UI to remove all currently displayed component instances, effectively resetting the panel.
 *   **`target` / `src`:** Omitted.
 *   **Payload:** `null` or Omitted.
 
 ```typescript
 interface GlobalClearAllMessage {
   id: number; // 0
-  module: "global";
+  component: "global";
   type: "clearAll";
   payload?: null; // Explicitly null or omitted
   target?: never;
@@ -116,21 +116,21 @@ interface GlobalClearAllMessage {
 }
 ```
 
-## 6. Core Module Interaction Message Types
+## 6. Core Component Interaction Message Types
 
-These message types facilitate the control of specific visual module instances and the feedback from those instances. They are typically sent only after a Hero determines (via `system/announce`) that a Sidekick UI is ready.
+These message types facilitate the control of specific visual component instances and the feedback from those instances. They are typically sent only after a Hero determines (via `system/announce`) that a Sidekick UI is ready.
 
 *   **Hero -> Sidekick:**
-    *   `spawn`: Creates a new module instance in the UI. Requires `target` (the ID for the new instance) and a module-specific `payload` containing initial configuration.
-    *   `update`: Modifies an existing module instance or performs actions within it. Requires `target` (the ID of the instance) and a module-specific `payload` describing the action and its options (e.g., `{ action: "drawLine", options: {...} }`). **Note:** While the protocol defines the `update` message structure, the *handling* of this message in the UI might differ based on the module's implementation (state-driven vs. imperative). See [WebApp Development Guide](./webapp-development.md).
-    *   `remove`: Destroys a specific module instance in the UI. Requires `target` (the ID of the instance to remove). Payload is usually `null` or omitted.
+    *   `spawn`: Creates a new component instance in the UI. Requires `target` (the ID for the new instance) and a component-specific `payload` containing initial configuration.
+    *   `update`: Modifies an existing component instance or performs actions within it. Requires `target` (the ID of the instance) and a component-specific `payload` describing the action and its options (e.g., `{ action: "drawLine", options: {...} }`). **Note:** While the protocol defines the `update` message structure, the *handling* of this message in the UI might differ based on the component's implementation (state-driven vs. imperative). See [WebApp Development Guide](./webapp-development.md).
+    *   `remove`: Destroys a specific component instance in the UI. Requires `target` (the ID of the instance to remove). Payload is usually `null` or omitted.
 *   **Sidekick -> Hero:**
-    *   `event`: Informs the Hero about user interactions or significant events within a specific module instance. Requires `src` (the ID of the instance generating the event) and a module-specific `payload` describing the event details.
-    *   `error`: Reports an error encountered by a specific module instance or the Sidekick UI while processing a command related to that instance. Requires `src` (the ID of the instance where the error occurred) and a `payload` containing an error message.
+    *   `event`: Informs the Hero about user interactions or significant events within a specific component instance. Requires `src` (the ID of the instance generating the event) and a component-specific `payload` describing the event details.
+    *   `error`: Reports an error encountered by a specific component instance or the Sidekick UI while processing a command related to that instance. Requires `src` (the ID of the instance where the error occurred) and a `payload` containing an error message.
 
-## 7. Module-Specific Protocols
+## 7. Component-Specific Protocols
 
-### 7.1 `grid` Module
+### 7.1 `grid` Component
 
 **Purpose:** Displays and interacts with a 2D grid of cells. Ideal for visualizing maps, game boards, matrices, or simple pixel art. Allows setting cell color and text, and reacting to user clicks on individual cells.
 
@@ -205,7 +205,7 @@ These message types facilitate the control of specific visual module instances a
     }
     ```
 
-### 7.2 `console` Module
+### 7.2 `console` Component
 
 **Purpose:** Displays text output, similar to a standard terminal console, and optionally provides a field for user text input. Useful for logging messages, showing program status, or getting simple string inputs from the user.
 
@@ -253,7 +253,7 @@ These message types facilitate the control of specific visual module instances a
     }
     ```
 
-### 7.3 `control` Module
+### 7.3 `control` Component
 
 **Purpose:** Displays a dedicated panel where interactive UI controls, such as buttons and labeled text inputs, can be added dynamically from the Hero script. Allows the Hero script to react to button clicks and text submissions initiated by the user in the Sidekick UI.
 
@@ -326,7 +326,7 @@ These message types facilitate the control of specific visual module instances a
         };
     ```
 
-### 7.4 `canvas` Module
+### 7.4 `canvas` Component
 
 **Purpose:** Provides a 2D drawing surface for rendering graphics programmatically. Supports drawing basic shapes (lines, rectangles, circles, polygons, ellipses), text, and includes a double buffering mechanism for creating smooth animations.
 
@@ -462,7 +462,7 @@ These message types facilitate the control of specific visual module instances a
     // Note: Click events originate only from interactions with the visible (onscreen) canvas (buffer ID 0).
     ```
 
-### 7.5 `viz` Module
+### 7.5 `viz` Component
 
 **Purpose:** Displays Python variables and data structures (like lists, dictionaries, sets, custom objects) in an interactive, collapsible tree view. Especially powerful when used with `sidekick.ObservableValue` in Python, as it can automatically update the display when the wrapped data changes, without requiring explicit `Viz.show()` calls after each modification.
 
@@ -559,7 +559,7 @@ interface VizRepresentation {
 *   **`event` (Sidekick -> Hero)**
     *   **Payload:** `never`
     ```typescript
-    // Currently, the Viz module is purely informational and does not send any events
+    // Currently, the Viz component is purely informational and does not send any events
     // back to the Hero based on user interaction within the tree view.
     type VizEventPayload = never;
     ```
@@ -569,25 +569,25 @@ interface VizRepresentation {
 Used by the Sidekick UI to report problems encountered while trying to process a command received from the Hero.
 
 *   **Direction:** Sidekick -> Hero
-*   **Purpose:** Informs the Hero script that an error occurred on the UI side, usually related to a specific module instance. This could happen if the command was malformed, referred to a non-existent element (e.g., out-of-bounds grid cell), or caused an internal UI error.
-*   **`src`:** (string, Required) The `target` ID from the original command message sent by the Hero that caused the error. This allows the Hero script to identify which module instance the error relates to.
-*   **Payload:** `ModuleErrorPayload`
+*   **Purpose:** Informs the Hero script that an error occurred on the UI side, usually related to a specific component instance. This could happen if the command was malformed, referred to a non-existent element (e.g., out-of-bounds grid cell), or caused an internal UI error.
+*   **`src`:** (string, Required) The `target` ID from the original command message sent by the Hero that caused the error. This allows the Hero script to identify which component instance the error relates to.
+*   **Payload:** `ComponentErrorPayload`
 
 ```typescript
-interface ModuleErrorPayload {
+interface ComponentErrorPayload {
   /** Required: A string describing the error encountered by the Sidekick UI. */
   message: string;
 }
 
 /** Message structure for reporting errors back to the Hero. */
-interface ModuleErrorMessage {
+interface ComponentErrorMessage {
   id: number; // 0
-  /** The module type associated with the error (e.g., "grid", "console", "canvas"). */
-  module: string;
+  /** The component type associated with the error (e.g., "grid", "console", "canvas"). */
+  component: string;
   type: "error";
-  /** Required: The ID of the module instance where the error occurred. Should match the 'target' of the command that failed. */
+  /** Required: The ID of the component instance where the error occurred. Should match the 'target' of the command that failed. */
   src: string;
-  payload: ModuleErrorPayload;
+  payload: ComponentErrorPayload;
   target?: never; // Error messages are from Sidekick, not targeted at Hero instances.
 }
 ```
@@ -598,4 +598,4 @@ interface ModuleErrorMessage {
 *   Peers exchange library/application versions via the `system/announce` message, allowing for potential future compatibility checks (though not strictly enforced currently).
 *   Implementations **SHOULD** be robust to receiving messages with extra, unexpected fields within the main structure or the `payload`. Ignore unknown fields gracefully whenever possible.
 *   Implementations **MUST** validate the presence and basic type of **required** fields (as indicated in payload definitions and TypeScript interfaces) for messages they process. Missing required fields should typically result in the message being ignored and a warning logged, or potentially an `error` message being sent back if appropriate.
-*   Adding new modules, actions, or modifying existing payloads in a way that breaks backward compatibility requires updating this specification document and likely coordinating version bumps across the ecosystem components (library, extension, webapp).
+*   Adding new components, actions, or modifying existing payloads in a way that breaks backward compatibility requires updating this specification document and likely coordinating version bumps across the ecosystem components (library, extension, webapp).

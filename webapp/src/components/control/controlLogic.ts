@@ -1,22 +1,21 @@
-// Sidekick/webapp/src/modules/control/controlLogic.ts
 import { ControlState, ControlSpawnPayload, ControlUpdatePayload, ControlDefinition } from './types';
 
 /**
- * Creates the initial state for a Control module.
+ * Creates the initial state for a Control component.
  * @param instanceId - The ID of the control panel instance.
  * @param payload - The spawn payload (currently unused).
  * @returns The initial ControlState.
  */
 export function getInitialState(instanceId: string, payload: ControlSpawnPayload): ControlState {
     console.log(`ControlLogic ${instanceId}: Initializing state.`);
-    // Control module starts with an empty map of controls
+    // Control component starts with an empty map of controls
     return {
         controls: new Map<string, ControlDefinition>(),
     };
 }
 
 /**
- * Updates the state of a Control module based on an update payload (add or remove).
+ * Updates the state of a Control component based on an update payload (add or remove).
  * Returns a new state object if changes were made.
  * @param currentState - The current state of the control panel.
  * @param payload - The update payload containing action, controlId, and options (for add).

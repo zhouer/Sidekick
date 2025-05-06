@@ -62,7 +62,7 @@ from typing import Optional, Dict, Any, Callable, List, Tuple, ContextManager, U
 from . import logger
 from . import connection
 from .errors import SidekickConnectionError
-from .base_module import BaseModule
+from .base_component import BaseComponent
 
 # Type hint for a list of points used in polylines/polygons
 # Represents a sequence of (x, y) integer coordinates.
@@ -276,8 +276,8 @@ class _CanvasBufferContextManager:
 # == Main Canvas Class ==
 # ==============================================================================
 
-class Canvas(BaseModule):
-    """Represents a 2D drawing canvas module instance in the Sidekick UI.
+class Canvas(BaseComponent):
+    """Represents a 2D drawing canvas component instance in the Sidekick UI.
 
     Provides a surface within the Sidekick panel where your Python script can
     programmatically draw shapes, lines, and text. It's useful for visualizing
@@ -291,7 +291,7 @@ class Canvas(BaseModule):
     For creating animations or complex scenes smoothly without flickering, use the
     `buffer()` method within a `with` statement. This enables "double buffering",
     where drawing happens on a hidden surface first, and the result is displayed
-    all at once (see module docstring or `buffer()` method documentation for examples).
+    all at once (see component docstring or `buffer()` method documentation for examples).
 
     You can also make the canvas interactive by responding to user clicks via the
     `on_click()` method.
@@ -377,10 +377,10 @@ class Canvas(BaseModule):
         # This handles:
         # - Establishing the connection (blocking if needed, raises on error).
         # - Generating or assigning the target_id.
-        # - Registering internal message handlers with the connection module.
+        # - Registering internal message handlers with the connection package.
         # - Sending the 'spawn' command with the payload if spawn=True.
         super().__init__(
-            module_type="canvas",
+            component_type="canvas",
             instance_id=instance_id,
             spawn=spawn,
             payload=spawn_payload if spawn else None, # Send payload only if spawning
@@ -510,7 +510,7 @@ class Canvas(BaseModule):
         self._click_callback = callback
 
     # --- Error Callback ---
-    # The `on_error(callback)` method is inherited directly from `BaseModule`.
+    # The `on_error(callback)` method is inherited directly from `BaseComponent`.
     # Use `canvas.on_error(my_error_handler)` to register a function that
     # receives error messages if the Sidekick UI encounters a problem specifically
     # related to processing a command for *this* canvas instance (e.g., trying
@@ -626,7 +626,7 @@ class Canvas(BaseModule):
 
         Note: This does *not* send a 'destroyBuffer' command to the UI. Offscreen
         buffers are kept alive in the UI for potential reuse to improve performance,
-        unless the entire canvas module instance is removed via `canvas.remove()`.
+        unless the entire canvas component instance is removed via `canvas.remove()`.
 
         Args:
             buffer_id (int): The ID (> 0) of the offscreen buffer to release back
@@ -1185,7 +1185,7 @@ class Canvas(BaseModule):
 
     # --- Cleanup ---
     def _reset_specific_callbacks(self):
-        """Internal: Resets canvas-specific callbacks when the module is removed.
+        """Internal: Resets canvas-specific callbacks when the component is removed.
 
         Called automatically by the base class's `remove()` method.
         """
@@ -1200,7 +1200,7 @@ class Canvas(BaseModule):
         1.  **Destroys Offscreen Buffers:** Sends commands to the Sidekick UI to
             destroy any hidden offscreen buffers that were created for this canvas
             instance via `canvas.buffer()`, releasing their resources in the UI.
-        2.  **Calls Base `remove()`:** Invokes the `BaseModule.remove()` method, which:
+        2.  **Calls Base `remove()`:** Invokes the `BaseComponent.remove()` method, which:
             a. Unregisters the internal message handler for this canvas.
             b. Resets registered callbacks (`on_click`, `on_error`) to `None`.
             c. Sends the final 'remove' command to the Sidekick UI to delete the
@@ -1224,7 +1224,7 @@ class Canvas(BaseModule):
             buffer_ids_to_destroy = [bid for bid in self._buffer_pool if bid != self.ONSCREEN_BUFFER_ID]
 
             # Send a 'destroyBuffer' command for each known offscreen buffer.
-            # Do this before removing the main canvas module.
+            # Do this before removing the main canvas component.
             for buffer_id in buffer_ids_to_destroy:
                  try:
                      logger.debug(f"Canvas '{self.target_id}': Sending 'destroyBuffer' command for buffer ID {buffer_id}.")
@@ -1248,7 +1248,7 @@ class Canvas(BaseModule):
         # --- Call Base Class Removal ---
         # This handles unregistering message handlers, resetting callbacks (including
         # calling our _reset_specific_callbacks), and sending the final 'remove'
-        # command for the main canvas module instance itself.
+        # command for the main canvas component instance itself.
         super().remove()
 
     def __del__(self):

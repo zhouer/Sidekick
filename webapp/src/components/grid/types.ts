@@ -1,5 +1,3 @@
-// Sidekick/webapp/src/modules/grid/types.ts
-
 // --- State ---
 // The structure of the state itself remains the same.
 export interface GridState {

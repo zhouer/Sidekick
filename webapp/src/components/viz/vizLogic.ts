@@ -1,4 +1,3 @@
-// Sidekick/webapp/src/modules/viz/vizLogic.ts
 import { produce } from "immer";
 import {
     Path,
@@ -339,10 +338,10 @@ function applyModification(
     }
 }
 
-// --- Viz Module Logic ---
+// --- Viz Component Logic ---
 
 /**
- * Creates the initial state for a Viz module.
+ * Creates the initial state for a Viz component.
  */
 export function getInitialState(instanceId: string, payload: VizSpawnPayload): VizState {
     console.log(`VizLogic ${instanceId}: Initializing state.`);
@@ -354,7 +353,7 @@ export function getInitialState(instanceId: string, payload: VizSpawnPayload): V
 }
 
 /**
- * Updates the state of a Viz module based on variable changes using Immer.
+ * Updates the state of a Viz component based on variable changes using Immer.
  * Handles adding, updating (granularly), or removing variables.
  * Returns a new state object if changes were made.
  */

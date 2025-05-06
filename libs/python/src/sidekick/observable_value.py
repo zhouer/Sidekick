@@ -6,7 +6,7 @@ around your regular Python lists, dictionaries, or sets.
 Why use it?
 
 The main purpose of `ObservableValue` is to work hand-in-hand with the
-`sidekick.Viz` module. When you display an `ObservableValue` using `viz.show()`,
+`sidekick.Viz` component. When you display an `ObservableValue` using `viz.show()`,
 the Viz panel in Sidekick gains a superpower: it **automatically updates** its
 display whenever you modify the data inside the `ObservableValue`.
 
@@ -51,7 +51,7 @@ class ObservableValue:
     """Wraps a Python value (list, dict, set) to notify subscribers about changes.
 
     Use this class to make your data "reactive" when displayed using the `sidekick.Viz`
-    module. By wrapping mutable data structures (lists, dictionaries, sets) in an
+    component. By wrapping mutable data structures (lists, dictionaries, sets) in an
     `ObservableValue`, you enable the Viz panel in Sidekick to update its display
     automatically whenever you modify the wrapped data through this wrapper object.
 
@@ -115,7 +115,7 @@ class ObservableValue:
         """Registers a function to be called whenever the wrapped value changes. (Internal).
 
         This method is primarily intended for internal use by the `sidekick.Viz`
-        module. When `viz.show()` is called with an `ObservableValue`, Viz uses
+        component. When `viz.show()` is called with an `ObservableValue`, Viz uses
         this method to register its own internal handler (`_handle_observable_update`).
 
         When a change occurs to the wrapped value (triggered by methods like
@@ -285,7 +285,7 @@ class ObservableValue:
                 "path": [],           # Path is empty, indicating the root value changed
                 "value": self._value, # The new value now being wrapped
                 "old_value": old_value # The value that was just replaced
-                # Length is typically handled by the Viz module during 'set' based on new value.
+                # Length is typically handled by the Viz component during 'set' based on new value.
             })
 
     # --- Intercepted Methods for Mutable Containers ---

@@ -1,7 +1,6 @@
-// Sidekick/webapp/src/modules/grid/GridComponent.tsx
 import React, { useState, useRef, useLayoutEffect, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { GridState, GridEventPayload } from './types';
-import { SentMessage, ModuleEventMessage, ModuleHandle } from '../../types';
+import { SentMessage, ComponentEventMessage, ComponentHandle } from '../../types';
 import './GridComponent.css';
 
 // --- Constants ---
@@ -73,7 +72,7 @@ interface GridComponentProps {
     onReady?: (id: string) => void;
 }
 
-const GridComponent = forwardRef<ModuleHandle, GridComponentProps>(
+const GridComponent = forwardRef<ComponentHandle, GridComponentProps>(
     ({ id, state, onInteraction }, ref) => {
         const { numColumns, numRows, cells } = state;
         const containerRef = useRef<HTMLDivElement>(null);
@@ -141,8 +140,8 @@ const GridComponent = forwardRef<ModuleHandle, GridComponentProps>(
         const handleCellClick = useCallback((x: number, y: number) => {
             if (onInteraction) {
                 const payload: GridEventPayload = { event: 'click', x, y };
-                const message: ModuleEventMessage = {
-                    id: 0, module: 'grid', type: 'event', src: id, payload: payload
+                const message: ComponentEventMessage = {
+                    id: 0, component: 'grid', type: 'event', src: id, payload: payload
                 };
                 onInteraction(message);
             } else {

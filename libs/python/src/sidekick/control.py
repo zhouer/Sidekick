@@ -30,10 +30,10 @@ with these controls in Sidekick.
 
 from typing import Optional, Dict, Any, Callable
 from . import logger
-from .base_module import BaseModule
+from .base_component import BaseComponent
 
-class Control(BaseModule):
-    """Represents a Control panel module instance in the Sidekick UI.
+class Control(BaseComponent):
+    """Represents a Control panel component instance in the Sidekick UI.
 
     This class creates a container in the Sidekick panel specifically designed
     to hold simple interactive controls added dynamically from your Python script.
@@ -85,7 +85,7 @@ class Control(BaseModule):
 
         # Initialize the base class (handles connection, ID, registration, spawn).
         super().__init__(
-            module_type="control",
+            component_type="control",
             instance_id=instance_id,
             spawn=spawn,
             payload=spawn_payload, # Send empty payload if spawning
@@ -251,7 +251,7 @@ class Control(BaseModule):
         self._input_text_callback = callback
 
     # --- Error Callback ---
-    # Inherits the on_error(callback) method directly from BaseModule.
+    # Inherits the on_error(callback) method directly from BaseComponent.
     # Use `controls.on_error(my_handler)` to register a function that will be
     # called if the Control panel UI element itself reports an error back to Python
     # (e.g., if it failed to process an 'add' or 'remove' command internally).
@@ -420,7 +420,7 @@ class Control(BaseModule):
         logger.debug(f"Control '{self.target_id}': Sent 'remove' command for control '{control_id}'.")
 
     def _reset_specific_callbacks(self):
-        """Internal: Resets control-panel-specific callbacks when the module is removed.
+        """Internal: Resets control-panel-specific callbacks when the component is removed.
 
         Called automatically by the base class's `remove()` method.
         """
@@ -429,7 +429,7 @@ class Control(BaseModule):
         self._input_text_callback = None
 
     # --- Removal ---
-    # Inherits the standard remove() method from BaseModule. Calling `controls.remove()`
+    # Inherits the standard remove() method from BaseComponent. Calling `controls.remove()`
     # will send a command to the Sidekick UI to remove this entire control panel instance
     # (including any controls currently inside it) and will perform local cleanup
     # (unregistering handlers, resetting callbacks).

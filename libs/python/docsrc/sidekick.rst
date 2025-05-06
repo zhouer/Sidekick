@@ -4,10 +4,10 @@ sidekick package
 Submodules
 ----------
 
-sidekick.base\_module module
-----------------------------
+sidekick.base\_component module
+------------------------------
 
-.. automodule:: sidekick.base_module
+.. automodule:: sidekick.base_component
    :members:
    :show-inheritance:
    :undoc-members:
@@ -100,8 +100,8 @@ sidekick.viz module
    :show-inheritance:
    :undoc-members:
 
-Module contents
----------------
+Component contents
+------------------
 
 .. automodule:: sidekick
    :members:

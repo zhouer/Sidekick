@@ -83,7 +83,7 @@ export function usePyodide(
   const sendAnnounceMessage = useCallback((status: 'online' | 'offline') => {
     if (peerIdRef.current) {
       const announceMsg: SystemAnnounceMessage = {
-        id: 0, module: "system", type: "announce",
+        id: 0, component: "system", type: "announce",
         payload: { peerId: peerIdRef.current, role: "sidekick", status, version: __APP_VERSION__, timestamp: Date.now() }
       };
       sendMessage(announceMsg, `announce ${status}`);
@@ -134,7 +134,7 @@ export function usePyodide(
         }
 
         if (!offlineReceivedRef.current) {
-          onMessageCallback({'id': 0, 'module': 'system', 'type': 'announce', 'payload': {'role': 'hero', 'status': 'offline'}});
+          onMessageCallback({'id': 0, 'component': 'system', 'type': 'announce', 'payload': {'role': 'hero', 'status': 'offline'}});
         }
 
         if (workerRef.current) {

@@ -1,8 +1,7 @@
-// Sidekick/webapp/src/modules/grid/gridLogic.ts
 import { GridState, GridSpawnPayload, GridUpdatePayload } from './types';
 
 /**
- * Creates the initial state for a Grid module.
+ * Creates the initial state for a Grid component.
  * @param instanceId - The ID of the grid instance.
  * @param payload - The spawn payload containing the grid dimensions (numColumns, numRows).
  * @returns The initial GridState.
@@ -54,7 +53,7 @@ function updateCellsMap(
 
 
 /**
- * Updates the state of a Grid module based on an update payload.
+ * Updates the state of a Grid component based on an update payload.
  * Returns a new state object if changes were made, otherwise the original state.
  * @param currentState - The current state of the grid.
  * @param payload - The update payload containing action and options.

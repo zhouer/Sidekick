@@ -1,4 +1,3 @@
-// Sidekick/webapp/src/modules/canvas/CanvasComponent.tsx
 import React, {
     useRef,
     useEffect,
@@ -24,7 +23,7 @@ import {
     DrawBufferOptions,
     DestroyBufferOptions
 } from './types';
-import { SentMessage, ModuleHandle } from '../../types'; // Import shared types
+import { SentMessage, ComponentHandle } from '../../types'; // Import shared types
 import './CanvasComponent.css';
 
 // --- Constants ---
@@ -42,7 +41,7 @@ interface CanvasComponentProps {
 type RenderingContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 
 // --- Main Component (Wrapped with forwardRef) ---
-const CanvasComponent = forwardRef<ModuleHandle, CanvasComponentProps>(
+const CanvasComponent = forwardRef<ComponentHandle, CanvasComponentProps>(
     ({ id, state, onInteraction, onReady }, ref) => {
 
         // --- Refs ---
@@ -424,7 +423,7 @@ const CanvasComponent = forwardRef<ModuleHandle, CanvasComponentProps>(
                 // Optionally send an error message back to the Hero script
                 if (onInteraction) {
                     const errorMsg: SentMessage = {
-                        id: 0, module: 'canvas', type: 'error', src: id,
+                        id: 0, component: 'canvas', type: 'error', src: id,
                         payload: { message: `Error processing action "${action}" for buffer ${targetBufferId}: ${error.message}` }
                     };
                     onInteraction(errorMsg);
@@ -459,7 +458,7 @@ const CanvasComponent = forwardRef<ModuleHandle, CanvasComponentProps>(
             console.log(`Canvas ${id}: Click detected at (${x}, ${y})`);
 
             const clickMessage: CanvasClickEventMessage = {
-                id: 0, module: 'canvas', type: 'event', src: id,
+                id: 0, component: 'canvas', type: 'event', src: id,
                 payload: { event: 'click', x: x, y: y }
             };
             onInteraction(clickMessage);

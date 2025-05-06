@@ -1,7 +1,6 @@
-// Sidekick/webapp/src/modules/control/ControlComponent.tsx
 import React, { useState, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { ControlState, ControlEventPayload } from './types';
-import { SentMessage, ModuleEventMessage, ModuleHandle } from '../../types';
+import { SentMessage, ComponentEventMessage, ComponentHandle } from '../../types';
 import './ControlComponent.css';
 
 interface ControlComponentProps {
@@ -11,7 +10,7 @@ interface ControlComponentProps {
     onReady?: (id: string) => void;
 }
 
-const ControlComponent = forwardRef<ModuleHandle, ControlComponentProps>(
+const ControlComponent = forwardRef<ComponentHandle, ControlComponentProps>(
     ({ id, state, onInteraction }, ref) => {
         const { controls } = state;
 
@@ -82,7 +81,7 @@ const ControlComponent = forwardRef<ModuleHandle, ControlComponentProps>(
             }
             console.log(`Control ${id}: Button ${controlId} clicked.`);
             const payload: ControlEventPayload = { event: 'click', controlId: controlId };
-            const message: ModuleEventMessage = { id: 0, module: 'control', type: 'event', src: id, payload };
+            const message: ComponentEventMessage = { id: 0, component: 'control', type: 'event', src: id, payload };
             onInteraction(message);
         }, [id, onInteraction]);
 
@@ -98,9 +97,9 @@ const ControlComponent = forwardRef<ModuleHandle, ControlComponentProps>(
                 controlId: controlId,
                 value: value,
             };
-            const message: ModuleEventMessage = {
+            const message: ComponentEventMessage = {
                 id: 0,
-                module: 'control',
+                component: 'control',
                 type: 'event',
                 src: id,
                 payload,

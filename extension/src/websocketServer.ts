@@ -118,8 +118,8 @@ export function startWebSocketServer(): Promise<void> {
                 const rawData = data.toString();
                 try {
                     message = JSON.parse(rawData);
-                    if (typeof message !== 'object' || message === null || !message.module || !message.type) {
-                        throw new Error('Invalid message structure: missing module or type');
+                    if (typeof message !== 'object' || message === null || !message.component || !message.type) {
+                        throw new Error('Invalid message structure: missing component or type');
                     }
                     const senderInfo = connectedPeers.get(ws);
                     const senderId = senderInfo ? senderInfo.peerId : `${remoteAddress}:${remotePort}`;
@@ -130,7 +130,7 @@ export function startWebSocketServer(): Promise<void> {
                 }
 
                 // --- Handle System Announce ---
-                if (message.module === 'system' && message.type === 'announce') {
+                if (message.component === 'system' && message.type === 'announce') {
                     const payload = message.payload as AnnouncePayload;
                     if (!payload || !payload.peerId || !payload.role || !payload.status || !payload.version || typeof payload.timestamp !== 'number') {
                         logWarn(`Received invalid system/announce payload from ${remoteAddress}:${remotePort}: ${JSON.stringify(payload)}`);
@@ -153,7 +153,7 @@ export function startWebSocketServer(): Promise<void> {
                         if (historyAnnouncements.length > 0) {
                             logInfo(`Sending ${historyAnnouncements.length} online peer announcements to ${peerId}`);
                             historyAnnouncements.forEach(histAnnounce => {
-                                const historyMsg = { id: 0, module: 'system', type: 'announce', payload: histAnnounce };
+                                const historyMsg = { id: 0, component: 'system', type: 'announce', payload: histAnnounce };
                                 sendToClient(ws, historyMsg, `history announce for ${histAnnounce.peerId}`);
                             });
                         }
@@ -178,7 +178,7 @@ export function startWebSocketServer(): Promise<void> {
                     }
                 } else {
                     // --- Relay Other Messages ---
-                    const messageDescription = `${message.module}/${message.type}`;
+                    const messageDescription = `${message.component}/${message.type}`;
                     const senderInfo = connectedPeers.get(ws);
                     const senderId = senderInfo ? senderInfo.peerId : `${remoteAddress}:${remotePort}`;
                     logInfo(`Relaying ${messageDescription} from ${senderId}`);
@@ -203,7 +203,7 @@ export function startWebSocketServer(): Promise<void> {
                         const offlinePayload: AnnouncePayload = {
                             peerId, role, status: 'offline', version, timestamp: Date.now()
                         };
-                        const offlineMsg = { id: 0, module: 'system', type: 'announce', payload: offlinePayload };
+                        const offlineMsg = { id: 0, component: 'system', type: 'announce', payload: offlinePayload };
                         lastAnnouncements.set(peerId, offlinePayload);
                         broadcastMessage(ws, offlineMsg, `generated OFFLINE announce for ${peerId}`);
                     } else {

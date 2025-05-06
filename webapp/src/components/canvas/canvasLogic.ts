@@ -1,8 +1,7 @@
-// Sidekick/webapp/src/modules/canvas/canvasLogic.ts
 import { CanvasState, CanvasSpawnPayload, CanvasUpdatePayload } from './types';
 
 /**
- * Creates the initial state for a Canvas module.
+ * Creates the initial state for a Canvas component.
  * @param instanceId - The ID of the canvas instance.
  * @param payload - The spawn payload containing width and height.
  * @returns The initial CanvasState.
@@ -24,7 +23,7 @@ export function getInitialState(instanceId: string, payload: CanvasSpawnPayload)
 }
 
 /**
- * Updates the state of a Canvas module.
+ * Updates the state of a Canvas component.
  * **Note:** For Canvas (with imperativeUpdate: true), this function should
  * generally NOT be called for 'update' actions. It's kept for potential
  * future non-imperative updates or consistency. It currently does nothing.
@@ -37,6 +36,6 @@ export function updateState(currentState: CanvasState, payload: CanvasUpdatePayl
     // Since Canvas updates are handled imperatively, this reducer function
     // for 'update' actions should ideally not be reached. If it is, we
     // return the current state without modification.
-    console.warn(`CanvasLogic (${currentState.width}x${currentState.height}): updateState called unexpectedly for imperative module. Payload:`, payload);
+    console.warn(`CanvasLogic (${currentState.width}x${currentState.height}): updateState called unexpectedly for imperative component. Payload:`, payload);
     return currentState;
 }

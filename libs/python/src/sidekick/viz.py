@@ -44,7 +44,7 @@ Reactive Usage (with ObservableValue):
 
 Internal Details:
 
-This module also contains the complex internal logic (`_get_representation`) needed
+This component also contains the complex internal logic (`_get_representation`) needed
 to convert arbitrary Python data structures into a specific JSON-like format that
 the Sidekick frontend UI component can understand and render interactively. This
 involves handling nesting, recursion, data types, and observability tracking.
@@ -53,7 +53,7 @@ involves handling nesting, recursion, data types, and observability tracking.
 import functools
 from typing import Any, Dict, Optional, List, Union, Callable, Set, Tuple
 from . import logger
-from .base_module import BaseModule
+from .base_component import BaseComponent
 from .observable_value import ObservableValue, UnsubscribeFunction, SubscriptionCallback
 
 # --- Internal Constants for Representation Generation ---
@@ -78,7 +78,7 @@ def _get_representation(
 ) -> Dict[str, Any]:
     """Converts Python data into a structured dictionary for the Viz UI. (Internal).
 
-    This recursive function is the core of the Viz module's data marshalling.
+    This recursive function is the core of the Viz component's data marshalling.
     It takes arbitrary Python data and transforms it into a nested dictionary
     structure that conforms to the format expected by the Sidekick Viz frontend
     component. This structure includes type information, the value representation
@@ -361,10 +361,10 @@ def _get_representation(
     return rep
 
 
-# --- Viz Module Class ---
+# --- Viz Component Class ---
 
-class Viz(BaseModule):
-    """Represents the Variable Visualizer (Viz) module instance in the Sidekick UI.
+class Viz(BaseComponent):
+    """Represents the Variable Visualizer (Viz) component instance in the Sidekick UI.
 
     Use this class to create an interactive panel in Sidekick where you can display
     Python variables and data structures. It presents data like lists, dictionaries,
@@ -418,7 +418,7 @@ class Viz(BaseModule):
         spawn_payload = {} if spawn else None
         # Initialize the base class (handles connection, ID, registration, spawn).
         super().__init__(
-            module_type="viz",
+            component_type="viz",
             instance_id=instance_id,
             spawn=spawn,
             payload=spawn_payload
@@ -434,14 +434,14 @@ class Viz(BaseModule):
         logger.info(f"Viz panel '{self.target_id}' initialized (spawn={spawn}).")
 
     # --- Internal Message Handling ---
-    # Inherits _internal_message_handler from BaseModule.
+    # Inherits _internal_message_handler from BaseComponent.
     # Currently, the Viz UI component doesn't send any specific 'event' messages back
     # to the Python script based on user interaction within the tree view (like expanding
     # or collapsing nodes). Therefore, only the base class's 'error' handling is needed.
     # If future versions add interactivity (e.g., editing values), this might need overriding.
 
     # --- Error Callback ---
-    # Inherits the on_error(callback) method directly from BaseModule.
+    # Inherits the on_error(callback) method directly from BaseComponent.
     # Use `viz.on_error(my_handler)` to register a function that will be called
     # if the Viz UI element itself reports an error back to Python (e.g., if it
     # failed to process an 'update' or 'removeVariable' command internally).
@@ -773,7 +773,7 @@ class Viz(BaseModule):
         1.  **Unsubscribes:** Iterates through all variables currently tracked by this
             Viz instance and, if any are `ObservableValue`s, calls their unsubscribe
             functions to stop listening for changes.
-        2.  **Calls Base `remove()`:** Invokes the `BaseModule.remove()` method, which:
+        2.  **Calls Base `remove()`:** Invokes the `BaseComponent.remove()` method, which:
             a. Unregisters the internal message handler for this Viz panel.
             b. Resets registered callbacks (`on_error`) to `None`.
             c. Sends the final 'remove' command to the Sidekick UI to delete the
@@ -809,11 +809,11 @@ class Viz(BaseModule):
         # --- Call Base Class Removal ---
         # This handles unregistering the main message handler for the Viz panel,
         # resetting base class callbacks (`on_error`), and sending the final
-        # 'remove' command for the Viz module instance itself to the UI.
+        # 'remove' command for the Viz component instance itself to the UI.
         super().remove()
 
     def _reset_specific_callbacks(self):
-        """Internal: Resets Viz-specific state when the module is removed. (Internal).
+        """Internal: Resets Viz-specific state when the component is removed. (Internal).
 
         Called automatically by the base class's `remove()` method. For Viz, the
         primary specific state to clean up is the tracking of shown variables and
@@ -823,16 +823,16 @@ class Viz(BaseModule):
             The actual unsubscribing logic is currently handled directly within the
             overridden `remove()` method for Viz to ensure it happens *before* the
             base `remove()` command is sent. This method primarily serves to formally
-            clear the tracking dictionary as part of the `BaseModule` removal process.
+            clear the tracking dictionary as part of the `BaseComponent` removal process.
         """
-        # Called by BaseModule.remove()
+        # Called by BaseComponent.remove()
         # Clear the dictionary tracking shown variables and their unsubscribe functions.
         # The actual unsubscribe calls happen in the overridden Viz.remove() method.
         self._shown_variables.clear()
         logger.debug(f"Viz '{self.target_id}': Specific state (_shown_variables) cleared during removal.")
 
     # --- __del__ ---
-    # Inherits the __del__ method from BaseModule. It provides a best-effort
+    # Inherits the __del__ method from BaseComponent. It provides a best-effort
     # attempt to unregister the message handler if the Viz object is garbage collected
-    # without remove() being called explicitly. As noted in BaseModule, relying on
+    # without remove() being called explicitly. As noted in BaseComponent, relying on
     # __del__ is discouraged; always call viz.remove() for proper cleanup.

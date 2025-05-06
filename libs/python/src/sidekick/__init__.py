@@ -19,7 +19,7 @@ What can you do with it?
     *   Add clickable buttons and text input fields to trigger actions in your
         Python script (`sidekick.Control`).
 
-These visual modules update in real-time as your Python code executes, making it
+These visual components update in real-time as your Python code executes, making it
 easier to understand, debug, and demonstrate programming concepts.
 
 Getting Started:
@@ -28,9 +28,9 @@ Getting Started:
     2.  **Open Panel:** In VS Code, open the Sidekick panel (Ctrl+Shift+P, search for
         `Sidekick: Show Panel`).
     3.  **Import:** Start your Python script with `import sidekick`.
-    4.  **Create:** Instantiate a visual module, e.g., `grid = sidekick.Grid(5, 5)`.
+    4.  **Create:** Instantiate a visual component, e.g., `grid = sidekick.Grid(5, 5)`.
         The connection to Sidekick happens automatically here!
-    5.  **Interact:** Use the module's methods, e.g., `grid.set_color(0, 0, 'blue')`.
+    5.  **Interact:** Use the component's methods, e.g., `grid.set_color(0, 0, 'blue')`.
     6.  **Listen (if needed):** If you need to react to user clicks or input
         (using methods like `grid.on_click(...)`), you must keep your script
         running. Add `sidekick.run_forever()` at the end of your script. You can
@@ -87,7 +87,7 @@ from .errors import (
 # Used primarily with sidekick.Viz for automatic display updates when data changes.
 from .observable_value import ObservableValue
 
-# --- Main module classes ---
+# --- Main component classes ---
 # These are the primary classes users interact with to create visual elements.
 from .grid import Grid
 from .console import Console
@@ -112,7 +112,7 @@ __all__ = [
     'shutdown',
     # Observable
     'ObservableValue',
-    # Modules
+    # Components
     'Grid',
     'Console',
     'Control',

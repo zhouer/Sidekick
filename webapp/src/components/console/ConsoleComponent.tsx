@@ -1,7 +1,6 @@
-// Sidekick/webapp/src/modules/console/ConsoleComponent.tsx
 import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { ConsoleState, ConsoleEventPayload } from './types';
-import { SentMessage, ModuleEventMessage, ModuleHandle } from '../../types';
+import { SentMessage, ComponentEventMessage, ComponentHandle } from '../../types';
 import './ConsoleComponent.css';
 
 interface ConsoleComponentProps {
@@ -11,7 +10,7 @@ interface ConsoleComponentProps {
     onReady?: (id: string) => void;
 }
 
-const ConsoleComponent = forwardRef<ModuleHandle, ConsoleComponentProps>(
+const ConsoleComponent = forwardRef<ComponentHandle, ConsoleComponentProps>(
     ({ id, state, onInteraction }, ref) => {
         const { lines, showInput } = state;
         const outputRef = useRef<HTMLDivElement>(null);
@@ -36,9 +35,9 @@ const ConsoleComponent = forwardRef<ModuleHandle, ConsoleComponentProps>(
             if (!inputValue.trim()) return;
 
             const payload: ConsoleEventPayload = { event: 'inputText', value: inputValue };
-            const message: ModuleEventMessage = {
+            const message: ComponentEventMessage = {
                 id: 0,
-                module: 'console',
+                component: 'console',
                 type: 'event',
                 src: id,
                 payload: payload

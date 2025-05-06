@@ -1,4 +1,3 @@
-// Sidekick/webapp/src/App.tsx
 import React, {
     useCallback,
     useReducer,
@@ -6,24 +5,24 @@ import React, {
     useState,
     useRef,
     useEffect,
-    createRef // Used for creating refs for imperative modules
+    createRef // Used for creating refs for imperative components
 } from 'react';
 import { useCommunication, CommunicationMode } from './hooks/useCommunication'; // Communication management hook
-import { moduleRegistry } from './modules/moduleRegistry'; // Maps module type to definition
+import { componentRegistry } from './components/componentRegistry'; // Maps component type to definition
 import {
     // Message Types
     ReceivedMessage,
     SentMessage,
     SystemAnnounceMessage,
     GlobalClearMessage,
-    ModuleControlMessage,
-    ModuleEventMessage,
-    ModuleErrorMessage,
+    ComponentControlMessage,
+    ComponentEventMessage,
+    ComponentErrorMessage,
     // State & Definition Types
-    ModuleInstance,
-    ModuleDefinition, // Removed explicit import, used via moduleRegistry
+    ComponentInstance,
+    ComponentDefinition, // Removed explicit import, used via componentRegistry
     HeroPeerInfo,
-    ModuleHandle // Handle for imperative calls
+    ComponentHandle // Handle for imperative calls
 } from './types'; // Shared application types
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faInfoCircle } from '@fortawesome/free-solid-svg-icons'; // Info icon
@@ -31,89 +30,89 @@ import './App.css'; // Application styles
 
 // --- Application State Definition ---
 interface AppState {
-    modulesById: Map<string, ModuleInstance>; // Map: Instance ID -> Module Data & State
-    moduleOrder: string[];                  // Array of instance IDs, preserves creation order
-    heroStatus: HeroPeerInfo | null;        // Info about the connected Python 'Hero' script
+    componentsById: Map<string, ComponentInstance>; // Map: Instance ID -> Component Data & State
+    componentOrder: string[];                       // Array of instance IDs, preserves creation order
+    heroStatus: HeroPeerInfo | null;                // Info about the connected Python 'Hero' script
 }
 
 // Initial state when the application loads
 const initialState: AppState = {
-    modulesById: new Map<string, ModuleInstance>(),
-    moduleOrder: [],
+    componentsById: new Map<string, ComponentInstance>(),
+    componentOrder: [],
     heroStatus: null,
 };
 
 // --- Reducer Actions Definition ---
 // Actions describe how the state can be changed
 type AppAction =
-    | { type: 'PROCESS_STATE_UPDATE'; message: ModuleControlMessage } // Update state for non-imperative modules
-    | { type: 'PROCESS_SPAWN'; message: ModuleControlMessage }        // Add a new module
-    | { type: 'PROCESS_REMOVE'; message: ModuleControlMessage }       // Remove an existing module
+    | { type: 'PROCESS_STATE_UPDATE'; message: ComponentControlMessage }  // Update state for non-imperative components
+    | { type: 'PROCESS_SPAWN'; message: ComponentControlMessage }         // Add a new component
+    | { type: 'PROCESS_REMOVE'; message: ComponentControlMessage }        // Remove an existing component
     | { type: 'PROCESS_SYSTEM_ANNOUNCE'; message: SystemAnnounceMessage } // Handle Hero online/offline status
-    | { type: 'PROCESS_GLOBAL_CLEAR'; message: GlobalClearMessage };  // Clear all modules (from backend command)
+    | { type: 'PROCESS_GLOBAL_CLEAR'; message: GlobalClearMessage };      // Clear all components (from backend command)
 
 // =============================================================================
 // == Main Application Reducer ==
 // Handles state updates based on dispatched actions.
-// Primarily deals with module lifecycle (spawn/remove) and non-imperative state updates.
+// Primarily deals with component lifecycle (spawn/remove) and non-imperative state updates.
 // =============================================================================
 const rootReducer: Reducer<AppState, AppAction> = (state, action): AppState => {
     switch (action.type) {
         // --- Handle Spawn ---
-        // Adds a new module instance to the state
+        // Adds a new component instance to the state
         case 'PROCESS_SPAWN': {
-            const { module: moduleType, target, payload } = action.message;
+            const { component: componentType, target, payload } = action.message;
 
             // Prevent duplicate IDs
-            if (state.modulesById.has(target)) {
+            if (state.componentsById.has(target)) {
                 console.warn(`Reducer: Spawn failed - Duplicate ID "${target}".`);
                 return state; // No change
             }
 
-            // Find the module definition in the registry
-            const moduleDefinition = moduleRegistry.get(moduleType);
-            if (!moduleDefinition) {
-                console.warn(`Reducer: Spawn failed - Unknown module type "${moduleType}".`);
+            // Find the component definition in the registry
+            const componentDefinition = componentRegistry.get(componentType);
+            if (!componentDefinition) {
+                console.warn(`Reducer: Spawn failed - Unknown component type "${componentType}".`);
                 return state; // No change
             }
 
             try {
-                // Get the initial state from the module's logic function
-                const initialModuleState = moduleDefinition.getInitialState(target, payload);
-                const newModuleInstance: ModuleInstance = {
+                // Get the initial state from the component's logic function
+                const initialComponentState = componentDefinition.getInitialState(target, payload);
+                const newComponentInstance: ComponentInstance = {
                     id: target,
-                    type: moduleType,
-                    state: initialModuleState
+                    type: componentType,
+                    state: initialComponentState
                 };
 
                 // Create new state maps/arrays (immutability)
-                const newModulesById = new Map(state.modulesById).set(target, newModuleInstance);
-                const newModuleOrder = [...state.moduleOrder, target]; // Add ID to the end
+                const newComponentById = new Map(state.componentsById).set(target, newComponentInstance);
+                const newComponentOrder = [...state.componentOrder, target]; // Add ID to the end
 
-                console.log(`Reducer: Spawned module "${target}" (Type: ${moduleType}). Current order:`, newModuleOrder);
-                return { ...state, modulesById: newModulesById, moduleOrder: newModuleOrder };
+                console.log(`Reducer: Spawned component "${target}" (Type: ${componentType}). Current order:`, newComponentOrder);
+                return { ...state, componentsById: newComponentById, componentOrder: newComponentOrder };
 
             } catch (error: any) {
-                console.error(`Reducer: Error during getInitialState for module "${target}" (${moduleType}):`, error.message || error);
+                console.error(`Reducer: Error during getInitialState for component "${target}" (${componentType}):`, error.message || error);
                 return state; // Return original state on error
             }
         }
 
         // --- Handle Non-Imperative State Updates ---
-        // Updates the state for modules that *don't* use the imperative handle
+        // Updates the state for components that *don't* use the imperative handle
         case 'PROCESS_STATE_UPDATE': {
-            const { module: moduleType, target, payload } = action.message;
+            const { component: componentType, target, payload } = action.message;
 
-            const currentModule = state.modulesById.get(target);
-            if (!currentModule) {
-                console.warn(`Reducer: State Update failed - Module "${target}" not found.`);
+            const currentComponent = state.componentsById.get(target);
+            if (!currentComponent) {
+                console.warn(`Reducer: State Update failed - Component "${target}" not found.`);
                 return state; // No change
             }
 
-            const moduleDefinition = moduleRegistry.get(moduleType);
-            // This action should only be dispatched for non-imperative modules
-            if (!moduleDefinition || moduleDefinition.imperativeUpdate) {
-                console.error(`Reducer: State Update failed - Module type mismatch or unexpected imperative module "${target}" (${moduleType})`);
+            const componentDefinition = componentRegistry.get(componentType);
+            // This action should only be dispatched for non-imperative components
+            if (!componentDefinition || componentDefinition.imperativeUpdate) {
+                console.error(`Reducer: State Update failed - Component type mismatch or unexpected imperative component "${target}" (${componentType})`);
                 return state; // No change
             }
             if (payload === undefined) {
@@ -122,44 +121,44 @@ const rootReducer: Reducer<AppState, AppAction> = (state, action): AppState => {
             }
 
             try {
-                // Call the module's specific updateState function
-                const updatedModuleState = moduleDefinition.updateState(currentModule.state, payload as any);
+                // Call the component's specific updateState function
+                const updatedComponentState = componentDefinition.updateState(currentComponent.state, payload as any);
 
                 // If updateState returned the exact same state object, no actual change occurred
-                if (updatedModuleState === currentModule.state) {
+                if (updatedComponentState === currentComponent.state) {
                     return state;
                 }
 
                 // Create new state map with the updated instance
-                const updatedModuleInstance = { ...currentModule, state: updatedModuleState };
-                const newModulesById = new Map(state.modulesById).set(target, updatedModuleInstance);
+                const updatedComponentInstance = { ...currentComponent, state: updatedComponentState };
+                const newComponentsById = new Map(state.componentsById).set(target, updatedComponentInstance);
 
-                // console.debug(`Reducer: Updated state for module "${target}" (${moduleType})`);
-                return { ...state, modulesById: newModulesById };
+                // console.debug(`Reducer: Updated state for component "${target}" (${componentType})`);
+                return { ...state, componentsById: newComponentsById };
 
             } catch (error: any) {
-                console.error(`Reducer: Error during updateState for module "${target}" (${moduleType}):`, error.message || error);
+                console.error(`Reducer: Error during updateState for component "${target}" (${componentType}):`, error.message || error);
                 return state; // Return original state on error
             }
         }
 
         // --- Handle Remove ---
-        // Removes a module instance from the state
+        // Removes a component instance from the state
         case 'PROCESS_REMOVE': {
             const { target } = action.message;
 
-            // Check if the module actually exists
-            if (!state.modulesById.has(target)) {
+            // Check if the component actually exists
+            if (!state.componentsById.has(target)) {
                 return state; // Already removed, no change needed
             }
 
-            // Create new map and array without the removed module
-            const newModulesById = new Map(state.modulesById);
-            newModulesById.delete(target);
-            const newModuleOrder = state.moduleOrder.filter(id => id !== target);
+            // Create new map and array without the removed component
+            const newComponentsById = new Map(state.componentsById);
+            newComponentsById.delete(target);
+            const newComponentOrder = state.componentOrder.filter(id => id !== target);
 
-            console.log(`Reducer: Removed module "${target}". Current order:`, newModuleOrder);
-            return { ...state, modulesById: newModulesById, moduleOrder: newModuleOrder };
+            console.log(`Reducer: Removed component "${target}". Current order:`, newComponentOrder);
+            return { ...state, componentsById: newComponentsById, componentOrder: newComponentOrder };
         }
 
         // --- Handle System Announce (Hero Status) ---
@@ -184,8 +183,8 @@ const rootReducer: Reducer<AppState, AppAction> = (state, action): AppState => {
         // --- Handle Global Clear (from backend) ---
         case 'PROCESS_GLOBAL_CLEAR': {
             console.log("Reducer: Processing global/clearAll command from backend.");
-            // Only update if there are modules to clear
-            if (state.modulesById.size > 0 || state.moduleOrder.length > 0) {
+            // Only update if there are components to clear
+            if (state.componentsById.size > 0 || state.componentOrder.length > 0) {
                 // Reset maps and order, keep hero status
                 return { ...initialState, heroStatus: state.heroStatus };
             }
@@ -201,52 +200,52 @@ const rootReducer: Reducer<AppState, AppAction> = (state, action): AppState => {
 
 // =============================================================================
 // == Main Application Component ==
-// Orchestrates WebSocket connection, state management, and rendering of modules.
+// Orchestrates WebSocket connection, state management, and rendering of components.
 // =============================================================================
 function App() {
     const [appState, dispatch] = useReducer(rootReducer, initialState);
-    const { modulesById, moduleOrder, heroStatus } = appState;
+    const { componentsById, componentOrder, heroStatus } = appState;
     const [hoveredInfoId, setHoveredInfoId] = useState<string | null>(null); // Tracks hovered info icon for tooltips
 
     // --- Refs ---
     // Stores refs to component instances that handle updates imperatively
-    const imperativeModuleRefs = useRef<Map<string, React.RefObject<ModuleHandle | null>>>(new Map());
+    const imperativeComponentRefs = useRef<Map<string, React.RefObject<ComponentHandle | null>>>(new Map());
     // Stores payloads for imperative updates that arrived before the component was ready
-    const pendingImperativeUpdates = useRef<Map<string, any[]>>(new Map()); // Key: moduleId, Value: array of payloads
+    const pendingImperativeUpdates = useRef<Map<string, any[]>>(new Map()); // Key: componentId, Value: array of payloads
 
-    // --- Callback: Process Pending Updates when a Module Signals Ready ---
-    // Passed as `onReady` prop to imperative modules.
-    const onModuleReady = useCallback((moduleId: string) => {
-        console.log(`App: Received ready signal from module "${moduleId}".`);
+    // --- Callback: Process Pending Updates when a Component Signals Ready ---
+    // Passed as `onReady` prop to imperative components.
+    const onComponentReady = useCallback((componentId: string) => {
+        console.log(`App: Received ready signal from component "${componentId}".`);
 
-        // Check if there are pending updates queued for this module
-        const pendingUpdates = pendingImperativeUpdates.current.get(moduleId);
-        const moduleRef = imperativeModuleRefs.current.get(moduleId);
+        // Check if there are pending updates queued for this component
+        const pendingUpdates = pendingImperativeUpdates.current.get(componentId);
+        const componentRef = imperativeComponentRefs.current.get(componentId);
 
-        // Ensure pending updates exist AND the module's handle/method is now available
-        if (pendingUpdates && pendingUpdates.length > 0 && moduleRef?.current?.processUpdate) {
-            console.log(`App: Processing ${pendingUpdates.length} queued update(s) for ready module "${moduleId}".`);
+        // Ensure pending updates exist AND the component's handle/method is now available
+        if (pendingUpdates && pendingUpdates.length > 0 && componentRef?.current?.processUpdate) {
+            console.log(`App: Processing ${pendingUpdates.length} queued update(s) for ready component "${componentId}".`);
 
             // Get a stable reference to the processing function
-            const processUpdateFunc = moduleRef.current.processUpdate;
+            const processUpdateFunc = componentRef.current.processUpdate;
             try {
-                // Process each queued payload using the module's imperative function
+                // Process each queued payload using the component's imperative function
                 pendingUpdates.forEach(payload => {
                     processUpdateFunc(payload);
                 });
             } catch (error) {
-                console.error(`App: Error processing queued updates for module "${moduleId}":`, error);
+                console.error(`App: Error processing queued updates for component "${componentId}":`, error);
                 // Consider sending an error back to the backend/Python side here
             } finally {
-                // CRITICAL: Clear the queue for this module after attempting to process
-                pendingImperativeUpdates.current.delete(moduleId);
-                console.log(`App: Cleared pending update queue for "${moduleId}".`);
+                // CRITICAL: Clear the queue for this component after attempting to process
+                pendingImperativeUpdates.current.delete(componentId);
+                console.log(`App: Cleared pending update queue for "${componentId}".`);
             }
         } else if (pendingUpdates && pendingUpdates.length > 0) {
             // This case might happen in rare edge cases or if the handle setup is slow
-            console.warn(`App: Module "${moduleId}" signaled ready, but its imperative handle/processUpdate is still not available. ${pendingUpdates.length} update(s) remain queued.`);
+            console.warn(`App: Component "${componentId}" signaled ready, but its imperative handle/processUpdate is still not available. ${pendingUpdates.length} update(s) remain queued.`);
         } else {
-            console.debug(`App: Module "${moduleId}" is ready, no pending updates found.`);
+            console.debug(`App: Component "${componentId}" is ready, no pending updates found.`);
         }
     }, []); // This callback has no dependencies as it only interacts with refs
 
@@ -254,56 +253,56 @@ function App() {
     // This function decides whether to dispatch to the reducer or call an imperative handle
     const handleSidekickMessage = useCallback((messageData: any) => {
         // Basic message structure validation
-        if (typeof messageData !== 'object' || messageData === null || !messageData.module || !messageData.type) {
+        if (typeof messageData !== 'object' || messageData === null || !messageData.component || !messageData.type) {
             console.error("App: Received invalid message structure from Sidekick:", messageData);
             return;
         }
 
         const message = messageData as ReceivedMessage; // Type assertion
 
-        // --- Route 'update' messages based on module type ---
+        // --- Route 'update' messages based on component type ---
         if (message.type === 'update' && 'target' in message) {
-            const moduleMessage = message as ModuleControlMessage;
-            const moduleDefinition = moduleRegistry.get(moduleMessage.module);
+            const componentMessage = message as ComponentControlMessage;
+            const componentDefinition = componentRegistry.get(componentMessage.component);
 
-            // Check if this module type uses imperative updates
-            if (moduleDefinition?.imperativeUpdate) {
-                const moduleRef = imperativeModuleRefs.current.get(moduleMessage.target);
+            // Check if this component type uses imperative updates
+            if (componentDefinition?.imperativeUpdate) {
+                const componentRef = imperativeComponentRefs.current.get(componentMessage.target);
 
                 // Check if the component's handle and processUpdate method are ready
-                if (moduleRef?.current?.processUpdate) {
+                if (componentRef?.current?.processUpdate) {
                     // Handle is ready: Call the component's method directly
-                    // console.debug(`App: Routing update for "${moduleMessage.target}" imperatively.`);
+                    // console.debug(`App: Routing update for "${componentMessage.target}" imperatively.`);
                     try {
-                        moduleRef.current.processUpdate(moduleMessage.payload);
+                        componentRef.current.processUpdate(componentMessage.payload);
                     } catch (error) {
-                        console.error(`App: Error calling imperative processUpdate for "${moduleMessage.target}":`, error);
+                        console.error(`App: Error calling imperative processUpdate for "${componentMessage.target}":`, error);
                         // Future: Consider sending error back via sendMessage
                     }
                 } else {
                     // Handle is not ready: Queue the payload
-                    console.debug(`App: Queuing update for imperative module "${moduleMessage.target}" (handle not ready). Payload:`, moduleMessage.payload);
-                    const queue = pendingImperativeUpdates.current.get(moduleMessage.target) || [];
-                    queue.push(moduleMessage.payload);
-                    pendingImperativeUpdates.current.set(moduleMessage.target, queue);
+                    console.debug(`App: Queuing update for imperative component "${componentMessage.target}" (handle not ready). Payload:`, componentMessage.payload);
+                    const queue = pendingImperativeUpdates.current.get(componentMessage.target) || [];
+                    queue.push(componentMessage.payload);
+                    pendingImperativeUpdates.current.set(componentMessage.target, queue);
                 }
                 // ** Stop further processing for this message **
                 return;
             } else {
-                // Not an imperative module: Dispatch to reducer for normal state update
-                dispatch({ type: 'PROCESS_STATE_UPDATE', message: moduleMessage });
+                // Not an imperative component: Dispatch to reducer for normal state update
+                dispatch({ type: 'PROCESS_STATE_UPDATE', message: componentMessage });
                 return; // Message processed
             }
         }
 
         // --- Route other message types to the reducer ---
         if (message.type === 'spawn' && 'target' in message) {
-            dispatch({ type: 'PROCESS_SPAWN', message: message as ModuleControlMessage });
+            dispatch({ type: 'PROCESS_SPAWN', message: message as ComponentControlMessage });
         } else if (message.type === 'remove' && 'target' in message) {
-            dispatch({ type: 'PROCESS_REMOVE', message: message as ModuleControlMessage });
-        } else if (message.module === 'system' && message.type === 'announce') {
+            dispatch({ type: 'PROCESS_REMOVE', message: message as ComponentControlMessage });
+        } else if (message.component === 'system' && message.type === 'announce') {
             dispatch({ type: 'PROCESS_SYSTEM_ANNOUNCE', message: message as SystemAnnounceMessage });
-        } else if (message.module === 'global' && message.type === 'clearAll') {
+        } else if (message.component === 'global' && message.type === 'clearAll') {
             dispatch({ type: 'PROCESS_GLOBAL_CLEAR', message: message as GlobalClearMessage });
         } else {
             // Log unhandled message types
@@ -322,39 +321,39 @@ function App() {
         stopScript
     } = useCommunication(handleSidekickMessage);
 
-    // --- Effect: Clean Up Refs and Pending Queues for Removed Modules ---
+    // --- Effect: Clean Up Refs and Pending Queues for Removed Components ---
     useEffect(() => {
-        const currentModuleIds = new Set(moduleOrder);
+        const currentComponentIds = new Set(componentOrder);
         const refsAndQueuesToRemove: string[] = [];
 
-        // Find refs/queues corresponding to modules that are no longer in moduleOrder
-        imperativeModuleRefs.current.forEach((_, moduleId) => {
-            if (!currentModuleIds.has(moduleId)) {
-                refsAndQueuesToRemove.push(moduleId);
+        // Find refs/queues corresponding to components that are no longer in componentOrder
+        imperativeComponentRefs.current.forEach((_, componentId) => {
+            if (!currentComponentIds.has(componentId)) {
+                refsAndQueuesToRemove.push(componentId);
             }
         });
-        pendingImperativeUpdates.current.forEach((_, moduleId) => {
-            if (!currentModuleIds.has(moduleId) && !refsAndQueuesToRemove.includes(moduleId)) {
-                refsAndQueuesToRemove.push(moduleId); // Catch queues for modules removed before ready
+        pendingImperativeUpdates.current.forEach((_, componentId) => {
+            if (!currentComponentIds.has(componentId) && !refsAndQueuesToRemove.includes(componentId)) {
+                refsAndQueuesToRemove.push(componentId); // Catch queues for components removed before ready
             }
         });
 
 
         // Perform cleanup if any stale entries were found
         if (refsAndQueuesToRemove.length > 0) {
-            console.log(`App: Cleaning up refs and pending queues for removed modules: ${refsAndQueuesToRemove.join(', ')}`);
-            refsAndQueuesToRemove.forEach(moduleId => {
-                imperativeModuleRefs.current.delete(moduleId);
-                pendingImperativeUpdates.current.delete(moduleId);
+            console.log(`App: Cleaning up refs and pending queues for removed components: ${refsAndQueuesToRemove.join(', ')}`);
+            refsAndQueuesToRemove.forEach(componentId => {
+                imperativeComponentRefs.current.delete(componentId);
+                pendingImperativeUpdates.current.delete(componentId);
             });
         }
-    }, [moduleOrder]); // Rerun whenever the list of active modules changes
+    }, [componentOrder]); // Rerun whenever the list of active components changes
 
-    // --- Callback: Handle Interactions from Child Modules (e.g., clicks, input) ---
+    // --- Callback: Handle Interactions from Child Components (e.g., clicks, input) ---
     // Sends event/error messages back to the backend via WebSocket
-    const handleModuleInteraction = useCallback((interactionMessage: SentMessage) => {
+    const handleComponentInteraction = useCallback((interactionMessage: SentMessage) => {
         // Validate structure before sending
-        if (!interactionMessage || !interactionMessage.module || !interactionMessage.type) {
+        if (!interactionMessage || !interactionMessage.component || !interactionMessage.type) {
             console.error("App: Invalid interaction message structure from component:", interactionMessage);
             return;
         }
@@ -362,13 +361,13 @@ function App() {
         // Only send event/error types initiated by the UI component interaction
         if (interactionMessage.type === 'event' || interactionMessage.type === 'error') {
             // Ensure the source ID ('src') is present for event/error messages
-            const eventOrErrorMsg = interactionMessage as ModuleEventMessage | ModuleErrorMessage;
+            const eventOrErrorMsg = interactionMessage as ComponentEventMessage | ComponentErrorMessage;
             if (eventOrErrorMsg.src) {
                 sendMessage(eventOrErrorMsg); // Send validated message
             } else {
                 console.error("App: Invalid event/error message missing 'src' field:", interactionMessage);
             }
-        } else if (interactionMessage.module === 'system' && interactionMessage.type === 'announce') {
+        } else if (interactionMessage.component === 'system' && interactionMessage.type === 'announce') {
             // Allow sending system messages if needed (though usually handled by useWebSocket)
             sendMessage(interactionMessage);
         }
@@ -435,81 +434,81 @@ function App() {
         }
     };
 
-    // --- Render Helper: Render Active Modules ---
-    const renderModules = () => {
-        // Iterate over the moduleOrder array to render modules in the correct sequence
-        return moduleOrder.map(moduleId => {
-            const moduleInstance = modulesById.get(moduleId);
+    // --- Render Helper: Render Active Components ---
+    const renderComponents = () => {
+        // Iterate over the componentOrder array to render components in the correct sequence
+        return componentOrder.map(componentId => {
+            const componentInstance = componentsById.get(componentId);
 
-            // Safety check: Ensure module data exists
-            if (!moduleInstance) {
-                console.error(`App Render: Module data for ID "${moduleId}" not found in state map!`);
-                return <div key={moduleId} className="module-card error">Error: Module data missing for {moduleId}</div>;
+            // Safety check: Ensure component data exists
+            if (!componentInstance) {
+                console.error(`App Render: Component data for ID "${componentId}" not found in state map!`);
+                return <div key={componentId} className="component-card error">Error: Component data missing for {componentId}</div>;
             }
 
-            // Find the corresponding module definition from the registry
-            const moduleDefinition = moduleRegistry.get(moduleInstance.type);
-            if (!moduleDefinition) {
-                console.error(`App Render: Module definition for type "${moduleInstance.type}" (ID: "${moduleId}") not registered!`);
-                return <div key={moduleId} className="module-card error">Error: Unknown Module Type '{moduleInstance.type}'</div>;
+            // Find the corresponding component definition from the registry
+            const componentDefinition = componentRegistry.get(componentInstance.type);
+            if (!componentDefinition) {
+                console.error(`App Render: Component definition for type "${componentInstance.type}" (ID: "${componentId}") not registered!`);
+                return <div key={componentId} className="component-card error">Error: Unknown Component Type '{componentInstance.type}'</div>;
             }
 
-            const ModuleComponent = moduleDefinition.component; // Get the React component constructor
-            let moduleRef: React.RefObject<ModuleHandle | null > | undefined = undefined; // Ref for imperative modules
+            const Component = componentDefinition.component; // Get the React component constructor
+            let componentRef: React.RefObject<ComponentHandle | null > | undefined = undefined; // Ref for imperative components
 
-            // --- Ref Management: Get or Create Ref for Imperative Modules ---
-            if (moduleDefinition.imperativeUpdate) {
+            // --- Ref Management: Get or Create Ref for Imperative Components ---
+            if (componentDefinition.imperativeUpdate) {
                 // If a ref for this ID doesn't exist in our map yet, create it
-                if (!imperativeModuleRefs.current.has(moduleId)) {
-                    console.debug(`App Render: Creating ref for imperative module "${moduleId}"`);
-                    imperativeModuleRefs.current.set(moduleId, createRef<ModuleHandle | null>());
+                if (!imperativeComponentRefs.current.has(componentId)) {
+                    console.debug(`App Render: Creating ref for imperative component "${componentId}"`);
+                    imperativeComponentRefs.current.set(componentId, createRef<ComponentHandle | null>());
                 }
                 // Retrieve the ref (guaranteed to exist now)
-                moduleRef = imperativeModuleRefs.current.get(moduleId);
+                componentRef = imperativeComponentRefs.current.get(componentId);
             }
 
-            // --- Prepare Props for the Module Component ---
+            // --- Prepare Props for the Component ---
             // Use 'any' for props temporarily for easier prop spreading, consider stricter typing if needed
             const componentProps: any = {
-                id: moduleInstance.id,
-                state: moduleInstance.state, // Pass module-specific state
-                onInteraction: handleModuleInteraction, // Pass interaction callback
+                id: componentInstance.id,
+                state: componentInstance.state, // Pass component-specific state
+                onInteraction: handleComponentInteraction, // Pass interaction callback
             };
-            // Conditionally add the onReady prop only for imperative modules
-            if (moduleDefinition.imperativeUpdate) {
-                componentProps.onReady = onModuleReady;
+            // Conditionally add the onReady prop only for imperative components
+            if (componentDefinition.imperativeUpdate) {
+                componentProps.onReady = onComponentReady;
             }
 
-            // --- Tooltip Logic (for displaying module type/ID on hover) ---
-            const handleMouseEnterInfo = () => setHoveredInfoId(moduleId);
+            // --- Tooltip Logic (for displaying component type/ID on hover) ---
+            const handleMouseEnterInfo = () => setHoveredInfoId(componentId);
             const handleMouseLeaveInfo = () => setHoveredInfoId(null);
-            const isInfoHovered = hoveredInfoId === moduleId;
-            const moduleDisplayName = moduleDefinition.displayName || moduleInstance.type; // Use display name or type string
+            const isInfoHovered = hoveredInfoId === componentId;
+            const componentDisplayName = componentDefinition.displayName || componentInstance.type; // Use display name or type string
 
-            // Render the module within a styled card container
+            // Render the component within a styled card container
             return (
-                <div key={moduleInstance.id} className="module-card">
+                <div key={componentInstance.id} className="component-card">
                     {/* Info Icon & Tooltip */}
                     <div
-                        className="module-info-icon"
+                        className="component-info-icon"
                         onMouseEnter={handleMouseEnterInfo}
                         onMouseLeave={handleMouseLeaveInfo}
-                        aria-label={`Info for ${moduleDisplayName}: ${moduleInstance.id}`}
+                        aria-label={`Info for ${componentDisplayName}: ${componentInstance.id}`}
                     >
                         <FontAwesomeIcon icon={faInfoCircle} />
                     </div>
                     {isInfoHovered && (
-                        <div className="module-tooltip">
-                            Type: {moduleDisplayName}
+                        <div className="component-tooltip">
+                            Type: {componentDisplayName}
                             <br />
-                            ID: {moduleInstance.id}
+                            ID: {componentInstance.id}
                         </div>
                     )}
-                    {/* Render the actual module component, passing ref and props */}
-                    <ModuleComponent ref={moduleRef} {...componentProps} />
+                    {/* Render the actual component, passing ref and props */}
+                    <Component ref={componentRef} {...componentProps} />
                 </div>
             );
-        }); // End map over moduleOrder
+        }); // End map over componentOrder
     };
 
     // --- Main Application JSX Structure ---
@@ -543,11 +542,11 @@ function App() {
 
             {/* Main Content Area */}
             <main className="App-main">
-                {moduleOrder.length === 0
-                    // Display message when no modules are active
-                    ? <p>No modules active. Waiting for Hero script...</p>
-                    // Otherwise, render the active modules
-                    : renderModules()
+                {componentOrder.length === 0
+                    // Display message when no components are active
+                    ? <p>No components active. Waiting for Hero script...</p>
+                    // Otherwise, render the active components
+                    : renderComponents()
                 }
             </main>
         </div>

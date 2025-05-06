@@ -39,11 +39,11 @@ Interactive Usage:
 """
 
 from . import logger
-from .base_module import BaseModule
+from .base_component import BaseComponent
 from typing import Optional, Callable, Dict, Any
 
-class Console(BaseModule):
-    """Represents a Console module instance in the Sidekick UI panel.
+class Console(BaseComponent):
+    """Represents a Console component instance in the Sidekick UI panel.
 
     Creates a scrollable text area for displaying output from your script via
     its `print()` method. Optionally includes a text input field at the bottom
@@ -111,7 +111,7 @@ class Console(BaseModule):
         # This handles connection activation, ID assignment, handler registration,
         # and sending the 'spawn' command with the payload if spawn=True.
         super().__init__(
-            module_type="console",
+            component_type="console",
             instance_id=instance_id,
             spawn=spawn,
             payload=spawn_payload if spawn else None # Send payload only if spawning
@@ -210,7 +210,7 @@ class Console(BaseModule):
         self._input_text_callback = callback
 
     # --- Error Callback ---
-    # Inherits the on_error(callback) method directly from BaseModule.
+    # Inherits the on_error(callback) method directly from BaseComponent.
     # Use `console.on_error(my_handler)` to register a function that will be
     # called if the Console UI element itself reports an error back to Python
     # (e.g., if it failed to process an 'append' or 'clear' command internally).
@@ -285,7 +285,7 @@ class Console(BaseModule):
         self._send_update(payload)
 
     def _reset_specific_callbacks(self):
-        """Internal: Resets console-specific callbacks when the module is removed.
+        """Internal: Resets console-specific callbacks when the component is removed.
 
         Called automatically by the base class's `remove()` method.
         """
@@ -293,6 +293,6 @@ class Console(BaseModule):
         self._input_text_callback = None
 
     # --- Removal ---
-    # Inherits the standard remove() method from BaseModule. Calling `console.remove()`
+    # Inherits the standard remove() method from BaseComponent. Calling `console.remove()`
     # will send a command to the Sidekick UI to remove this console panel instance
     # and will perform local cleanup (unregistering handlers, resetting callbacks).

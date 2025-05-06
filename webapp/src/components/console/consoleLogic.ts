@@ -1,8 +1,7 @@
-// Sidekick/webapp/src/modules/console/consoleLogic.ts
 import { ConsoleState, ConsoleSpawnPayload, ConsoleUpdatePayload } from './types';
 
 /**
- * Creates the initial state for a Console module.
+ * Creates the initial state for a Console component.
  * @param instanceId - The ID of the console instance.
  * @param payload - The spawn payload containing required showInput and optional initial text.
  * @returns The initial ConsoleState.
@@ -27,7 +26,7 @@ export function getInitialState(instanceId: string, payload: ConsoleSpawnPayload
 }
 
 /**
- * Updates the state of a Console module based on an update payload.
+ * Updates the state of a Console component based on an update payload.
  * Mimics terminal behavior regarding newlines.
  * Returns a new state object if changes were made.
  * @param currentState - The current state of the console.

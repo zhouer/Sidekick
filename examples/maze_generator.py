@@ -45,7 +45,7 @@ generation_complete = False
 solution_found: Optional[bool] = None
 state_lock = threading.Lock()
 
-# --- Sidekick Module Instances ---
+# --- Sidekick Component Instances ---
 grid: Optional[Grid] = None
 console: Optional[Console] = None
 controls: Optional[Control] = None
@@ -377,7 +377,7 @@ def solve_maze_task():
 # == Sidekick Control Handler     ==
 # ==================================
 def handle_control_click(control_id: str):
-    """Handles button clicks from the Control module."""
+    """Handles button clicks from the Control component."""
     global solving, generating # Declare intention to modify global variables
     if not console: logging.error("Control handler called but console is None!"); return
 

@@ -68,7 +68,7 @@ class HanoiVisualizer:
         self.status_console.on_error(lambda msg: sidekick.logger.error(f"Status Console Error: {msg}"))
 
         self.grid = None
-        sidekick.logger.info("Sidekick UI modules (controls, status) created.")
+        sidekick.logger.info("Sidekick UI components (controls, status) created.")
 
     def _add_control_config(self, control_id: str, control_type: str, text: str, **kwargs):
         """Stores control configuration."""

@@ -1,5 +1,3 @@
-// Sidekick/webapp/src/modules/control/types.ts
-
 // --- Helper Types ---
 export type ControlType = "button" | "textInput";
 
@@ -21,7 +19,7 @@ export interface ControlState {
 
 // --- Payloads ---
 export interface ControlSpawnPayload {
-    // Control module typically doesn't need specific spawn payload options
+    // Control component typically doesn't need specific spawn payload options
 }
 
 export interface ControlUpdatePayload {

@@ -1,4 +1,3 @@
-// Sidekick/webapp/src/hooks/useWebSocket.ts
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { SentMessage, SystemAnnounceMessage } from '../types';
@@ -196,7 +195,7 @@ export function useWebSocket(
             // Send initial "announce online" message
             if (peerIdRef.current) {
                 const announceMsg: SystemAnnounceMessage = {
-                    id: 0, module: "system", type: "announce",
+                    id: 0, component: "system", type: "announce",
                     payload: { peerId: peerIdRef.current, role: "sidekick", status: "online", version: __APP_VERSION__, timestamp: Date.now() }
                 };
                 sendMessage(announceMsg, 'announce online');
@@ -282,7 +281,7 @@ export function useWebSocket(
             // Attempt best-effort offline announcement only if connected or connecting
             if (peerIdRef.current && (socketToClose.readyState === WebSocket.OPEN || socketToClose.readyState === WebSocket.CONNECTING)) {
                 const announceMsg: SystemAnnounceMessage = {
-                    id: 0, module: "system", type: "announce",
+                    id: 0, component: "system", type: "announce",
                     payload: { peerId: peerIdRef.current, role: "sidekick", status: "offline", version: __APP_VERSION__, timestamp: Date.now() }
                 };
                 // Use the captured socket reference to send, as ws.current is now null

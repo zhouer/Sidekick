@@ -14,9 +14,9 @@ The library operates under a specific connection model:
 2.  **Blocking Connection Establishment:** The *first* operation requiring communication (e.g., creating a `sidekick.Grid()` or sending the first message) will **block** the Python script's execution until:
     *   A connection to the Sidekick server is successfully established (via WebSocket or MessageChannel).
     *   The Sidekick UI panel signals back that it's online and ready.
-3.  **Synchronous Sends:** Once the connection is ready, messages sent via module methods (like `grid.set_color()` or `canvas.draw_line()`) are attempted immediately. There is no internal queue or buffering if the connection is not ready; connection establishment blocks instead.
+3.  **Synchronous Sends:** Once the connection is ready, messages sent via component methods (like `grid.set_color()` or `canvas.draw_line()`) are attempted immediately. There is no internal queue or buffering if the connection is not ready; connection establishment blocks instead.
 4.  **Exception-Based Error Handling:** Connection failures (initial refusal, timeout waiting for UI, disconnection during operation) will immediately **raise specific `SidekickConnectionError` exceptions**, halting the operation. The library does **not** attempt automatic reconnection. The user's script must handle these exceptions if recovery is desired (though typically the script would exit).
-5.  **Canvas Double Buffering:** The `Canvas` module provides an optional double buffering mechanism via a context manager (`with canvas.buffer() as buf:`) for smoother animations.
+5.  **Canvas Double Buffering:** The `Canvas` component provides an optional double buffering mechanism via a context manager (`with canvas.buffer() as buf:`) for smoother animations.
 
 ## 2. Development Setup
 
@@ -82,7 +82,7 @@ The `connection.py` module orchestrates the communication channel and connection
         *   Call the registered message handler function with the parsed message data.
     *   The message handler function (`_handle_incoming_message`):
         *   **Handles `system/announce` messages:** Tracks which Sidekick UI peers (`role: "sidekick"`) are online. When the *first* Sidekick UI announces itself as `online` *and* the connection status is `CONNECTED_WAITING_SIDEKICK`, it performs the crucial step of transitioning the status to `CONNECTED_READY` and **setting the `_ready_event`**, which unblocks the main thread waiting in `activate_connection()`.
-        *   **Handles `event` and `error` messages:** Looks up the handler function registered for the message's `src` instance ID in the `_message_handlers` dictionary and calls it (typically the `_internal_message_handler` of the corresponding `BaseModule` subclass instance).
+        *   **Handles `event` and `error` messages:** Looks up the handler function registered for the message's `src` instance ID in the `_message_handlers` dictionary and calls it (typically the `_internal_message_handler` of the corresponding `BaseComponent` subclass instance).
         *   Calls the optional `_global_message_handler` if registered.
     *   **Handles Unexpected Disconnection/Errors:** If receiving messages fails (e.g., server closes connection, network error) or an unexpected exception occurs, and if it wasn't a planned shutdown, it triggers `close_connection(is_exception=True, ...)` in a *separate thread* to initiate cleanup and ensure a `SidekickDisconnectedError` is likely raised eventually.
 *   **Error Handling & Exceptions:**
@@ -110,32 +110,32 @@ The `connection.py` module orchestrates the communication channel and connection
 *   **Step 3: Handle Send Errors:** If `_send_raw` encounters a WebSocket error during the send attempt (e.g., connection dropped), it raises a `SidekickDisconnectedError`. `send_message` catches this, triggers the `close_connection(is_exception=True)` cleanup process, and then re-raises the `SidekickDisconnectedError` to the original caller (e.g., the `grid.set_color` method).
 *   **No Buffering:** Messages are *not* buffered if the connection isn't ready. `activate_connection` handles the waiting.
 
-### 3.4. Message Handling & Callbacks (`_listen_for_messages`, `BaseModule`)
+### 3.4. Message Handling & Callbacks (`_listen_for_messages`, `BaseComponent`)
 
-*   **Dispatch:** The `_listen_for_messages` thread receives messages. If a message has `type: "event"` or `type: "error"` and a `src` field (indicating the source UI module instance ID), it looks up the corresponding handler function in the `_message_handlers` dictionary using the `src` ID as the key.
-*   **Handler Registration:** Each instance of a `BaseModule` subclass (like `Grid`, `Console`, `Canvas`) registers its own `_internal_message_handler` method with the `connection` module during its `__init__`, using its unique `target_id`.
-*   **`BaseModule._internal_message_handler`:** This method receives the raw message dictionary from the dispatcher.
-    *   It checks for `type: "error"` and calls the user's `_error_callback` (registered via `module.on_error()`) if it exists.
+*   **Dispatch:** The `_listen_for_messages` thread receives messages. If a message has `type: "event"` or `type: "error"` and a `src` field (indicating the source UI component instance ID), it looks up the corresponding handler function in the `_message_handlers` dictionary using the `src` ID as the key.
+*   **Handler Registration:** Each instance of a `BaseComponent` subclass (like `Grid`, `Console`, `Canvas`) registers its own `_internal_message_handler` method with the `connection` module during its `__init__`, using its unique `target_id`.
+*   **`BaseComponent._internal_message_handler`:** This method receives the raw message dictionary from the dispatcher.
+    *   It checks for `type: "error"` and calls the user's `_error_callback` (registered via `component.on_error()`) if it exists.
     *   Subclasses override this method to add logic for handling specific `type: "event"` messages (e.g., checking `payload['event'] == 'click'` in `Grid` or `Canvas`, or `payload['event'] == 'inputText'` in `Console` or `Control`), parsing relevant data from the `payload`, and calling the appropriate user callback (e.g., `self._click_callback`, `self._input_text_callback`).
-*   **User Callbacks:** These are the functions provided by the user to methods like `grid.on_click()`, `console.on_input_text()`, `control.on_click()`, `canvas.on_click()`, etc. They are stored as instance attributes (e.g., `self._click_callback`) on the module object.
+*   **User Callbacks:** These are the functions provided by the user to methods like `grid.on_click()`, `console.on_input_text()`, `control.on_click()`, `canvas.on_click()`, etc. They are stored as instance attributes (e.g., `self._click_callback`) on the component object.
 *   **Callback Exception Handling:** If an exception occurs *inside* a user's callback function when it's invoked by the listener thread, the library catches the exception, logs it using `logger.exception`, but **does not** crash the listener thread. This prevents one faulty callback from stopping the entire event processing system.
 
-### 3.5. Module Interaction (`BaseModule`, `_send_command`, `_send_update`)
+### 3.5. Component Interaction (`BaseComponent`, `_send_command`, `_send_update`)
 
-*   **`BaseModule`:** Provides the common foundation for all visual module classes.
-    *   **`__init__`:** The constructor of any `BaseModule` subclass (like `Grid()`, `Console()`) **implicitly triggers `connection.activate_connection()`**. This means simply creating the first module instance in your script is enough to initiate the blocking connection establishment process. It also generates the `target_id` and registers the instance's message handler.
+*   **`BaseComponent`:** Provides the common foundation for all visual component classes.
+    *   **`__init__`:** The constructor of any `BaseComponent` subclass (like `Grid()`, `Console()`) **implicitly triggers `connection.activate_connection()`**. This means simply creating the first component instance in your script is enough to initiate the blocking connection establishment process. It also generates the `target_id` and registers the instance's message handler.
     *   **`_send_command(type, payload)`:** Internal helper used only for `spawn` and `remove`. Constructs the message and calls `connection.send_message()`.
-    *   **`_send_update(payload)`:** Internal helper used by most module methods that modify state (e.g., `grid.set_color`, `console.print`, `canvas.draw_line`). It constructs the full `update` message (including `type: "update"` and the provided `payload` which *must* already contain the module-specific `action` and `options`) and calls `connection.send_message()`.
-    *   **`remove()`:** Unregisters the message handler, calls `_reset_specific_callbacks()` for subclass cleanup, and sends a `remove` command via `_send_command()`. May also trigger module-specific cleanup (like destroying canvas buffers).
+    *   **`_send_update(payload)`:** Internal helper used by most component methods that modify state (e.g., `grid.set_color`, `console.print`, `canvas.draw_line`). It constructs the full `update` message (including `type: "update"` and the provided `payload` which *must* already contain the component-specific `action` and `options`) and calls `connection.send_message()`.
+    *   **`remove()`:** Unregisters the message handler, calls `_reset_specific_callbacks()` for subclass cleanup, and sends a `remove` command via `_send_command()`. May also trigger component-specific cleanup (like destroying canvas buffers).
     *   **`on_error(callback)`:** Registers the user's error handler.
-*   **`_reset_specific_callbacks()`:** A virtual method in `BaseModule` that subclasses override to clear their specific callback attributes (like `_click_callback`) during `remove()`.
+*   **`_reset_specific_callbacks()`:** A virtual method in `BaseComponent` that subclasses override to clear their specific callback attributes (like `_click_callback`) during `remove()`.
 
 ### 3.6. Protocol Compliance: `snake_case` to `camelCase` Conversion
 
-*   **Responsibility:** The conversion from Pythonic `snake_case` (used in public API arguments like `num_columns`, `line_color`) to the protocol-required `camelCase` (like `numColumns`, `lineColor`) for keys within the JSON `payload` (specifically within the `options` or `config` sub-dictionaries) happens **within the public API methods of the specific module classes** (e.g., `Grid.__init__`, `Grid.set_color`, `Canvas.draw_line`, `Viz.show`).
+*   **Responsibility:** The conversion from Pythonic `snake_case` (used in public API arguments like `num_columns`, `line_color`) to the protocol-required `camelCase` (like `numColumns`, `lineColor`) for keys within the JSON `payload` (specifically within the `options` or `config` sub-dictionaries) happens **within the public API methods of the specific component classes** (e.g., `Grid.__init__`, `Grid.set_color`, `Canvas.draw_line`, `Viz.show`).
 *   **Implementation:** These methods construct the `payload` dictionary (usually containing `action` and `options`) ensuring that all keys *within `options`* intended for the JSON message adhere to the `camelCase` convention defined in the [protocol specification](./protocol.md).
-*   **`connection.send_message` Role:** The `connection` module **does not perform any case conversion**. It receives the fully constructed message dictionary (with `camelCase` keys already in the `payload.options`) from the module method and sends it as JSON.
-*   **Canvas Specifics:** The `Canvas` module methods now also handle constructing the correct `action` name (e.g., `drawLine`) and ensuring the required `bufferId` and optional style parameters (as `camelCase`) are included in the `options` dictionary within the payload sent via `_send_update`. They also add the `commandId` to the payload before sending.
+*   **`connection.send_message` Role:** The `connection` module **does not perform any case conversion**. It receives the fully constructed message dictionary (with `camelCase` keys already in the `payload.options`) from the component method and sends it as JSON.
+*   **Canvas Specifics:** The `Canvas` component methods now also handle constructing the correct `action` name (e.g., `drawLine`) and ensuring the required `bufferId` and optional style parameters (as `camelCase`) are included in the `options` dictionary within the payload sent via `_send_update`. They also add the `commandId` to the payload before sending.
 
 ### 3.7. Reactivity (`ObservableValue`, `Viz`)
 
@@ -173,7 +173,7 @@ The `connection.py` module orchestrates the communication channel and connection
 *   **Error Handling Strategy:**
     *   **Argument Errors:** Methods generally raise standard Python exceptions like `ValueError`, `TypeError`, or `IndexError` for invalid user input (e.g., non-positive grid dimensions, out-of-bounds indices, invalid Canvas parameters like negative radius).
     *   **Connection Errors:** Failures related to establishing or maintaining the WebSocket connection (refused, timeout, disconnect) now primarily raise specific `SidekickConnectionError` subclasses. **These are generally unrecoverable by the library and require script-level handling if the script shouldn't terminate.**
-    *   **Errors from Sidekick UI:** Messages with `type: "error"` received *from* the Sidekick UI (indicating a problem processing a command on the frontend) are routed to the `on_error` callback registered on the specific module instance. They do *not* typically raise Python exceptions.
+    *   **Errors from Sidekick UI:** Messages with `type: "error"` received *from* the Sidekick UI (indicating a problem processing a command on the frontend) are routed to the `on_error` callback registered on the specific component instance. They do *not* typically raise Python exceptions.
     *   **User Callback Errors:** Exceptions occurring *inside* user-provided callback functions (`on_click`, `on_input_text`, etc.) are caught by the library's listener thread, logged using `logger.exception`, but **do not** stop the listener or raise exceptions that would halt `run_forever`.
 
 ## 5. Logging Strategy

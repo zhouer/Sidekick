@@ -1,5 +1,3 @@
-/* Sidekick/webapp/src/App.css */
-
 body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
@@ -166,8 +164,8 @@ body {
     box-sizing: border-box;
 }
 
-/* General styling for module containers */
-.module-card {
+/* General styling for component containers */
+.component-card {
     background-color: var(--sk-card-background); /* Use variable */
     border: 1px solid var(--sk-card-border); /* Use variable */
     border-radius: 6px; /* Slightly smaller radius */
@@ -180,13 +178,13 @@ body {
     transition: border-color 0.2s ease, box-shadow 0.2s ease; /* Smooth transitions */
 }
 
-.module-card:hover {
+.component-card:hover {
     border-color: var(--sk-card-hover-border); /* Use variable */
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07); /* Keep subtle shadow */
 }
 
 /* --- Info Icon Styles --- */
-.module-info-icon {
+.component-info-icon {
     position: absolute;
     top: 8px; /* Adjust positioning */
     right: 8px;
@@ -198,19 +196,19 @@ body {
     transition: opacity 0.2s ease-in-out, visibility 0s 0.2s linear, color 0.2s ease;
 }
 
-.module-card:hover .module-info-icon {
+.component-card:hover .component-info-icon {
     opacity: 0.6; /* Less prominent opacity */
     visibility: visible;
     transition-delay: 0s;
 }
 
-.module-info-icon:hover {
+.component-info-icon:hover {
     opacity: 1; /* Fully opaque on direct hover */
     color: var(--sk-foreground); /* Use variable */
 }
 
 /* --- Tooltip Styles --- */
-.module-tooltip {
+.component-tooltip {
     position: absolute;
     top: 30px; /* Adjust position relative to icon */
     right: 30px;
@@ -230,20 +228,20 @@ body {
 }
 
 /* Show tooltip when info icon is hovered */
-.module-info-icon:hover + .module-tooltip, /* If tooltip is sibling */
-.module-card:hover .module-info-icon:hover ~ .module-tooltip { /* More robust if nested differently */
+.component-info-icon:hover + .component-tooltip, /* If tooltip is sibling */
+.component-card:hover .component-info-icon:hover ~ .component-tooltip { /* More robust if nested differently */
     opacity: 1;
     visibility: visible;
 }
 
 /* Ensure wrapping works in tooltip */
-.module-tooltip br {
+.component-tooltip br {
     display: block; /* Make <br> work like block elements */
     content: "";
     margin-top: 4px; /* Add space after line break */
 }
 
-/* Style for the "No modules active" message */
+/* Style for the "No components active" message */
 .App-main > p {
     color: var(--sk-secondary-foreground);
     font-style: italic;

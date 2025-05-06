@@ -1,5 +1,3 @@
-// Sidekick/webapp/src/modules/viz/types.ts
-
 // --- Core Data Structures ---
 export interface VizRepresentation {
     type: string;       // e.g., "list", "int", "str", "dict", "MyClass object"
@@ -38,7 +36,7 @@ export interface VizState {
 
 // --- Payloads ---
 export interface VizSpawnPayload {
-    // Viz module typically doesn't need specific spawn payload options
+    // Viz component typically doesn't need specific spawn payload options
 }
 
 export interface VizUpdatePayload {
@@ -52,5 +50,5 @@ export interface VizUpdatePayload {
     };
 }
 
-// Viz module typically doesn't send notifications back based on direct interaction
+// Viz component typically doesn't send notifications back based on direct interaction
 // export interface VizNotifyPayload { ... }

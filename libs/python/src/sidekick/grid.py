@@ -5,7 +5,7 @@ spreadsheet, checkerboard, or pixel display) within the Sidekick panel. You
 can programmatically control the background color and display text within each
 individual cell of the grid from your Python script.
 
-This module is particularly useful for:
+This component is particularly useful for:
 
 *   **Visualizing 2D Data:** Representing game maps, matrices, or cellular automata states.
 *   **Simple Graphics:** Creating pixel art or basic pattern displays.
@@ -50,11 +50,11 @@ Interactive Usage:
 """
 
 from . import logger
-from .base_module import BaseModule
+from .base_component import BaseComponent
 from typing import Optional, Callable, Dict, Any
 
-class Grid(BaseModule):
-    """Represents an interactive Grid module instance in the Sidekick UI.
+class Grid(BaseComponent):
+    """Represents an interactive Grid component instance in the Sidekick UI.
 
     Instantiate this class to create a grid of cells with specified dimensions
     in the Sidekick panel. You can then manipulate individual cells using methods
@@ -128,11 +128,11 @@ class Grid(BaseModule):
              spawn_payload["numColumns"] = num_columns
              spawn_payload["numRows"] = num_rows
 
-        # --- Initialize Base Module ---
+        # --- Initialize Base Component ---
         # Handles connection activation, ID assignment, handler registration,
         # and sending the 'spawn' command with the payload if spawn=True.
         super().__init__(
-            module_type="grid",
+            component_type="grid",
             instance_id=instance_id,
             spawn=spawn,
             payload=spawn_payload if spawn else None # Send payload only if spawning
@@ -247,7 +247,7 @@ class Grid(BaseModule):
         self._click_callback = callback
 
     # --- Error Callback ---
-    # Inherits the on_error(callback) method directly from BaseModule.
+    # Inherits the on_error(callback) method directly from BaseComponent.
     # Use `grid.on_error(my_handler)` to register a function that will be
     # called if the Grid UI element itself reports an error back to Python
     # (e.g., if it failed to process a `set_color` command due to an internal UI issue).
@@ -419,7 +419,7 @@ class Grid(BaseModule):
         self._send_update(clear_payload)
 
     def _reset_specific_callbacks(self):
-        """Internal: Resets grid-specific callbacks when the module is removed.
+        """Internal: Resets grid-specific callbacks when the component is removed.
 
         Called automatically by the base class's `remove()` method.
         """
@@ -427,6 +427,6 @@ class Grid(BaseModule):
         self._click_callback = None
 
     # --- Removal ---
-    # Inherits the standard remove() method from BaseModule. Calling `grid.remove()`
+    # Inherits the standard remove() method from BaseComponent. Calling `grid.remove()`
     # will send a command to the Sidekick UI to remove this grid instance
     # and will perform local cleanup (unregistering handlers, resetting callbacks).

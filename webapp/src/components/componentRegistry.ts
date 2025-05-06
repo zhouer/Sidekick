@@ -1,26 +1,25 @@
-// Sidekick/webapp/src/modules/moduleRegistry.ts
-import { ModuleDefinition } from '../types'; // Import shared types
+import { ComponentDefinition } from '../types'; // Import shared types
 
-// Import Module Components
+// Import Components
 import GridComponent from './grid/GridComponent.tsx';
 import ConsoleComponent from './console/ConsoleComponent.tsx';
 import VizComponent from './viz/VizComponent.tsx';
 import CanvasComponent from './canvas/CanvasComponent.tsx';
 import ControlComponent from './control/ControlComponent.tsx';
 
-// Import Module Logic functions
+// Import Component Logic functions
 import * as gridLogic from './grid/gridLogic';
 import * as consoleLogic from './console/consoleLogic';
 import * as vizLogic from './viz/vizLogic';
 import * as canvasLogic from './canvas/canvasLogic';
 import * as controlLogic from './control/controlLogic';
 
-// Define the registry map, mapping module type strings to their definitions
-const registry = new Map<string, ModuleDefinition>();
+// Define the registry map, mapping component type strings to their definitions
+const registry = new Map<string, ComponentDefinition>();
 
-// Register each built-in module
+// Register each built-in component
 registry.set('grid', {
-    type: 'grid', // Module identifier string
+    type: 'grid', // Component identifier string
     displayName: 'Grid',
     component: GridComponent,
     getInitialState: gridLogic.getInitialState,
@@ -65,7 +64,7 @@ registry.set('control', {
 });
 
 // Export the registry for use in the main application
-export const moduleRegistry = registry;
+export const componentRegistry = registry;
 
-// Log registered modules on initialization (useful for debugging)
-console.log('Module Registry initialized with types:', Array.from(moduleRegistry.entries()).map(([key, value]) => ({ type: key, imperative: !!value.imperativeUpdate })));
+// Log registered components on initialization (useful for debugging)
+console.log('Component Registry initialized with types:', Array.from(componentRegistry.entries()).map(([key, value]) => ({ type: key, imperative: !!value.imperativeUpdate })));

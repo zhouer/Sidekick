@@ -1,4 +1,3 @@
-// webapp/vite-plugin-ws-server.ts
 import type { Plugin } from 'vite';
 import { WebSocketServer, WebSocket, AddressInfo } from 'ws'; // Import AddressInfo
 import type { AnnouncePayload, PeerRole } from './src/types';
@@ -104,8 +103,8 @@ export default function websocketServerPlugin(options: WebSocketPluginOptions): 
                     // --- Message Parsing and Basic Validation ---
                     try {
                         message = JSON.parse(rawData);
-                        if (typeof message !== 'object' || message === null || !message.module || !message.type) {
-                            throw new Error('Invalid message structure: missing module or type');
+                        if (typeof message !== 'object' || message === null || !message.component || !message.type) {
+                            throw new Error('Invalid message structure: missing component or type');
                         }
                         // Log parsed message content for clarity
                         console.log(`[WSS][Recv] From ${remoteAddress}:${remotePort}: ${JSON.stringify(message)}`);
@@ -116,7 +115,7 @@ export default function websocketServerPlugin(options: WebSocketPluginOptions): 
                     }
 
                     // --- Handle System Announce Messages ---
-                    if (message.module === 'system' && message.type === 'announce') {
+                    if (message.component === 'system' && message.type === 'announce') {
                         const payload = message.payload as AnnouncePayload;
                         // Payload validation
                         if (!payload || typeof payload !== 'object' || !payload.peerId || !payload.role || !payload.status || !payload.version || typeof payload.timestamp !== 'number') {
@@ -143,7 +142,7 @@ export default function websocketServerPlugin(options: WebSocketPluginOptions): 
                             if (historyAnnouncements.length > 0) {
                                 console.log(`[WSS][History] Sending ${historyAnnouncements.length} online peer announcements to ${peerId}`);
                                 historyAnnouncements.forEach(histAnnounce => {
-                                    const historyMsg = { id: 0, module: 'system', type: 'announce', payload: histAnnounce };
+                                    const historyMsg = { id: 0, component: 'system', type: 'announce', payload: histAnnounce };
                                     sendToClient(ws, historyMsg, `history announce for ${histAnnounce.peerId}`);
                                 });
                             } else {
@@ -184,8 +183,8 @@ export default function websocketServerPlugin(options: WebSocketPluginOptions): 
 
                     } else {
                         // --- Broadcast Other Message Types ---
-                        // Relay module/global messages without deep inspection
-                        const messageDescription = `${message.module}/${message.type}`; // Use message.type
+                        // Relay component/global messages without deep inspection
+                        const messageDescription = `${message.component}/${message.type}`; // Use message.type
                         // Log broadcast with peer ID if available
                         const senderInfo = connectedPeers.get(ws);
                         const senderId = senderInfo ? senderInfo.peerId : `${remoteAddress}:${remotePort}`;
@@ -224,7 +223,7 @@ export default function websocketServerPlugin(options: WebSocketPluginOptions): 
                                 version,
                                 timestamp: Date.now()
                             };
-                            const offlineMsg = { id: 0, module: 'system', type: 'announce', payload: offlinePayload };
+                            const offlineMsg = { id: 0, component: 'system', type: 'announce', payload: offlinePayload };
 
                             // Update central state
                             lastAnnouncements.set(peerId, offlinePayload);

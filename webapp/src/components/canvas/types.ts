@@ -1,6 +1,4 @@
-// Sidekick/webapp/src/modules/canvas/types.ts
-
-import { ModuleEventMessage } from "../../types"; // Import base type if needed
+import { ComponentEventMessage } from "../../types"; // Import base type if needed
 
 // --- State ---
 export interface CanvasState {
@@ -69,8 +67,8 @@ export interface CanvasClickPayload {
     y: number;
 }
 
-// Define the specific ModuleEventMessage for Canvas clicks
-export interface CanvasClickEventMessage extends ModuleEventMessage {
-    module: 'canvas';
+// Define the specific ComponentEventMessage for Canvas clicks
+export interface CanvasClickEventMessage extends ComponentEventMessage {
+    component: 'canvas';
     payload: CanvasClickPayload;
 }

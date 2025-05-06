@@ -1,8 +1,7 @@
-// Sidekick/webapp/src/modules/viz/VizComponent.tsx
 import React, { useState, useMemo, forwardRef, useImperativeHandle } from 'react';
 import './VizComponent.css';
 import { VizRepresentation, VizDictKeyValuePair, Path, VizChangeInfo, VizState } from './types';
-import { ModuleHandle, SentMessage } from '../../types';
+import { ComponentHandle, SentMessage } from '../../types';
 
 // --- Constants ---
 const HIGHLIGHT_DURATION = 1500; // ms, Duration for the highlight animation
@@ -10,7 +9,7 @@ const HIGHLIGHT_DURATION = 1500; // ms, Duration for the highlight animation
 // --- Define Props Interface ---
 interface VizComponentProps {
     id: string; // Instance ID
-    state: VizState; // State specific to the Viz module
+    state: VizState; // State specific to the Viz component
     onInteraction?: (message: SentMessage) => void;
     onReady?: (id: string) => void;
 }
@@ -70,7 +69,7 @@ const RenderValue: React.FC<RenderValueProps> = React.memo(({ data, currentPath,
     if (typeof rep.type === 'string') {
         // Generate a CSS-friendly class name from the type string
         typeClassName = `viz-type-${rep.type.split(' ')[0].toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-    } else { console.warn("VizModule: Rep type is not string:", rep); }
+    } else { console.warn("VizComponent: Rep type is not string:", rep); }
 
     // Toggle expand/collapse state
     const toggleExpand = (e: React.MouseEvent) => { e.stopPropagation(); setIsExpanded(!isExpanded); };
@@ -180,8 +179,8 @@ const RenderValue: React.FC<RenderValueProps> = React.memo(({ data, currentPath,
 });
 RenderValue.displayName = 'RenderValue'; // Add display name for React DevTools
 
-// --- Main Viz Module Component ---
-const VizComponent = forwardRef<ModuleHandle, VizComponentProps>(
+// --- Main Viz Component ---
+const VizComponent = forwardRef<ComponentHandle, VizComponentProps>(
     ({ id, state }, ref) => {
         // Ensure state exists before destructuring
         const { variables, lastChanges } = state || { variables: {}, lastChanges: {} };

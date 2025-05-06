@@ -1,6 +1,6 @@
 """Manages the communication channel between your Python script and the Sidekick UI.
 
-This module acts as the central communication hub for the Sidekick library. It
+This component acts as the central communication hub for the Sidekick library. It
 handles the technical details of establishing and maintaining a real-time
 connection with the Sidekick panel running in Visual Studio Code.
 
@@ -8,13 +8,13 @@ Key Responsibilities:
 
 *   **Connecting:** Automatically attempts to connect to the Sidekick server
     (usually running within the VS Code extension) the first time your script
-    tries to interact with a Sidekick module (e.g., when you create `sidekick.Grid()`).
+    tries to interact with a Sidekick component (e.g., when you create `sidekick.Grid()`).
 *   **Blocking Connection:** It **pauses** (blocks) your script during the initial
     connection phase until it confirms that both the server is reached and the
     Sidekick UI panel is loaded and ready to receive commands. This ensures your
     commands don't get lost.
 *   **Sending Commands:** Provides the mechanism (`send_message`, used internally
-    by modules like Grid, Console) to send instructions (like "set color", "print text")
+    by components like Grid, Console) to send instructions (like "set color", "print text")
     to the Sidekick UI.
 *   **Receiving Events:** Handles incoming messages from the Sidekick UI (like button 
     clicks or text input) and routes them to the correct handler function in your 
@@ -25,9 +25,9 @@ Key Responsibilities:
     are released when your script finishes or when `sidekick.shutdown()` is called.
 
 Note:
-    You typically interact with this module indirectly through functions like
+    You typically interact with this component indirectly through functions like
     `sidekick.run_forever()` or `sidekick.shutdown()`, or simply by using the
-    visual module classes (`Grid`, `Console`, etc.). However, understanding its
+    visual component classes (`Grid`, `Console`, etc.). However, understanding its
     role helps explain the library's behavior, especially regarding connection
     and event handling. The library does **not** automatically attempt to reconnect
     if the connection is lost after being established.
@@ -75,8 +75,8 @@ _channel: Optional[CommunicationChannel] = None
 # A reentrant lock to protect access to shared state variables (status, channel object, handlers, etc.)
 # from race conditions between threads. RLock allows the same thread to acquire the lock multiple times.
 _connection_lock = threading.RLock()
-# Maps module instance IDs (e.g., "grid-1") to their specific message handler function
-# (usually the _internal_message_handler method of the module instance).
+# Maps component instance IDs (e.g., "grid-1") to their specific message handler function
+# (usually the _internal_message_handler method of the component instance).
 _message_handlers: Dict[str, Callable[[Dict[str, Any]], None]] = {}
 
 # A unique ID generated for this specific Python script ("Hero") instance run.
@@ -175,7 +175,7 @@ def _send_system_announce(status: str):
             # Construct the full message structure.
             message = {
                 "id": 0, # Reserved, usually 0.
-                "module": "system",
+                "component": "system",
                 "type": "announce",
                 "payload": announce_payload
             }
@@ -220,12 +220,12 @@ def _handle_incoming_message(message_data: Dict[str, Any]):
                 logger.exception(f"Error in global message handler: {e}")
 
         # --- 2. Message Dispatch Logic ---
-        module = message_data.get('module')
+        component = message_data.get('component')
         msg_type = message_data.get('type')
         payload = message_data.get('payload') # Note: Payload keys should be camelCase per protocol.
 
         # --- Handle System Announce (Sidekick UI Ready?) ---
-        if module == 'system' and msg_type == 'announce' and payload:
+        if component == 'system' and msg_type == 'announce' and payload:
             peer_id = payload.get('peerId')
             role = payload.get('role')
             status = payload.get('status')
@@ -270,9 +270,9 @@ def _handle_incoming_message(message_data: Dict[str, Any]):
                             # A disconnect error will only occur if the underlying connection
                             # breaks or if a subsequent send/receive operation fails.
 
-        # --- Handle Module Event/Error (Dispatch to Specific Instance) ---
+        # --- Handle Component Event/Error (Dispatch to Specific Instance) ---
         elif msg_type in ['event', 'error']:
-            # These messages originate *from* a specific module instance in the UI.
+            # These messages originate *from* a specific component instance in the UI.
             # The 'src' field in the message identifies which instance.
             instance_id = message_data.get('src')
             # Check if we have a handler registered for this specific instance ID.
@@ -296,7 +296,7 @@ def _handle_incoming_message(message_data: Dict[str, Any]):
                 logger.warning(f"Received '{msg_type}' message without required 'src' field: {message_data}")
         else:
             # Received a message type the handler doesn't handle directly (e.g., 'spawn' from UI).
-            logger.debug(f"Received unhandled message type: module='{module}', type='{msg_type}'")
+            logger.debug(f"Received unhandled message type: component='{component}', type='{msg_type}'")
 
     except Exception as e:
         # Catch any other unexpected error during message handling.
@@ -376,7 +376,7 @@ def _ensure_connection():
 def set_url(url: str):
     """Sets the URL where the Sidekick server is expected to be listening.
 
-    You **must** call this function *before* creating any Sidekick modules
+    You **must** call this function *before* creating any Sidekick components
     (like `sidekick.Grid()`) or calling any other Sidekick function that might
     trigger a connection attempt (like `sidekick.clear_all()`). The library uses
     the URL set here when it makes its first connection attempt.
@@ -400,7 +400,7 @@ def set_url(url: str):
         ... except ValueError as e:
         ...     print(e)
         >>>
-        >>> # Now it's safe to create Sidekick modules
+        >>> # Now it's safe to create Sidekick components
         >>> console = sidekick.Console()
     """
     global _ws_url
@@ -424,7 +424,7 @@ def set_config(clear_on_connect: bool = True, clear_on_disconnect: bool = False)
     """Configures automatic clearing behavior for the Sidekick UI panel.
 
     Like `set_url`, you **must** call this function *before* the first connection
-    attempt is made (i.e., before creating any Sidekick modules). Calling it later
+    attempt is made (i.e., before creating any Sidekick components). Calling it later
     will have no effect unless `shutdown()` is called first.
 
     Args:
@@ -458,7 +458,7 @@ def activate_connection():
     """Ensures the connection to Sidekick is established and fully ready. (Internal use).
 
     This function is the gateway for all communication. It's called implicitly by
-    `send_message` (which is used by all module methods like `grid.set_color`) and
+    `send_message` (which is used by all component methods like `grid.set_color`) and
     at the start of `run_forever`. You generally don't need to call it directly.
 
     It performs the crucial steps of:
@@ -546,7 +546,7 @@ def activate_connection():
 def send_message(message_dict: Dict[str, Any]):
     """Sends a command message (as a dictionary) to the Sidekick UI. (Internal use).
 
-    This is the core function used by all Sidekick modules (`Grid`, `Console`, etc.)
+    This is the core function used by all Sidekick components (`Grid`, `Console`, etc.)
     to send their specific commands (like 'setColor', 'append', 'add') to the UI panel.
     You typically don't call this directly.
 
@@ -556,7 +556,7 @@ def send_message(message_dict: Dict[str, Any]):
     Args:
         message_dict (Dict[str, Any]): A Python dictionary representing the message.
             It must conform to the Sidekick communication protocol structure, including
-            `module`, `type`, `target`/`src`, and a `payload` whose keys should generally
+            `component`, `type`, `target`/`src`, and a `payload` whose keys should generally
             be `camelCase`.
 
     Raises:
@@ -623,7 +623,7 @@ def clear_all():
     # Construct the specific 'global/clearAll' message according to the protocol.
     message = {
         "id": 0,
-        "module": "global", # Target the global scope, not a specific module instance.
+        "component": "global", # Target the global scope, not a specific component instance.
         "type": "clearAll",
         "payload": None     # No additional data needed for this command.
     }
@@ -684,7 +684,7 @@ def close_connection(log_info=True, is_exception=False, reason=""):
              # Send clearAll if configured for disconnect.
              if _clear_on_disconnect:
                   logger.debug("Attempting to send global/clearAll on disconnect (best-effort).")
-                  clear_all_msg = {"id": 0, "module": "global", "type": "clearAll", "payload": None}
+                  clear_all_msg = {"id": 0, "component": "global", "type": "clearAll", "payload": None}
                   try: _send_raw(channel_temp, clear_all_msg)
                   # Ignore failures here, as connection might be closing.
                   except Exception: logger.warning("Failed to send clearAll during disconnect (ignored).")
@@ -887,17 +887,17 @@ def shutdown():
 # --- Registration/Utility Functions (Mostly Internal/Advanced) ---
 
 def register_message_handler(instance_id: str, handler: Callable[[Dict[str, Any]], None]):
-    """Registers a handler function for messages targeted at a specific module instance. (Internal).
+    """Registers a handler function for messages targeted at a specific component instance. (Internal).
 
-    This is called automatically by `BaseModule.__init__` when a Sidekick module
-    (like `Grid`, `Console`) is created. It maps the module's unique `instance_id`
+    This is called automatically by `BaseComponent.__init__` when a Sidekick component
+    (like `Grid`, `Console`) is created. It maps the component's unique `instance_id`
     to its `_internal_message_handler` method.
 
     The message handler uses this mapping to dispatch incoming 'event' and 'error'
     messages from the UI to the correct Python object.
 
     Args:
-        instance_id (str): The unique ID of the module instance (e.g., "grid-1").
+        instance_id (str): The unique ID of the component instance (e.g., "grid-1").
         handler (Callable): The function (usually an instance method) to call.
                             It must accept one argument: the message dictionary.
 
@@ -919,13 +919,13 @@ def register_message_handler(instance_id: str, handler: Callable[[Dict[str, Any]
 
 
 def unregister_message_handler(instance_id: str):
-    """Removes the message handler for a specific module instance. (Internal).
+    """Removes the message handler for a specific component instance. (Internal).
 
-    Called automatically by `BaseModule.remove()` when a module is explicitly
+    Called automatically by `BaseComponent.remove()` when a component is explicitly
     removed, and also during the final `close_connection` cleanup to clear all handlers.
 
     Args:
-        instance_id (str): The ID of the module instance whose handler should be removed.
+        instance_id (str): The ID of the component instance whose handler should be removed.
     """
     # Acquire lock for safe modification of the shared handler dictionary.
     with _connection_lock:
@@ -946,7 +946,7 @@ def register_global_message_handler(handler: Optional[Callable[[Dict[str, Any]],
     the communication protocol or building very custom, low-level integrations.
     The function you provide (`handler`) will be called by the listener thread for
     *every* message received from the Sidekick server, *before* the message is
-    dispatched to any specific module instance handlers.
+    dispatched to any specific component instance handlers.
 
     Warning:
         The structure and content of messages received here are subject to the

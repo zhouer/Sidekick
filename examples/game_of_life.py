@@ -29,7 +29,7 @@ run_lock = threading.Lock()
 # Simulation thread instance
 sim_thread: Optional[threading.Thread] = None
 
-# --- Sidekick Module Instances ---
+# --- Sidekick Component Instances ---
 # Initialize with None, create after connection activation potentially
 grid: Optional[Grid] = None
 console: Optional[Console] = None
@@ -140,7 +140,7 @@ def draw_full_grid():
             grid.set_color(c, r, color)
 
 def handle_control_click(control_id: str):
-    """Handles button clicks from the Control module."""
+    """Handles button clicks from the Control component."""
     global running, game_grid
     logging.debug(f"Control click handler received: {control_id}")
 
@@ -194,7 +194,7 @@ def handle_control_click(control_id: str):
             logging.warning(f"Unknown control click: {control_id}")
 
 def handle_grid_click(x: int, y: int):
-    """Handles clicks on the Grid module."""
+    """Handles clicks on the Grid component."""
     global game_grid
     if not grid or not console or not game_grid: return
 
@@ -284,7 +284,7 @@ if __name__ == "__main__":
             running = False
         logging.info("Stopping simulation flag.")
 
-        # Optional: Explicitly remove modules (though connection close handles handlers)
+        # Optional: Explicitly remove components (though connection close handles handlers)
         # if controls: controls.remove()
         # if grid: grid.remove()
         # if console: console.remove()

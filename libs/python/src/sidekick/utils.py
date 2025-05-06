@@ -13,13 +13,13 @@ Warning:
 _instance_counter = 0
 
 def generate_unique_id(prefix: str) -> str:
-    """Generates a simple, sequential unique ID for a module instance.
+    """Generates a simple, sequential unique ID for a component instance.
 
-    This function is used internally by Sidekick module classes (like `Grid`,
+    This function is used internally by Sidekick component classes (like `Grid`,
     `Console`, etc.) when you create an instance without providing your own specific
     `instance_id`. It ensures that each automatically generated ID is unique
     within the current script run, helping the library distinguish between
-    different modules of the same type (e.g., multiple Grids).
+    different components of the same type (e.g., multiple Grids).
 
     The generated IDs follow a simple "prefix-number" format (e.g., "grid-1",
     "console-2").
@@ -27,11 +27,11 @@ def generate_unique_id(prefix: str) -> str:
     Note:
         This is intended for internal library use. You should not rely on the
         specific format of these generated IDs in your code, as it could change.
-        Always use the `target_id` attribute of a module instance if you need
+        Always use the `target_id` attribute of a component instance if you need
         to reference its ID.
 
     Args:
-        prefix (str): A descriptive prefix indicating the type of module,
+        prefix (str): A descriptive prefix indicating the type of component,
             such as "grid", "console", or "canvas".
 
     Returns:

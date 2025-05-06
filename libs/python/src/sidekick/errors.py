@@ -98,7 +98,7 @@ class SidekickDisconnectedError(SidekickConnectionError):
        the established connection.
 
     **Important:** The library will **not** automatically try to reconnect if this
-    error occurs. Any further attempts to use Sidekick modules (like `grid.set_color()`)
+    error occurs. Any further attempts to use Sidekick components (like `grid.set_color()`)
     will also fail until the script is potentially restarted and a new connection
     is established.
 
