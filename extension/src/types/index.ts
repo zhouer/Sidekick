@@ -96,3 +96,71 @@ export type SentMessage =
     | SystemAnnounceMessage // Sidekick also announces itself
     | ComponentEventMessage
     | ComponentErrorMessage;
+
+// --- Internal Sidekick Application Types ---
+
+// Represents a single component instance within the Sidekick UI state
+export interface ComponentInstance<TState = any> { // TState is the component-specific state type
+    id: string;
+    type: string; // e.g., "grid", "console"
+    state: TState;
+}
+
+/**
+ * Defines the contract for a Sidekick component.
+ * Each component provides functions for state management and a React component for rendering.
+ */
+export interface ComponentDefinition<
+    TState = any, // Generic type for component-specific state
+    TSpawnPayload = any, // Generic type for spawn payload
+    TUpdatePayload = any, // Generic type for update payload
+> {
+    /** Unique string identifier for the component type (e.g., "grid", "console"). */
+    type: string;
+    /** React functional component responsible for rendering the component's UI. */
+    component: React.ForwardRefExoticComponent<
+        React.PropsWithoutRef<{
+            id: string;
+            state: TState;
+            onInteraction?: (message: SentMessage) => void;
+        }> & React.RefAttributes<ComponentHandle> // Supports forwarding ref of type ComponentHandle
+    >;
+    /**
+     * Pure function to calculate the initial state for a new component instance.
+     * Should validate the payload and throw an error if invalid.
+     * @param instanceId The unique ID for the new instance.
+     * @param payload The payload received from the 'spawn' command.
+     * @returns The initial state object for the component instance.
+     */
+    getInitialState: (instanceId: string, payload: TSpawnPayload) => TState;
+    /**
+     * Pure function to calculate the next state based on the current state and an update payload.
+     * Should validate the payload and return the current state if the update is invalid or causes no change.
+     * MUST return a new object reference if the state changes, otherwise return the original currentState object.
+     * **Note:** This is NOT called for components where `imperativeUpdate` is true.
+     * @param currentState The current state of the component instance.
+     * @param payload The payload received from the 'update' command.
+     * @returns The new state object if changes occurred, otherwise the original currentState.
+     */
+    updateState: (currentState: TState, payload: TUpdatePayload) => TState;
+    /** Optional user-friendly display name for the component type (e.g., in tooltips). */
+    displayName?: string;
+    /**
+     * If true, 'update' messages for this component type will be sent directly
+     * to the component instance via an imperative handle, bypassing the reducer.
+     * Defaults to false.
+     */
+    imperativeUpdate?: boolean;
+}
+
+/**
+ * Interface for the imperative handle exposed by components supporting direct updates.
+ */
+export interface ComponentHandle {
+    /**
+     * Processes an 'update' payload directly.
+     * Called by the App component for components with `imperativeUpdate: true`.
+     * @param payload The payload from the 'update' message.
+     */
+    processUpdate: (payload: any) => void;
+}
