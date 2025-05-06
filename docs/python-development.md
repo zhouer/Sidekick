@@ -12,7 +12,7 @@ The library operates under a specific connection model:
 
 1.  **Mandatory Sidekick Presence:** The Sidekick VS Code panel and its communication server **must** be running *before* the Python script attempts to establish a connection.
 2.  **Blocking Connection Establishment:** The *first* operation requiring communication (e.g., creating a `sidekick.Grid()` or sending the first message) will **block** the Python script's execution until:
-    *   A connection to the Sidekick server is successfully established (via WebSocket or MessageChannel).
+    *   A connection to the Sidekick server is successfully established (via WebSocket or direct JavaScript functions in Pyodide).
     *   The Sidekick UI panel signals back that it's online and ready.
 3.  **Synchronous Sends:** Once the connection is ready, messages sent via component methods (like `grid.set_color()` or `canvas.draw_line()`) are attempted immediately. There is no internal queue or buffering if the connection is not ready; connection establishment blocks instead.
 4.  **Exception-Based Error Handling:** Connection failures (initial refusal, timeout waiting for UI, disconnection during operation) will immediately **raise specific `SidekickConnectionError` exceptions**, halting the operation. The library does **not** attempt automatic reconnection. The user's script must handle these exceptions if recovery is desired (though typically the script would exit).
@@ -44,15 +44,15 @@ Editable mode (`-e`) links the installed package directly to your source code in
 
 ### 3.0. Communication Channel Abstraction
 
-The library now uses an abstract communication channel interface to support different communication methods:
+The library uses an abstract communication channel interface to support different communication methods:
 
 *   **`CommunicationChannel` (Abstract Base Class):** Defined in `channel.py`, this abstract class provides the interface that all communication channel implementations must follow. It includes methods for connecting, sending messages, closing the connection, and handling incoming messages.
 
 *   **`WebSocketChannel` Implementation:** Defined in `websocket_channel.py`, this class implements the `CommunicationChannel` interface using WebSockets. It's used in standard Python environments and communicates with the Sidekick server via WebSocket.
 
-*   **`PyodideMessageChannel` Implementation:** Defined in `pyodide_channel.py`, this class implements the `CommunicationChannel` interface using the JavaScript MessageChannel API. It's used when the library is running in a Pyodide environment (Python in the browser).
+*   **`PyodideChannel` Implementation:** Defined in `pyodide_channel.py`, this class implements the `CommunicationChannel` interface using direct JavaScript functions (`sendHeroMessage` and `registerSidekickMessageHandler`). It's used when the library is running in a Pyodide environment (Python in the browser).
 
-*   **Factory Function (`create_communication_channel`):** This function in `channel.py` detects the environment and creates the appropriate communication channel implementation. It checks if the code is running in Pyodide and returns either a `PyodideMessageChannel` or a `WebSocketChannel` accordingly.
+*   **Factory Function (`create_communication_channel`):** This function in `channel.py` detects the environment and creates the appropriate communication channel implementation. It checks if the code is running in Pyodide and returns either a `PyodideChannel` or a `WebSocketChannel` accordingly.
 
 ### 3.1. Connection Management & Lifecycle (`connection.py`)
 
@@ -75,7 +75,7 @@ The `connection.py` module orchestrates the communication channel and connection
 *   **Message Handling:**
     *   Each communication channel implementation handles receiving messages differently:
         *   **WebSocketChannel:** Uses a background **daemon thread** that enters a loop, using `websocket.recv()` with a short timeout to periodically check if the stop event has been set.
-        *   **PyodideMessageChannel:** Uses JavaScript event listeners to handle incoming messages asynchronously.
+        *   **PyodideChannel:** Uses JavaScript event listeners to handle incoming messages asynchronously.
     *   Both implementations:
         *   Receive incoming JSON messages from the server or UI.
         *   Parse the JSON.

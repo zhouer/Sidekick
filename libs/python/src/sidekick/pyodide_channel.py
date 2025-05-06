@@ -1,6 +1,6 @@
 """Pyodide direct communication for Sidekick.
 
-This module implements the PyodideMessageChannel class, which uses the JavaScript
+This module implements the PyodideChannel class, which uses the JavaScript
 functions sendHeroMessage and registerSidekickMessageHandler for direct communication
 between Python code running in Pyodide and the Sidekick UI.
 """
@@ -14,7 +14,7 @@ from .channel import CommunicationChannel
 from .errors import SidekickDisconnectedError
 from . import logger
 
-class PyodideMessageChannel(CommunicationChannel):
+class PyodideChannel(CommunicationChannel):
     """Direct communication implementation for Pyodide environments.
 
     This class uses the JavaScript functions sendHeroMessage and registerSidekickMessageHandler
@@ -22,7 +22,7 @@ class PyodideMessageChannel(CommunicationChannel):
     """
 
     def __init__(self):
-        """Initialize the PyodideMessageChannel."""
+        """Initialize the PyodideChannel."""
         self._handler = None
         self._handler_proxy = None
         self._connected = False
@@ -40,7 +40,7 @@ class PyodideMessageChannel(CommunicationChannel):
             # Import JavaScript functions
             from js import registerSidekickMessageHandler
 
-            logger.info("PyodideMessageChannel: Setting up direct communication")
+            logger.info("PyodideChannel: Setting up direct communication")
 
             # Define the message handler function
             def on_message(message):
@@ -48,12 +48,12 @@ class PyodideMessageChannel(CommunicationChannel):
                     try:
                         # Parse the JSON message
                         message_data = json.loads(message)
-                        logger.debug(f"PyodideMessageChannel: Received message: {message_data}")
+                        logger.debug(f"PyodideChannel: Received message: {message_data}")
                         self._handler(message_data)
                     except json.JSONDecodeError as e:
-                        logger.error(f"PyodideMessageChannel: Failed to parse JSON: {e}")
+                        logger.error(f"PyodideChannel: Failed to parse JSON: {e}")
                     except Exception as e:
-                        logger.exception(f"PyodideMessageChannel: Error in message handler: {e}")
+                        logger.exception(f"PyodideChannel: Error in message handler: {e}")
 
             # Create a persistent proxy for the function
             self._handler_proxy = create_proxy(on_message)
@@ -62,10 +62,10 @@ class PyodideMessageChannel(CommunicationChannel):
             registerSidekickMessageHandler(self._handler_proxy)
             self._connected = True
 
-            logger.info("PyodideMessageChannel: Communication established")
+            logger.info("PyodideChannel: Communication established")
 
         except Exception as e:
-            logger.exception(f"PyodideMessageChannel: Failed to establish connection: {e}")
+            logger.exception(f"PyodideChannel: Failed to establish connection: {e}")
             self._connected = False
             raise SidekickDisconnectedError(f"Failed to establish connection: {e}")
 
@@ -79,7 +79,7 @@ class PyodideMessageChannel(CommunicationChannel):
             SidekickDisconnectedError: If the connection is not established.
         """
         if not self._connected:
-            raise SidekickDisconnectedError("PyodideMessageChannel: Not connected")
+            raise SidekickDisconnectedError("PyodideChannel: Not connected")
 
         try:
             # Import JavaScript function
@@ -87,24 +87,24 @@ class PyodideMessageChannel(CommunicationChannel):
 
             # Convert the message to JSON
             message_json = json.dumps(message_dict)
-            logger.debug(f"PyodideMessageChannel: Sending message: {message_json}")
+            logger.debug(f"PyodideChannel: Sending message: {message_json}")
 
             # Send the message
             sendHeroMessage(message_json)
         except Exception as e:
-            logger.exception(f"PyodideMessageChannel: Error sending message: {e}")
+            logger.exception(f"PyodideChannel: Error sending message: {e}")
             raise SidekickDisconnectedError(f"Error sending message: {e}")
 
     def close(self):
         """Close the communication connection."""
-        logger.info("PyodideMessageChannel: Closing connection")
+        logger.info("PyodideChannel: Closing connection")
 
         try:
             # Release the proxy
             if self._handler_proxy:
                 self._handler_proxy.destroy()
         except Exception as e:
-            logger.warning(f"PyodideMessageChannel: Error closing connection: {e}")
+            logger.warning(f"PyodideChannel: Error closing connection: {e}")
         finally:
             self._handler_proxy = None
             self._connected = False
