@@ -380,47 +380,26 @@ class Viz(BaseComponent):
     Attributes:
         target_id (str): The unique identifier for this Viz panel instance.
     """
-    def __init__(
-        self,
-        instance_id: Optional[str] = None,
-        spawn: bool = True
-    ):
-        """Initializes the Viz object and optionally creates the UI panel.
+    def __init__(self):
+        """Initializes the Viz object and creates the UI panel.
 
         Sets up the Viz panel instance. Establishes the connection to Sidekick if
         not already done (this might block).
 
-        Args:
-            instance_id (Optional[str]): A specific ID for this Viz panel instance.
-                - If `spawn=True` (default): Optional. If None, a unique ID (e.g.,
-                  "viz-1") is generated automatically.
-                - If `spawn=False`: **Required**. Must match the ID of an existing
-                  Viz panel element in the Sidekick UI to attach to.
-            spawn (bool): If True (the default), a command is sent to Sidekick
-                to create a new, empty Viz panel UI element. If False, the
-                library assumes a panel with the given `instance_id` already exists,
-                and this Python object simply connects to it.
-
         Raises:
-            ValueError: If `spawn` is False and `instance_id` is not provided.
             SidekickConnectionError (or subclass): If the connection to Sidekick
                 cannot be established during initialization.
 
         Examples:
             >>> # Create a new Viz panel
             >>> data_viewer = sidekick.Viz()
-            >>>
-            >>> # Attach to an existing panel maybe named "debug-variables"
-            >>> debug_vars = sidekick.Viz(instance_id="debug-variables", spawn=False)
         """
         # The spawn command for Viz currently doesn't require any specific payload
         # as it just creates the empty panel container.
-        spawn_payload = {} if spawn else None
+        spawn_payload = {}
         # Initialize the base class (handles connection, ID, registration, spawn).
         super().__init__(
             component_type="viz",
-            instance_id=instance_id,
-            spawn=spawn,
             payload=spawn_payload
         )
         # --- Internal State for Tracking Shown Variables and Subscriptions ---
@@ -431,7 +410,7 @@ class Viz(BaseComponent):
         #   - 'unsubscribe': The unsubscribe function returned by ObservableValue.subscribe()
         #                    if the value is observable, otherwise None.
         self._shown_variables: Dict[str, Dict[str, Any]] = {}
-        logger.info(f"Viz panel '{self.target_id}' initialized (spawn={spawn}).")
+        logger.info(f"Viz panel '{self.target_id}' initialized.")
 
     # --- Internal Message Handling ---
     # Inherits _internal_message_handler from BaseComponent.

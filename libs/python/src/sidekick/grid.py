@@ -70,11 +70,9 @@ class Grid(BaseComponent):
     def __init__(
         self,
         num_columns: int,
-        num_rows: int,
-        instance_id: Optional[str] = None,
-        spawn: bool = True
+        num_rows: int
     ):
-        """Initializes the Grid object and optionally creates the UI element.
+        """Initializes the Grid object and creates the UI element.
 
         Sets up the grid's dimensions and prepares it for interaction. Establishes
         the connection to Sidekick if not already done (this might block).
@@ -84,22 +82,9 @@ class Grid(BaseComponent):
                 a positive integer (greater than 0).
             num_rows (int): The number of rows the grid should have. Must be a
                 positive integer (greater than 0).
-            instance_id (Optional[str]): A specific ID for this grid instance.
-                - If `spawn=True` (default): Optional. If None, a unique ID (e.g.,
-                  "grid-1") is generated automatically.
-                - If `spawn=False`: **Required**. Must match the ID of an existing
-                  grid element in the Sidekick UI to attach to.
-            spawn (bool): If True (the default), a command is sent to Sidekick
-                to create a new grid UI element with the specified dimensions.
-                If False, the library assumes a grid element with the given
-                `instance_id` already exists, and this Python object simply
-                connects to it. The `num_columns` and `num_rows` arguments are
-                still validated locally when `spawn=False` but are not sent in
-                the (empty) spawn command.
 
         Raises:
-            ValueError: If `num_columns` or `num_rows` are not positive integers,
-                        or if `spawn` is False and `instance_id` is not provided.
+            ValueError: If `num_columns` or `num_rows` are not positive integers.
             SidekickConnectionError (or subclass): If the connection to Sidekick
                 cannot be established during initialization.
 
@@ -109,10 +94,6 @@ class Grid(BaseComponent):
             >>>
             >>> # Create a wide grid
             >>> wide_grid = sidekick.Grid(20, 5)
-            >>>
-            >>> # Attach to an existing grid named "level-map" (assume it's 30x20)
-            >>> map_control = sidekick.Grid(instance_id="level-map", spawn=False,
-            ...                             num_columns=30, num_rows=20)
         """
         # --- Validate Dimensions ---
         if not isinstance(num_columns, int) or num_columns <= 0:
@@ -121,21 +102,17 @@ class Grid(BaseComponent):
              raise ValueError("Grid num_rows must be a positive integer.")
 
         # --- Prepare Spawn Payload ---
-        # Payload is only needed if we are creating (spawning) a new grid.
         spawn_payload: Dict[str, Any] = {}
-        if spawn:
-             # Keys must be camelCase for the protocol specification.
-             spawn_payload["numColumns"] = num_columns
-             spawn_payload["numRows"] = num_rows
+        # Keys must be camelCase for the protocol specification.
+        spawn_payload["numColumns"] = num_columns
+        spawn_payload["numRows"] = num_rows
 
         # --- Initialize Base Component ---
         # Handles connection activation, ID assignment, handler registration,
-        # and sending the 'spawn' command with the payload if spawn=True.
+        # and sending the 'spawn' command with the payload.
         super().__init__(
             component_type="grid",
-            instance_id=instance_id,
-            spawn=spawn,
-            payload=spawn_payload if spawn else None # Send payload only if spawning
+            payload=spawn_payload
         )
 
         # --- Store Local State (Dimensions) ---
@@ -148,8 +125,7 @@ class Grid(BaseComponent):
         # Placeholder for the user's click callback function.
         self._click_callback: Optional[Callable[[int, int], None]] = None
         # Log initialization details.
-        spawn_info = f"size={self.num_columns}x{self.num_rows}" if spawn else "attaching to existing"
-        logger.info(f"Grid '{self.target_id}' initialized ({spawn_info}).")
+        logger.info(f"Grid '{self.target_id}' initialized (size={self.num_columns}x{self.num_rows}).")
 
     # --- Read-only Properties for Dimensions ---
     @property

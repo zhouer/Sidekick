@@ -45,58 +45,36 @@ class Control(BaseComponent):
         target_id (str): The unique identifier for this control panel instance.
     """
 
-    def __init__(
-        self,
-        instance_id: Optional[str] = None,
-        spawn: bool = True
-    ):
-        """Initializes the Control panel object and optionally creates the UI element.
+    def __init__(self):
+        """Initializes the Control panel object and creates the UI element.
 
         Sets up an empty panel ready to receive controls via methods like `add_button`.
         Establishes the connection to Sidekick if not already done.
 
-        Args:
-            instance_id (Optional[str]): A specific ID for this control panel instance.
-                - If `spawn=True` (default): Optional. If None, a unique ID (e.g.,
-                  "control-1") is generated automatically.
-                - If `spawn=False`: **Required**. Must match the ID of an existing
-                  control panel element in the Sidekick UI to attach to.
-            spawn (bool): If True (the default), a command is sent to Sidekick
-                to create a new, empty control panel UI element. If False, the
-                library assumes a panel with the given `instance_id` already exists,
-                and this Python object simply connects to it.
-
         Raises:
-            ValueError: If `spawn` is False and `instance_id` is not provided.
             SidekickConnectionError (or subclass): If the connection to Sidekick
                 cannot be established during initialization.
 
         Examples:
             >>> # Create a new panel to hold buttons and inputs
-            >>> sim_controls = sidekick.Control(instance_id="simulation-controls")
+            >>> sim_controls = sidekick.Control()
             >>> sim_controls.add_button("start_btn", "Run Simulation")
-            >>>
-            >>> # Attach to an existing panel (e.g., created by another script)
-            >>> existing_panel = sidekick.Control(instance_id="shared-controls", spawn=False)
         """
         # The initial spawn command for a Control panel currently doesn't require
         # any specific payload data, as it just creates an empty container.
-        spawn_payload = {} if spawn else None
+        spawn_payload = {}
 
         # Initialize the base class (handles connection, ID, registration, spawn).
         super().__init__(
             component_type="control",
-            instance_id=instance_id,
-            spawn=spawn,
-            payload=spawn_payload, # Send empty payload if spawning
+            payload=spawn_payload
         )
         # --- Initialize Callbacks ---
         # Placeholders for the user-defined callback functions.
         self._click_callback: Optional[Callable[[str], None]] = None
         self._input_text_callback: Optional[Callable[[str, str], None]] = None
         # Log initialization.
-        spawn_info = "new panel" if spawn else "attaching to existing"
-        logger.info(f"Control panel '{self.target_id}' initialized ({spawn_info}).")
+        logger.info(f"Control panel '{self.target_id}' initialized.")
 
     def _internal_message_handler(self, message: Dict[str, Any]):
         """Handles incoming 'event' or 'error' messages for this control panel. (Internal).

@@ -250,7 +250,7 @@ def simulation_loop():
 
 if __name__ == "__main__":
     try:
-        controls = Control(instance_id="gol_controls")
+        controls = Control()
         controls.on_click(handle_control_click) # Register control click handler
         controls.add_button(control_id='start_btn', button_text='Start')
         controls.add_button(control_id='stop_btn', button_text='Stop')
@@ -258,10 +258,10 @@ if __name__ == "__main__":
         controls.add_button(control_id='random_btn', button_text='Randomize')
         controls.add_button(control_id='clear_btn', button_text='Clear')
 
-        grid = Grid(num_columns=GRID_WIDTH, num_rows=GRID_HEIGHT, instance_id="gol_grid")
+        grid = Grid(num_columns=GRID_WIDTH, num_rows=GRID_HEIGHT)
         grid.on_click(handle_grid_click) # Register grid click handler
 
-        console = Console(instance_id="gol_console")
+        console = Console()
         console.print("Welcome to Conway's Game of Life!")
         console.print(f"Grid Size: {GRID_WIDTH}x{GRID_HEIGHT}. Delay: {SIM_DELAY}s")
 

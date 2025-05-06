@@ -68,8 +68,6 @@ class BaseComponent:
     def __init__(
         self,
         component_type: str,
-        instance_id: Optional[str] = None,
-        spawn: bool = True,
         payload: Optional[Dict[str, Any]] = None,
     ):
         """Initializes the base component, setting up ID, connection, and registration.
@@ -81,45 +79,26 @@ class BaseComponent:
             a **blocking call** the *first* time any component is created in a script.
             It ensures the WebSocket connection is established and the Sidekick UI
             is ready before proceeding. Raises `SidekickConnectionError` on failure.
-        2.  **Assigns ID:** Determines the unique `target_id` for this instance, either
-            using the provided `instance_id` or generating one automatically if `spawn`
-            is True and `instance_id` is None.
+        2.  **Assigns ID:** Generates a unique `target_id` for this instance automatically.
         3.  **Registers Handler:** Registers this instance's `_internal_message_handler`
             method with the `connection` component, allowing it to receive messages
             specifically targeted at this instance's `target_id`.
-        4.  **Spawns UI Element (Optional):** If `spawn` is True, sends the initial
-            'spawn' command to the Sidekick UI via the WebSocket, instructing it
-            to create the corresponding visual element (using the provided `payload`
-            for initial configuration).
+        4.  **Spawns UI Element:** Sends the initial 'spawn' command to the Sidekick UI
+            via the WebSocket, instructing it to create the corresponding visual element
+            (using the provided `payload` for initial configuration).
 
         Args:
             component_type (str): The internal type name of the component (e.g., "grid",
                 "console", "viz"). This must match the type expected by the
                 Sidekick UI and defined in the communication protocol.
-            instance_id (Optional[str]): A specific ID for this component instance.
-                If `spawn` is True (default), this is optional; if None, a unique ID
-                (e.g., "grid-1") is generated automatically. Providing an ID when
-                spawning allows deterministic referencing but requires user management
-                of uniqueness. If `spawn` is False (attaching to an existing UI
-                element), this ID is **required** and must exactly match the ID of
-                the pre-existing element in the Sidekick UI panel.
-            spawn (bool): If True (the default), a "spawn" command is sent to
-                Sidekick immediately after connection readiness to create the
-                corresponding UI element using the `payload`. If False, the library
-                assumes the UI element with the given `instance_id` already exists,
-                and this Python object will simply "attach" to it to send subsequent
-                commands (`update`, `remove`) or receive events/errors. The `payload`
-                is ignored when `spawn` is False.
             payload (Optional[Dict[str, Any]]): A dictionary containing the initial
                 configuration data needed by the Sidekick UI to correctly create
                 (spawn) the visual element (e.g., grid dimensions, console settings,
-                canvas size). This is **only** used if `spawn` is True. Keys within
-                this dictionary should generally conform to the `camelCase` convention
-                required by the Sidekick communication protocol. Defaults to None.
+                canvas size). Keys within this dictionary should generally conform
+                to the `camelCase` convention required by the Sidekick communication
+                protocol. Defaults to None.
 
         Raises:
-            ValueError: If `spawn` is False but no `instance_id` was provided, or
-                        if the determined `target_id` ends up being empty.
             SidekickConnectionError (or subclass): If `connection.activate_connection()`
                 fails (e.g., cannot connect, timeout waiting for UI).
         """
@@ -133,36 +112,22 @@ class BaseComponent:
         # Placeholder for the user-defined error callback function.
         self._error_callback: Optional[Callable[[str], None]] = None
 
-        # --- Determine the Target ID ---
-        # Validate instance_id requirement when attaching to an existing element.
-        if not spawn and instance_id is None:
-            raise ValueError(f"instance_id is required when spawn=False for component type '{component_type}'")
+        # --- Generate a unique Target ID ---
+        self.target_id = generate_unique_id(component_type)
 
-        # Assign target_id: Use provided ID if given, otherwise generate one ONLY if spawning.
-        # If not spawning, instance_id is guaranteed to be non-None due to the check above.
-        self.target_id = instance_id if instance_id is not None else \
-                         (generate_unique_id(component_type) if spawn else '') # Fallback to empty if logic fails
-
-        # Final check to ensure target_id is valid. Should ideally not be triggered.
-        if not self.target_id:
-             raise ValueError(f"Could not determine a valid target_id for component '{component_type}' "
-                              f"(spawn={spawn}, instance_id={instance_id})")
-
-        logger.debug(f"Initializing BaseComponent: type='{component_type}', id='{self.target_id}', spawn={spawn}")
+        logger.debug(f"Initializing BaseComponent: type='{component_type}', id='{self.target_id}'")
 
         # --- Register with Connection Manager ---
         # Tell the connection component that messages from the UI with 'src' == self.target_id
         # should be delivered to this instance's _internal_message_handler method.
         connection.register_message_handler(self.target_id, self._internal_message_handler)
 
-        # --- Send Spawn Command (if requested) ---
-        if spawn:
-            # Use the provided payload, defaulting to an empty dictionary if None.
-            # Subclass __init__ methods are responsible for constructing the correct payload
-            # with camelCase keys as required by the protocol.
-            final_payload = payload or {}
-            self._send_command("spawn", final_payload)
-        # else: If not spawning, we assume the UI element already exists and do nothing here.
+        # --- Send Spawn Command ---
+        # Use the provided payload, defaulting to an empty dictionary if None.
+        # Subclass __init__ methods are responsible for constructing the correct payload
+        # with camelCase keys as required by the protocol.
+        final_payload = payload or {}
+        self._send_command("spawn", final_payload)
 
     def _internal_message_handler(self, message: Dict[str, Any]):
         """Handles incoming messages (events/errors) targeted at this component instance. (Internal).

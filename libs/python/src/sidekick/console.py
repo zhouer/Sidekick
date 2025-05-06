@@ -54,37 +54,24 @@ class Console(BaseComponent):
     """
     def __init__(
         self,
-        instance_id: Optional[str] = None,
-        spawn: bool = True,
         initial_text: str = "",
         show_input: bool = False
     ):
-        """Initializes the Console object and optionally creates the UI element.
+        """Initializes the Console object and creates the UI element.
 
         Sets up the console and configures its appearance (e.g., whether to show
         an input field). Establishes the connection to Sidekick if not already done.
 
         Args:
-            instance_id (Optional[str]): A specific ID for this console instance.
-                - If `spawn=True` (default): Optional. If None, a unique ID (e.g.,
-                  "console-1") is generated automatically.
-                - If `spawn=False`: **Required**. Must match the ID of an existing
-                  console element in the Sidekick UI to attach to.
-            spawn (bool): If True (the default), a command is sent to Sidekick
-                to create a new console UI element. If False, the library assumes
-                a console element with the given `instance_id` already exists, and
-                this Python object simply connects to it. `initial_text` and
-                `show_input` arguments are ignored if `spawn=False`.
             initial_text (str): A line of text to display immediately when the
-                console UI element is first created. Only used if `spawn=True`.
+                console UI element is first created.
                 Defaults to an empty string "".
             show_input (bool): If True, an input field and submit button are included
                 at the bottom of the console UI, allowing the user to type and send
                 text back to the script (handled via `on_input_text()`). If False
-                (default), only the text output area is shown. Only used if `spawn=True`.
+                (default), only the text output area is shown.
 
         Raises:
-            ValueError: If `spawn` is False and `instance_id` is not provided.
             SidekickConnectionError (or subclass): If the connection to Sidekick
                 cannot be established during initialization.
 
@@ -98,30 +85,25 @@ class Console(BaseComponent):
             >>> # (Requires using interactive_console.on_input_text() and sidekick.run_forever())
         """
         # --- Prepare Spawn Payload ---
-        # Payload is only needed if we are creating (spawning) a new console.
         spawn_payload: Dict[str, Any] = {}
-        if spawn:
-            # Keys must be camelCase for the protocol specification.
-            spawn_payload["showInput"] = bool(show_input) # Ensure it's a boolean value
-            # Only include initial text in payload if it's not empty.
-            if initial_text:
-                 spawn_payload["text"] = str(initial_text) # Ensure it's a string
+        # Keys must be camelCase for the protocol specification.
+        spawn_payload["showInput"] = bool(show_input) # Ensure it's a boolean value
+        # Only include initial text in payload if it's not empty.
+        if initial_text:
+             spawn_payload["text"] = str(initial_text) # Ensure it's a string
 
         # --- Initialize Base Class ---
         # This handles connection activation, ID assignment, handler registration,
-        # and sending the 'spawn' command with the payload if spawn=True.
+        # and sending the 'spawn' command with the payload.
         super().__init__(
             component_type="console",
-            instance_id=instance_id,
-            spawn=spawn,
-            payload=spawn_payload if spawn else None # Send payload only if spawning
+            payload=spawn_payload
         )
         # --- Initialize Callback ---
         # Placeholder for the user's input text callback function.
         self._input_text_callback: Optional[Callable[[str], None]] = None
         # Log initialization details.
-        spawn_info = f"show_input={show_input}" if spawn else "attaching to existing"
-        logger.info(f"Console '{self.target_id}' initialized ({spawn_info}).")
+        logger.info(f"Console '{self.target_id}' initialized (show_input={show_input}).")
 
     def _internal_message_handler(self, message: Dict[str, Any]):
         """Handles incoming 'event' or 'error' messages for this console. (Internal).

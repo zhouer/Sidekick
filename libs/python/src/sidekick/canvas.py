@@ -313,10 +313,8 @@ class Canvas(BaseComponent):
         self,
         width: int,
         height: int,
-        instance_id: Optional[str] = None,
-        spawn: bool = True,
     ):
-        """Initializes a new Canvas object and optionally creates its UI element in Sidekick.
+        """Initializes a new Canvas object and creates its UI element in Sidekick.
 
         Sets up the dimensions and prepares the canvas for drawing commands. The
         connection to Sidekick is established automatically during this initialization
@@ -327,24 +325,9 @@ class Canvas(BaseComponent):
                 Must be a positive integer.
             height (int): The desired height of the canvas drawing area in pixels.
                 Must be a positive integer.
-            instance_id (Optional[str]): A specific ID to assign to this canvas instance.
-                - If `spawn=True` (default): If provided, this ID will be used. Useful
-                  for deterministic identification. If `None`, a unique ID (e.g.,
-                  "canvas-1") will be generated automatically.
-                - If `spawn=False`: This ID is **required** and must match the ID
-                  of an existing canvas element already present in the Sidekick UI
-                  that this Python object should connect to and control.
-            spawn (bool): If `True` (the default), a command is sent to Sidekick
-                (after connection) to create a new canvas UI element with the specified
-                `width` and `height`. If `False`, the library assumes a canvas element
-                with the given `instance_id` already exists in the UI, and this Python
-                object will simply attach to it for sending drawing commands or receiving
-                events. When `spawn=False`, the `width` and `height` arguments are
-                still validated locally but are not sent in the (empty) spawn command.
 
         Raises:
-            ValueError: If `width` or `height` are not positive integers, or if
-                `spawn` is False and `instance_id` is not provided.
+            ValueError: If `width` or `height` are not positive integers.
             SidekickConnectionError (or subclass): If the connection to the
                 Sidekick UI cannot be established or fails during initialization.
 
@@ -352,12 +335,8 @@ class Canvas(BaseComponent):
             >>> # Create a new 300x200 canvas in Sidekick
             >>> main_canvas = sidekick.Canvas(300, 200)
             >>>
-            >>> # Create another canvas with a specific ID
-            >>> mini_map = sidekick.Canvas(100, 100, instance_id="ui-mini-map")
-            >>>
-            >>> # Assume a canvas with ID "debug-overlay" already exists in Sidekick.
-            >>> # Attach a Python object to control it (local dimensions needed for validation).
-            >>> overlay_control = sidekick.Canvas(100, 50, instance_id="debug-overlay", spawn=False)
+            >>> # Create another canvas
+            >>> mini_map = sidekick.Canvas(100, 100)
         """
         # --- Validate Dimensions ---
         if not isinstance(width, int) or width <= 0:
@@ -366,24 +345,20 @@ class Canvas(BaseComponent):
             raise ValueError("Canvas height must be a positive integer.")
 
         # --- Prepare Spawn Payload ---
-        # The payload is only needed if we are creating (spawning) a new canvas.
         spawn_payload: Dict[str, Any] = {}
-        if spawn:
-            # Keys must be camelCase to match the communication protocol specification.
-            spawn_payload["width"] = width
-            spawn_payload["height"] = height
+        # Keys must be camelCase to match the communication protocol specification.
+        spawn_payload["width"] = width
+        spawn_payload["height"] = height
 
         # --- Initialize Base Class ---
         # This handles:
         # - Establishing the connection (blocking if needed, raises on error).
-        # - Generating or assigning the target_id.
+        # - Generating the target_id.
         # - Registering internal message handlers with the connection package.
-        # - Sending the 'spawn' command with the payload if spawn=True.
+        # - Sending the 'spawn' command with the payload.
         super().__init__(
             component_type="canvas",
-            instance_id=instance_id,
-            spawn=spawn,
-            payload=spawn_payload if spawn else None, # Send payload only if spawning
+            payload=spawn_payload
         )
 
         # --- Store Dimensions Locally ---
@@ -405,7 +380,7 @@ class Canvas(BaseComponent):
         # (though typical Sidekick drawing is single-threaded).
         self._buffer_lock = threading.Lock()
 
-        logger.info(f"Canvas '{self.target_id}' initialized (spawn={spawn}, size={self.width}x{self.height}).")
+        logger.info(f"Canvas '{self.target_id}' initialized (size={self.width}x{self.height}).")
 
     # --- Read-only Properties for Dimensions ---
     @property

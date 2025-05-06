@@ -409,14 +409,14 @@ def handle_control_click(control_id: str):
 # ==================================
 if __name__ == "__main__":
     try:
-        controls = Control(instance_id="maze_controls")
+        controls = Control()
         controls.on_click(handle_control_click)
         controls.add_button(control_id='generate_btn', button_text='Generate Maze (Prim\'s)') # Updated label
         controls.add_button(control_id='solve_btn', button_text='Solve Maze (DFS)')
 
-        grid = Grid(num_columns=grid_width, num_rows=grid_height, instance_id="maze_grid")
+        grid = Grid(num_columns=grid_width, num_rows=grid_height)
 
-        console = Console(instance_id="maze_console")
+        console = Console()
         console.print("Maze Generator & Solver Initialized.")
         console.print(f"Grid Size: {grid_width}x{grid_height}")
 
