@@ -9,6 +9,7 @@ Key Responsibilities:
 *   **Connecting:** Automatically attempts to connect to the Sidekick server
     (usually running within the VS Code extension) the first time your script
     tries to interact with a Sidekick component (e.g., when you create `sidekick.Grid()`).
+    Upon successful connection and UI readiness, the Sidekick UI panel is **automatically cleared**.
 *   **Blocking Connection:** It **pauses** (blocks) your script during the initial
     connection phase until it confirms that both the server is reached and the
     Sidekick UI panel is loaded and ready to receive commands. This ensures your
@@ -16,19 +17,21 @@ Key Responsibilities:
 *   **Sending Commands:** Provides the mechanism (`send_message`, used internally
     by components like Grid, Console) to send instructions (like "set color", "print text")
     to the Sidekick UI.
-*   **Receiving Events:** Handles incoming messages from the Sidekick UI (like button 
-    clicks or text input) and routes them to the correct handler function in your 
+*   **Receiving Events:** Handles incoming messages from the Sidekick UI (like button
+    clicks or text input) and routes them to the correct handler function in your
     script (e.g., the function you provided to `grid.on_click`).
 *   **Error Handling:** Raises specific `SidekickConnectionError` exceptions if it
     cannot connect, if the UI doesn't respond, or if the connection is lost later.
 *   **Lifecycle Management:** Handles clean shutdown procedures, ensuring resources
     are released when your script finishes or when `sidekick.shutdown()` is called.
+    The Sidekick UI panel is **not cleared** on shutdown, preserving its state for
+    potential inspection or re-connection by a subsequent script run.
 
 Note:
     You typically interact with this component indirectly through functions like
     `sidekick.run_forever()` or `sidekick.shutdown()`, or simply by using the
     visual component classes (`Grid`, `Console`, etc.). However, understanding its
-    role helps explain the library's behavior, especially regarding connection
+    role helps explain the library's behavior, especially regarding connection, UI clearing,
     and event handling. The library does **not** automatically attempt to reconnect
     if the connection is lost after being established.
 """
@@ -85,9 +88,6 @@ _peer_id: Optional[str] = None
 _connection_status: ConnectionStatus = ConnectionStatus.DISCONNECTED
 # Stores the peer IDs of Sidekick UI instances that have announced they are online via system/announce.
 _sidekick_peers_online: Set[str] = set()
-# Configuration flags set via sidekick.set_config.
-_clear_on_connect: bool = True   # Should the UI be cleared when connection becomes ready?
-_clear_on_disconnect: bool = False # Should we *try* to clear the UI on clean shutdown?
 # An optional global handler (for debugging/advanced use) that receives *all* messages.
 _global_message_handler: Optional[Callable[[Dict[str, Any]], None]] = None
 
@@ -247,15 +247,14 @@ def _handle_incoming_message(message_data: Dict[str, Any]):
                         logger.info(f"First Sidekick UI '{peer_id}' announced online. Connection is now READY.")
                         # Transition the state to fully ready.
                         _connection_status = ConnectionStatus.CONNECTED_READY
-                        # If configured, send a 'clearAll' command now that the UI is ready.
-                        if _clear_on_connect:
-                            logger.info("clear_on_connect is True, sending global/clearAll.")
-                            try:
-                                # Can call clear_all directly now, connection assumed ready.
-                                clear_all()
-                            except SidekickConnectionError as e_clr:
-                                # Log if the clear fails, but don't stop the handler.
-                                logger.error(f"Failed to send clearAll on connect: {e_clr}")
+                        # Always send a 'clearAll' command now that the UI is ready.
+                        logger.info("Connection ready, sending global/clearAll to clear UI.")
+                        try:
+                            # Can call clear_all directly now, connection assumed ready.
+                            clear_all()
+                        except SidekickConnectionError as e_clr:
+                            # Log if the clear fails, but don't stop the handler.
+                            logger.error(f"Failed to send clearAll on connect: {e_clr}")
                         # IMPORTANT: Signal the main thread (waiting in activate_connection)
                         # by setting the _ready_event. This unblocks the script.
                         _ready_event.set()
@@ -419,40 +418,6 @@ def set_url(url: str):
              raise ValueError(msg) # Raise error for invalid URL format
         _ws_url = url
         logger.info(f"Sidekick WebSocket URL set to: {_ws_url}")
-
-def set_config(clear_on_connect: bool = True, clear_on_disconnect: bool = False):
-    """Configures automatic clearing behavior for the Sidekick UI panel.
-
-    Like `set_url`, you **must** call this function *before* the first connection
-    attempt is made (i.e., before creating any Sidekick components). Calling it later
-    will have no effect unless `shutdown()` is called first.
-
-    Args:
-        clear_on_connect (bool): If True (the default), the library will automatically
-            send a command to clear *all* existing elements from the Sidekick UI panel
-            as soon as the connection becomes fully ready (i.e., when the UI panel
-            signals it's online and ready). This provides a clean slate for your
-            script. Set this to False if you want your script to potentially add to
-            or interact with UI elements left over from a previous script run (less common).
-        clear_on_disconnect (bool): If True (default is False), the library will
-            *attempt* (on a best-effort basis) to send a command to clear the Sidekick
-            UI when your script disconnects cleanly. This happens when `shutdown()`
-            is called explicitly or when the script exits normally (due to the `atexit`
-            handler). This cleanup might *not* happen if the connection is lost
-            abruptly or due to an error.
-    """
-    global _clear_on_connect, _clear_on_disconnect
-    # Acquire lock for safe state checking and modification.
-    with _connection_lock:
-        # Only allow changing config if we are fully disconnected.
-        if _connection_status != ConnectionStatus.DISCONNECTED:
-            logger.warning("Cannot change Sidekick config after a connection attempt "
-                           "has been made. Call sidekick.shutdown() first if needed.")
-            return
-        _clear_on_connect = bool(clear_on_connect) # Ensure boolean type
-        _clear_on_disconnect = bool(clear_on_disconnect) # Ensure boolean type
-        logger.info(f"Sidekick config set: clear_on_connect={_clear_on_connect}, "
-                    f"clear_on_disconnect={_clear_on_disconnect}")
 
 def activate_connection():
     """Ensures the connection to Sidekick is established and fully ready. (Internal use).
@@ -634,8 +599,8 @@ def close_connection(log_info=True, is_exception=False, reason=""):
     """Closes the communication channel and cleans up resources. (Internal use).
 
     This is the core cleanup function. It closes the communication channel,
-    sends final 'offline'/'clearAll' messages (best-effort), and resets internal
-    state variables.
+    sends a final 'offline' message (best-effort), and resets internal
+    state variables. The UI is not cleared on close/shutdown.
 
     It's called automatically by `shutdown()` and the `atexit` handler for clean
     exits, and also triggered internally by error handlers in `send_message`
@@ -676,19 +641,10 @@ def close_connection(log_info=True, is_exception=False, reason=""):
         _sidekick_peers_online.clear() # Stop tracking UI peers.
 
         # --- 3. Best-Effort Cleanup Messages ---
-        # Attempt to send final messages ('clearAll' if configured, 'offline' announce)
-        # ONLY if this is a clean shutdown (not an error) AND we were actually connected.
-        # These are best-effort and might fail if the connection is already broken.
+        # Attempt to send final 'offline' announce message if this is a clean shutdown
+        # and we were actually connected. This is best-effort. The UI is not cleared.
         channel_temp = _channel # Get reference under lock
         if not is_exception and channel_temp and channel_temp.is_connected() and initial_status != ConnectionStatus.CONNECTING:
-             # Send clearAll if configured for disconnect.
-             if _clear_on_disconnect:
-                  logger.debug("Attempting to send global/clearAll on disconnect (best-effort).")
-                  clear_all_msg = {"id": 0, "component": "global", "type": "clearAll", "payload": None}
-                  try: _send_raw(channel_temp, clear_all_msg)
-                  # Ignore failures here, as connection might be closing.
-                  except Exception: logger.warning("Failed to send clearAll during disconnect (ignored).")
-
              # Send offline announce.
              logger.debug("Attempting to send offline system announce (best-effort).")
              try: _send_system_announce("offline")
@@ -844,7 +800,7 @@ def shutdown():
     the following actions:
     - Signals `run_forever()` (if it's currently running) to stop its waiting loop.
     - Attempts to send a final 'offline' announcement to the Sidekick server.
-    - Attempts to send a 'clearAll' command to the UI (if configured via `set_config`).
+    - The UI is *not* cleared on shutdown, preserving its state.
     - Closes the underlying communication channel.
     - Clears internal state and message handlers.
 
@@ -955,7 +911,7 @@ def register_global_message_handler(handler: Optional[Callable[[Dict[str, Any]],
 
     Args:
         handler (Optional[Callable[[Dict[str, Any]], None]]): The function to call
-            with each raw message dictionary received from the communication channel. 
+            with each raw message dictionary received from the communication channel.
             It should accept one argument (the message dict). Pass `None` to remove any
             currently registered global handler.
 
@@ -982,5 +938,5 @@ def register_global_message_handler(handler: Optional[Callable[[Dict[str, Any]],
 # Register the public shutdown() function to be called automatically when the
 # Python interpreter exits normally (e.g., script finishes, sys.exit()).
 # This ensures a best-effort attempt to close the WebSocket, stop the listener,
-# and send cleanup messages like 'offline' or 'clearAll'.
+# and send an 'offline' announcement. The UI is not cleared.
 atexit.register(shutdown)

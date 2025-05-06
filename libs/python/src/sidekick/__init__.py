@@ -66,7 +66,6 @@ if not logger.hasHandlers():
 # and allow for basic configuration and script lifecycle control.
 from .connection import (
     set_url,                          # Set the server URL (call before connecting).
-    set_config,                       # Configure connection behavior (call before connecting).
     # close_connection is mostly internal, prefer shutdown()
     activate_connection,              # Ensures connection is ready (blocks if not, called implicitly).
     clear_all,                        # Clears all UI elements created by this script in Sidekick.
@@ -105,7 +104,6 @@ __all__ = [
     '__version__',
     # Config/Connection/Lifecycle
     'set_url',
-    'set_config',
     'clear_all',
     'register_global_message_handler',
     'run_forever',
