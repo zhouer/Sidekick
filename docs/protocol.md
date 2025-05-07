@@ -3,36 +3,38 @@
 ## 1. Introduction
 
 This document specifies the **definitive communication protocol** used within the Sidekick ecosystem.
-It defines the structure and meaning of messages exchanged between the **Hero** (user's script/library, e.g., `sidekick-py`) and the **Sidekick Frontend UI** (typically a React application running in a VS Code Webview), relayed via the **Sidekick Server** component (usually running within the VS Code Extension).
+It defines the structure and meaning of messages exchanged between the **Hero** (user's script/library, e.g., `sidekick-py`) and the **Sidekick Frontend UI** (typically a React application running in a VS Code Webview or as a standalone web page), relayed via the **Sidekick Server** component (usually running within the VS Code Extension) or handled directly in a client-side Python environment like Pyodide.
 
 Adherence to this protocol is **crucial** for interoperability between all components. Implementers of Hero libraries or Sidekick UI components **must** strictly follow this specification.
 
 The protocol enables:
 *   Peer Discovery & Status Management (`system` component)
 *   Global Operations (`global` component)
-*   Component Instance Control (creating, updating, removing UI elements)
+*   Component Instance Control (creating, updating, removing UI elements, changing parent)
 *   Component Feedback (sending user interaction events and errors back to the Hero)
 
 ## 2. Transport Layer
 
-*   **Mechanism:** WebSocket
-*   **Default Endpoint:** `ws://localhost:5163` (Configurable via Hero library functions like `sidekick.set_url()` and corresponding VS Code extension settings). The Server component listens, while Hero and Sidekick UI components act as clients connecting to the Server.
+*   **Mechanism:**
+    *   WebSocket (Default): Used when Hero runs in a separate process (e.g., standard Python) and UI is in VS Code Webview or browser.
+    *   Direct JavaScript `postMessage` / event listeners: Used when Hero runs client-side (e.g., Pyodide in a Web Worker) and UI is in the main browser thread.
+*   **Default Endpoint (WebSocket):** `ws://localhost:5163` (Configurable via Hero library functions and corresponding VS Code extension settings).
 *   **Encoding:** Messages are encoded as JSON strings (UTF-8).
-*   **Ordering:** WebSocket **guarantees** message delivery order between a single Hero client and a single Sidekick UI client (as relayed through the server). This eliminates the need for sequence numbers within the protocol messages themselves for ordering purposes.
+*   **Ordering:** The transport mechanism (WebSocket or reliable `postMessage` handling) **guarantees** message delivery order between a single Hero client and a single Sidekick UI client. This eliminates the need for sequence numbers within the protocol messages themselves for ordering purposes.
 
 ## 3. Base Message Format
 
-All messages exchanged over the WebSocket are JSON objects adhering to the following base structure:
+All messages exchanged are JSON objects adhering to the following base structure:
 
 ```typescript
 interface BaseMessage {
   /** Reserved for future use. Currently defaults to 0. */
   id: number;
-  /** Identifies the target/source component type (e.g., "system", "global" modules, or visual components like "grid", "console", "control", "canvas", "viz"). */
+  /** Identifies the target/source component type (e.g., "system", "global", or visual components like "grid", "console", "canvas", "viz", "label", "markdown", "button", "textbox", "row", "column"). */
   component: string;
-  /** Specifies the action or event type (e.g., "spawn", "update", "remove", "announce", "event", "error", "clearAll"). */
+  /** Specifies the action or event type (e.g., "spawn", "update", "remove", "announce", "event", "error", "clearAll", "changeParent"). */
   type: string;
-  /** Target component instance ID (Required for Hero -> Sidekick component control messages: spawn, update, remove). */
+  /** Target component instance ID (Required for Hero -> Sidekick component control messages: spawn, update, remove, changeParent). */
   target?: string;
   /** Source component instance ID (Required for Sidekick -> Hero feedback messages: event, error). */
   src?: string;
@@ -51,11 +53,11 @@ Hero libraries (like `sidekick-py`) are responsible for converting their native 
 
 ## 4. Connection Lifecycle & Peer Discovery (`system` Component)
 
-Handles peer status announcements and discovery via the central Server.
+Handles peer status announcements and discovery.
 
 ### 4.1 Message: `system/announce`
 
-*   **Direction:** Peer (Hero or Sidekick) -> Server -> Other Peers
+*   **Direction:** Peer (Hero or Sidekick) -> Server/Other Peer -> Other Peers/Server
 *   **Purpose:** Announces the peer's connection status (`online` / `offline`), role, and version. Signals readiness to communicate or graceful disconnection.
 *   **`target` / `src`:** Omitted.
 *   **Payload:** `SystemAnnouncePayload`
@@ -74,7 +76,7 @@ interface SystemAnnouncePayload {
   timestamp: number;
 }
 
-interface SystemAnnounceMessage {
+interface SystemAnnounceMessage extends BaseMessage {
   id: number; // 0
   component: "system";
   type: "announce";
@@ -84,15 +86,20 @@ interface SystemAnnounceMessage {
 }
 ```
 
-**Connection Flow:**
-
+**Connection Flow (WebSocket Example):**
 1.  **Connect:** Peer (Hero/Sidekick) establishes WebSocket connection to Server.
 2.  **Announce Online:** Peer immediately sends `system/announce` message with `status: "online"`.
-3.  **Broadcast:** Server relays this `online` announcement to all *other* connected peers.
-4.  **History:** Server sends a list of *currently online* peer announcements (from `lastAnnouncements` cache) **only to the newly connected peer**.
+3.  **Broadcast (Server):** Server relays this `online` announcement to all *other* connected peers.
+4.  **History (Server):** Server sends a list of *currently online* peer announcements (from `lastAnnouncements` cache) **only to the newly connected peer**.
 5.  **Ready State:** Peers use received announcements to track the status of others. Hero implementations **SHOULD** buffer non-`system` messages until they receive an `online` announce from at least one `sidekick` peer.
 6.  **Announce Offline (Graceful):** Before intentionally closing the connection, a Peer **SHOULD** send a `system/announce` message with `status: "offline"`. The Server relays this.
-7.  **Abnormal Disconnect:** If a Peer disconnects without sending an offline announce (e.g., crash, network loss), the Server detects the closure. It then generates an `offline` announce message on behalf of the disconnected Peer and broadcasts it to remaining Peers.
+7.  **Abnormal Disconnect (Server):** If a Peer disconnects without sending an offline announce, the Server detects the closure. It then generates an `offline` announce message on behalf of the disconnected Peer and broadcasts it to remaining Peers.
+**Connection Flow (Pyodide Example):**
+1.  **Initialize:** Sidekick UI initializes Pyodide Worker. Worker loads `sidekick-py`.
+2.  **Announce Online (Sidekick UI to Worker):** UI sends `system/announce` (`role: "sidekick"`, `status: "online"`) to the Worker.
+3.  **Hero Ready:** Worker's `sidekick-py` receives this, considers UI ready.
+4.  **Announce Online (Worker to Sidekick UI):** Worker's `sidekick-py` sends `system/announce` (`role: "hero"`, `status: "online"`) back to the UI.
+5.  **Announce Offline:** Graceful shutdown involves similar `offline` announcements.
 
 ## 5. Global Operations (`global` Component)
 
@@ -101,16 +108,16 @@ Affect the entire Sidekick UI state, not specific component instances.
 ### 5.1 Message: `global/clearAll`
 
 *   **Direction:** Hero -> Sidekick
-*   **Purpose:** Instructs the Sidekick UI to remove all currently displayed component instances, effectively resetting the panel.
+*   **Purpose:** Instructs the Sidekick UI to remove all currently displayed component instances, effectively resetting the panel to its initial state (e.g., only the root container).
 *   **`target` / `src`:** Omitted.
 *   **Payload:** `null` or Omitted.
 
 ```typescript
-interface GlobalClearAllMessage {
+interface GlobalClearAllMessage extends BaseMessage {
   id: number; // 0
   component: "global";
   type: "clearAll";
-  payload?: null; // Explicitly null or omitted
+  payload?: null;
   target?: never;
   src?: never;
 }
@@ -118,17 +125,37 @@ interface GlobalClearAllMessage {
 
 ## 6. Core Component Interaction Message Types
 
-These message types facilitate the control of specific visual component instances and the feedback from those instances. They are typically sent only after a Hero determines (via `system/announce`) that a Sidekick UI is ready.
+These message types facilitate the control of specific UI component instances and the feedback from those instances.
 
 *   **Hero -> Sidekick:**
-    *   `spawn`: Creates a new component instance in the UI. Requires `target` (the ID for the new instance) and a component-specific `payload` containing initial configuration.
-    *   `update`: Modifies an existing component instance or performs actions within it. Requires `target` (the ID of the instance) and a component-specific `payload` describing the action and its options (e.g., `{ action: "drawLine", options: {...} }`). **Note:** While the protocol defines the `update` message structure, the *handling* of this message in the UI might differ based on the component's implementation (state-driven vs. imperative). See [WebApp Development Guide](./webapp-development.md).
-    *   `remove`: Destroys a specific component instance in the UI. Requires `target` (the ID of the instance to remove). Payload is usually `null` or omitted.
+    *   `spawn`: Creates a new component instance in the UI. Requires `target` (the ID for the new instance) and a component-specific `payload` containing initial configuration and `parent` ID.
+    *   `update`: Modifies an existing component instance or performs actions within it. Requires `target` (the ID of the instance) and a component-specific `payload` describing the action and its options (e.g., `{ action: "setText", options: {...} }` or `{ action: "changeParent", options: {...} }`).
+    *   `remove`: Destroys a specific component instance in the UI. Requires `target` (the ID of the instance to remove). Payload is usually `null` or omitted. When a container is removed, its children are recursively removed by the UI.
 *   **Sidekick -> Hero:**
     *   `event`: Informs the Hero about user interactions or significant events within a specific component instance. Requires `src` (the ID of the instance generating the event) and a component-specific `payload` describing the event details.
     *   `error`: Reports an error encountered by a specific component instance or the Sidekick UI while processing a command related to that instance. Requires `src` (the ID of the instance where the error occurred) and a `payload` containing an error message.
 
 ## 7. Component-Specific Protocols
+
+All `spawn` payloads for visual components accept an optional `parent` field:
+```typescript
+interface BaseSpawnPayload {
+  /** Optional: The instance ID of the parent container component. If omitted, the component is added to the default top-level container (ID: "root"). */
+  parent?: string;
+}
+```
+The `update` message type includes a generic `changeParent` action for all components:
+```typescript
+interface ChangeParentUpdatePayload {
+  action: "changeParent";
+  options: {
+    /** Required: The instance ID of the new parent container. Set to "root" to move to the top-level container. */
+    parent: string;
+    /** Optional: The instance ID of a sibling component before which this component should be inserted. If omitted, appended to the end of the parent's children. (Future use) */
+    insertBefore?: string | null;
+  };
+}
+```
 
 ### 7.1 `grid` Component
 
@@ -139,56 +166,29 @@ These message types facilitate the control of specific visual component instance
 *   **`spawn` (Hero -> Sidekick)**
     *   **Payload:** `GridSpawnPayload` - Defines the initial dimensions of the grid.
     ```typescript
-    interface GridSpawnPayload {
-      /** Required: Number of columns in the grid (horizontal dimension). Must be > 0. */
-      numColumns: number;
-      /** Required: Number of rows in the grid (vertical dimension). Must be > 0. */
-      numRows: number;
+    interface GridSpawnPayload extends BaseSpawnPayload {
+      numColumns: number; // Required: Must be > 0.
+      numRows: number;    // Required: Must be > 0.
     }
     ```
 *   **`update` (Hero -> Sidekick)**
-    *   **Payload:** `GridUpdatePayload` (Discriminated Union based on `action`) - Performs operations on the grid or its cells.
+    *   **Payload:** `GridUpdatePayload | ChangeParentUpdatePayload`
     ```typescript
     type GridUpdatePayload =
       | {
-          /** Sets the background color of a specific cell. */
           action: "setColor";
-          options: {
-            /** Required: Column index (0-based, from left). */
-            x: number;
-            /** Required: Row index (0-based, from top). */
-            y: number;
-            /** Required: CSS color string (e.g., "red", "#FFF", "rgba(...)").
-             *  Set to `null` to clear the background color and revert to the default. */
-            color: string | null;
-          };
+          options: { x: number; y: number; color: string | null; }; // color: CSS color, null to clear.
         }
       | {
-          /** Sets the text content displayed within a specific cell. */
           action: "setText";
-          options: {
-            /** Required: Column index (0-based). */
-            x: number;
-            /** Required: Row index (0-based). */
-            y: number;
-            /** Required: Text to display. `null` or an empty string `""` clears the cell's text content. */
-            text: string | null;
-          };
+          options: { x: number; y: number; text: string | null; }; // text: null or "" to clear.
         }
       | {
-          /** Clears both the background color and text content of a single specified cell, resetting it to default. */
           action: "clearCell";
-          options: {
-            /** Required: Column index (0-based). */
-            x: number;
-            /** Required: Row index (0-based). */
-            y: number;
-          };
+          options: { x: number; y: number; };
         }
       | {
-          /** Clears the background color and text content of *all* cells in the grid simultaneously. */
-          action: "clear";
-          /** No specific options are needed for the 'clear' action. */
+          action: "clear"; // Clears all cells.
           options?: undefined | null;
         };
     ```
@@ -196,12 +196,9 @@ These message types facilitate the control of specific visual component instance
     *   **Payload:** `GridEventPayload` - Reports user interaction events.
     ```typescript
     interface GridEventPayload {
-      /** Required: Type of the event. Currently only "click" is supported. */
       event: "click";
-      /** Required: Column index (0-based) of the cell that was clicked. */
-      x: number;
-      /** Required: Row index (0-based) of the cell that was clicked. */
-      y: number;
+      x: number; // 0-based column index.
+      y: number; // 0-based row index.
     }
     ```
 
@@ -214,31 +211,21 @@ These message types facilitate the control of specific visual component instance
 *   **`spawn` (Hero -> Sidekick)**
     *   **Payload:** `ConsoleSpawnPayload` - Configures the initial state of the console.
     ```typescript
-    interface ConsoleSpawnPayload {
-      /** Required: If `true`, an input field and submit button are displayed at the bottom.
-       *  If `false`, only the text output area is shown. */
-      showInput: boolean;
-      /** Optional: A line of text to display in the output area when the console first appears.
-       *  If omitted, `null`, or `""`, the console starts empty. */
-      text?: string | null;
+    interface ConsoleSpawnPayload extends BaseSpawnPayload {
+      showInput: boolean; // Required: If true, show input field.
+      text?: string | null; // Optional: Initial text to display.
     }
     ```
 *   **`update` (Hero -> Sidekick)**
-    *   **Payload:** `ConsoleUpdatePayload` (Discriminated Union) - Modifies the console content.
+    *   **Payload:** `ConsoleUpdatePayload | ChangeParentUpdatePayload`
     ```typescript
     type ConsoleUpdatePayload =
       | {
-          /** Appends the provided text to the end of the console's output area. Newlines (`\n`) should be handled appropriately by the UI. */
           action: "append";
-          options: {
-            /** Required: The string content to append. */
-            text: string;
-          };
+          options: { text: string; }; // Required: Text to append.
         }
       | {
-          /** Clears all previously displayed text from the console output area. */
           action: "clear";
-          /** No specific options are needed for the 'clear' action. */
           options?: undefined | null;
         };
     ```
@@ -246,194 +233,45 @@ These message types facilitate the control of specific visual component instance
     *   **Payload:** `ConsoleEventPayload` - Reports user input submission.
     ```typescript
     interface ConsoleEventPayload {
-      /** Required: Type of the event. Currently only "inputText" is supported. */
       event: "inputText";
-      /** Required: The text string submitted by the user via the input field. */
-      value: string;
+      value: string; // Required: The text string submitted.
     }
     ```
 
-### 7.3 `control` Component
+### 7.3 `canvas` Component
 
-**Purpose:** Displays a dedicated panel where interactive UI controls, such as buttons and labeled text inputs, can be added dynamically from the Hero script. Allows the Hero script to react to button clicks and text submissions initiated by the user in the Sidekick UI.
+**Purpose:** Provides a 2D drawing surface for rendering graphics programmatically. Supports drawing basic shapes, text, and includes a double buffering mechanism for smooth animations. Origin (0,0) is top-left.
 
 **Message Types:**
 
 *   **`spawn` (Hero -> Sidekick)**
-    *   **Payload:** `ControlSpawnPayload` - Creates an empty control panel ready to receive controls.
+    *   **Payload:** `CanvasSpawnPayload`
     ```typescript
-    type ControlSpawnPayload = {}; // No specific payload options are currently needed for spawning an empty control panel.
-    ```
-*   **`update` (Hero -> Sidekick)**
-    *   **Payload:** `ControlUpdatePayload` (Discriminated Union) - Adds or removes controls from the panel.
-    ```typescript
-    type ControlUpdatePayload =
-      | {
-          /** Adds a new control element (e.g., a button or a text input) to the panel. */
-          action: "add";
-          /** Required: A unique identifier (string) for this specific control within the panel.
-           *  This ID is chosen by the Hero script and is used later to identify which control
-           *  triggered an event (in 'event' messages) or which control to remove. */
-          controlId: string;
-          options: {
-            /** Required: Specifies the type of control element to add. */
-            controlType: "button" | "textInput";
-            /** Required: Configuration settings specific to the `controlType`. */
-            config: {
-              /** Optional (used for `button` and `textInput` submit button):
-               *  Text label displayed on the button. If omitted for a button, the UI might default
-               *  to showing the `controlId`. If omitted for `textInput`, the submit button
-               *  gets a default label like "Submit". */
-              buttonText?: string;
-              /** Optional (used for `textInput`): Placeholder text displayed inside the
-               *  input field when it is empty. If omitted, no placeholder is shown. */
-              placeholder?: string;
-              /** Optional (used for `textInput`): An initial value to pre-fill in the
-               *  input field when it's added. If omitted, the field starts empty. */
-              initialValue?: string;
-            };
-          };
-        }
-      | {
-          /** Removes an existing control element from the panel, identified by its `controlId`. */
-          action: "remove";
-          /** Required: The unique identifier (`controlId`) of the control element to remove.
-           *  Must match the `controlId` used when the control was added. */
-          controlId: string;
-          /** No specific options are needed for the 'remove' action. */
-          options?: undefined | null;
-        };
-    ```
-*   **`event` (Sidekick -> Hero)**
-    *   **Payload:** `ControlEventPayload` (Discriminated Union) - Reports user interactions with controls.
-    ```typescript
-    type ControlEventPayload =
-      | {
-          /** Required: Indicates a button was pressed. */
-          event: "click";
-          /** Required: The `controlId` of the button that was clicked. */
-          controlId: string;
-          /** The `value` field is never present for button 'click' events. */
-          value?: never;
-        }
-      | {
-          /** Required: Indicates text was submitted from a text input control group. */
-          event: "inputText";
-          /** Required: The `controlId` of the text input control group (same ID used to add it). */
-          controlId: string;
-          /** Required: The text string that was entered by the user and submitted. */
-          value: string;
-        };
-    ```
-
-### 7.4 `canvas` Component
-
-**Purpose:** Provides a 2D drawing surface for rendering graphics programmatically. Supports drawing basic shapes (lines, rectangles, circles, polygons, ellipses), text, and includes a double buffering mechanism for creating smooth animations.
-
-**Key Concepts:**
-
-*   **Coordinate System:** Origin (0, 0) is the top-left corner. X increases right, Y increases down. All units are pixels.
-*   **Buffers:** The canvas operates with drawing buffers.
-    *   **Buffer 0:** The main, visible (onscreen) canvas. Drawing commands target this by default.
-    *   **Offscreen Buffers (ID > 0):** Hidden drawing surfaces created using the `createBuffer` action. Used for double buffering. Draw commands can target these by specifying their `bufferId`.
-*   **Double Buffering:** A technique for smooth animation. Draw the entire next frame onto an offscreen buffer, then draw that completed buffer onto the onscreen buffer in one step. This avoids flicker. Achieved via `createBuffer`, drawing actions with `bufferId > 0`, and `drawBuffer`.
-
-**Message Types:**
-
-*   **`spawn` (Hero -> Sidekick)**
-    *   **Payload:** `CanvasSpawnPayload` - Defines the dimensions of the main visible canvas.
-    ```typescript
-    interface CanvasSpawnPayload {
-      /** Required: Width of the canvas drawing area in pixels. Must be > 0. */
-      width: number;
-      /** Required: Height of the canvas drawing area in pixels. Must be > 0. */
-      height: number;
+    interface CanvasSpawnPayload extends BaseSpawnPayload {
+      width: number;  // Required: Canvas width in pixels (>0).
+      height: number; // Required: Canvas height in pixels (>0).
     }
     ```
 *   **`update` (Hero -> Sidekick)**
-    *   **Payload:** `CanvasUpdatePayload` (Discriminated Union) - Executes drawing commands or buffer management operations.
+    *   **Payload:** `CanvasUpdatePayload | ChangeParentUpdatePayload`
     ```typescript
-    // --- Base & Style Options ---
-    /** Base options included in most drawing/clearing actions. */
-    interface BaseBufferOptions {
-      /** Optional: The ID of the target buffer for the operation.
-       *  - If `0`, `null`, or omitted: targets the visible (onscreen) canvas.
-       *  - If > `0`: targets a specific offscreen buffer (must exist). */
-      bufferId?: number | null;
-    }
-    /** Common style options for outlined shapes. */
-    interface CommonStyleOptions {
-      /** Optional: CSS color string for the line/outline (e.g., 'black', '#FF0000'). Defaults to UI theme foreground. */
-      lineColor?: string;
-      /** Optional: Width (thickness) of the line/outline in pixels. Must be positive. Defaults to 1. */
-      lineWidth?: number;
-    }
-    /** Style options for shapes that can be filled and outlined. */
-    interface FillableStyleOptions extends CommonStyleOptions {
-      /** Optional: CSS color string to fill the shape's interior. If omitted or null, the shape is not filled. */
-      fillColor?: string | null;
-    }
-
+    // --- Style Options (camelCase) ---
+    interface CommonStyleOptions { lineColor?: string; lineWidth?: number; }
+    interface FillableStyleOptions extends CommonStyleOptions { fillColor?: string | null; }
     // --- Action-Specific Options ---
-    /** Options for the 'clear' action. */
-    interface ClearOptions extends BaseBufferOptions {}
-    /** Options for drawing a line segment. */
-    interface DrawLineOptions extends BaseBufferOptions, CommonStyleOptions {
-        x1: number; y1: number; x2: number; y2: number; // Required: Start and end coordinates.
-    }
-    /** Options for drawing a rectangle. */
-    interface DrawRectOptions extends BaseBufferOptions, FillableStyleOptions {
-        x: number; y: number; width: number; height: number; // Required: Top-left corner and dimensions.
-    }
-    /** Options for drawing a circle. */
-    interface DrawCircleOptions extends BaseBufferOptions, FillableStyleOptions {
-        cx: number; cy: number; // Required: Center coordinates.
-        radius: number;        // Required: Radius in pixels (must be positive).
-    }
-    /** Options for drawing connected line segments (open path). */
-    interface DrawPolylineOptions extends BaseBufferOptions, CommonStyleOptions {
-        /** Required: Array of vertex coordinates. Must contain at least 2 points. */
-        points: Array<{x: number, y: number}>;
-    }
-    /** Options for drawing a closed polygon. */
-    interface DrawPolygonOptions extends BaseBufferOptions, FillableStyleOptions {
-        /** Required: Array of vertex coordinates. Must contain at least 3 points. */
-        points: Array<{x: number, y: number}>;
-    }
-    /** Options for drawing an ellipse. */
-    interface DrawEllipseOptions extends BaseBufferOptions, FillableStyleOptions {
-        cx: number; cy: number;   // Required: Center coordinates.
-        radiusX: number;       // Required: Horizontal radius (must be positive).
-        radiusY: number;       // Required: Vertical radius (must be positive).
-    }
-    /** Options for drawing text. */
-    interface DrawTextOptions extends BaseBufferOptions {
-        x: number; y: number;   // Required: Coordinates for text position (usually baseline start).
-        text: string;          // Required: The text string to draw.
-        /** Optional: CSS color string for the text. Defaults to UI theme foreground. */
-        textColor?: string;
-        /** Optional: Font size in pixels. Must be positive. Defaults to UI default (e.g., 12). */
-        textSize?: number;
-    }
-    /** Options for creating a new offscreen buffer. */
-    interface CreateBufferOptions {
-        /** Required: The unique ID (must be > 0) to assign to the new offscreen buffer. */
-        bufferId: number;
-    }
-    /** Options for drawing the content of one buffer onto another. */
-    interface DrawBufferOptions {
-        /** Required: The ID of the buffer to copy *from*. */
-        sourceBufferId: number;
-        /** Required: The ID of the buffer to draw *onto*. Can be 0 (onscreen) or another offscreen buffer ID. */
-        targetBufferId: number;
-    }
-    /** Options for destroying an existing offscreen buffer, releasing its resources. */
-    interface DestroyBufferOptions {
-        /** Required: The ID (must be > 0) of the offscreen buffer to destroy. */
-        bufferId: number;
-    }
+    interface CanvasBaseBufferOptions { bufferId?: number | null; } // 0 or omitted for onscreen.
+    interface ClearOptions extends CanvasBaseBufferOptions {}
+    interface DrawLineOptions extends CanvasBaseBufferOptions, CommonStyleOptions { x1: number; y1: number; x2: number; y2: number; }
+    interface DrawRectOptions extends CanvasBaseBufferOptions, FillableStyleOptions { x: number; y: number; width: number; height: number; }
+    interface DrawCircleOptions extends CanvasBaseBufferOptions, FillableStyleOptions { cx: number; cy: number; radius: number; }
+    interface DrawPolylineOptions extends CanvasBaseBufferOptions, CommonStyleOptions { points: Array<{x: number, y: number}>; } // Min 2 points.
+    interface DrawPolygonOptions extends CanvasBaseBufferOptions, FillableStyleOptions { points: Array<{x: number, y: number}>; } // Min 3 points.
+    interface DrawEllipseOptions extends CanvasBaseBufferOptions, FillableStyleOptions { cx: number; cy: number; radiusX: number; radiusY: number; }
+    interface DrawTextOptions extends CanvasBaseBufferOptions { x: number; y: number; text: string; textColor?: string; textSize?: number; }
+    interface CreateBufferOptions { bufferId: number; } // Required: bufferId > 0.
+    interface DrawBufferOptions { sourceBufferId: number; targetBufferId: number; }
+    interface DestroyBufferOptions { bufferId: number; } // Required: bufferId > 0.
 
-    // --- Update Payload Union ---
     type CanvasUpdatePayload =
       | { action: "clear"; options: ClearOptions; }
       | { action: "drawLine"; options: DrawLineOptions; }
@@ -443,159 +281,259 @@ These message types facilitate the control of specific visual component instance
       | { action: "drawPolygon"; options: DrawPolygonOptions; }
       | { action: "drawEllipse"; options: DrawEllipseOptions; }
       | { action: "drawText"; options: DrawTextOptions; }
-      // Buffer management actions
       | { action: "createBuffer"; options: CreateBufferOptions; }
       | { action: "drawBuffer"; options: DrawBufferOptions; }
       | { action: "destroyBuffer"; options: DestroyBufferOptions; };
     ```
 *   **`event` (Sidekick -> Hero)**
-    *   **Payload:** `CanvasEventPayload` - Reports user interaction events on the canvas.
+    *   **Payload:** `CanvasEventPayload`
     ```typescript
     interface CanvasEventPayload {
-        /** Required: Type of the event. Currently only "click" is supported. */
-        event: "click";
-        /** Required: X-coordinate (0-based, pixels from left edge) relative to the canvas where the click occurred. */
-        x: number;
-        /** Required: Y-coordinate (0-based, pixels from top edge) relative to the canvas where the click occurred. */
-        y: number;
+      event: "click";
+      x: number; // X-coordinate of click relative to canvas.
+      y: number; // Y-coordinate of click relative to canvas.
     }
-    // Note: Click events originate only from interactions with the visible (onscreen) canvas (buffer ID 0).
     ```
 
-### 7.5 `viz` Component
+### 7.4 `viz` Component
 
-**Purpose:** Displays Python variables and data structures (like lists, dictionaries, sets, custom objects) in an interactive, collapsible tree view. Especially powerful when used with `sidekick.ObservableValue` in Python, as it can automatically update the display when the wrapped data changes, without requiring explicit `Viz.show()` calls after each modification.
+**Purpose:** Displays Python variables and data structures (like lists, dictionaries, sets, custom objects) in an interactive, collapsible tree view. Supports `ObservableValue` for automatic updates.
 
 **Core Data Structure:** `VizRepresentation`
-
-This nested JSON structure is how the Python library represents data to be displayed in the Viz panel.
-
 ```typescript
 interface VizRepresentation {
-  /** Required: String identifying the Python data type (e.g., "int", "str", "list", "dict", "set", "object (ClassName)", "NoneType", "bool").
-   *  Special types: "truncated" (container too large), "recursive_ref" (detected recursion), "error" (problem during representation). */
-  type: string;
-  /**
-   * Required: The representation of the value itself. The structure depends heavily on the `type`:
-   * - Primitives (`int`, `str`, `bool`): The actual primitive JavaScript value (number, string, boolean).
-   * - `list`/`set`: An array `[]` containing nested `VizRepresentation` objects, one for each item in the container.
-   * - `dict`: An array `[]` of objects, where each object is `{ key: VizRepresentation, value: VizRepresentation }`, representing a key-value pair.
-   * - `object`: An object `{}` where keys are the attribute names (strings) and values are nested `VizRepresentation` objects for the attribute values.
-   * - `NoneType`: The literal string `"None"`.
-   * - `truncated`/`recursive_ref`/`error`: A descriptive string message explaining the situation.
-   */
-  value: any;
-  /** Optional (for container types `list`, `dict`, `set`, `object`): The total number of items
-   *  (elements, key-value pairs, or attributes) in the original Python container.
-   *  If omitted, the UI might infer the length from the `value` array/object, which could be inaccurate if truncated. */
-  length?: number;
-  /** Optional: If `true`, indicates that this specific node in the representation tree originates
-   *  directly from an `ObservableValue` wrapper in the Hero script. Used by the UI for visual cues. Defaults to `false`. */
-  observableTracked?: boolean;
-  /** Required: A unique ID string generated by the Hero library for this specific representation node
-   *  (e.g., "list_12345_0", "obs_dict_67890", "str_value_abc"). Used internally by the UI
-   *  (e.g., for React keys) and is crucial for applying granular updates correctly, especially with `ObservableValue`. */
-  id: string;
+  type: string; // Python data type (e.g., "int", "list", "object (ClassName)"). Special: "truncated", "recursive_ref", "error".
+  value: any;   // JS primitive, or array of VizRepresentations (for list/set), or array of {key: VizRep, value: VizRep} (for dict), or object of {attrName: VizRep} (for object). String for "truncated", "error", etc. "None" for NoneType.
+  length?: number; // Original Python container length.
+  observableTracked?: boolean; // True if from an ObservableValue.
+  id: string;       // Unique ID for this node.
 }
 ```
 
 **Message Types:**
 
 *   **`spawn` (Hero -> Sidekick)**
-    *   **Payload:** `VizSpawnPayload` - Creates an empty Viz panel ready to display variables.
+    *   **Payload:** `VizSpawnPayload`
     ```typescript
-    type VizSpawnPayload = {}; // No specific options currently needed for spawning the Viz panel itself.
+    interface VizSpawnPayload extends BaseSpawnPayload {} // No specific options currently.
     ```
 *   **`update` (Hero -> Sidekick)**
-    *   **Payload:** `VizUpdatePayload` - Sends commands to display, update, or remove variables in the tree view. Supports both replacing entire variables and performing granular updates (for `ObservableValue`).
+    *   **Payload:** `VizUpdatePayload | ChangeParentUpdatePayload`
     ```typescript
+    interface VizUpdateOptions {
+      path?: Array<string | number>; // Path from variableName to target element. Empty for root.
+      valueRepresentation?: VizRepresentation | null; // New value representation.
+      keyRepresentation?: VizRepresentation | null;   // Key rep for new dict items.
+      length?: number | null; // New container length after operation.
+    }
     interface VizUpdatePayload {
-      /** Required: The specific update action to perform. Actions determine how the `options` are interpreted. */
-      action: string; // Examples: "set", "removeVariable", "setitem", "append", "delitem", "clear", "add_set", "discard_set", "pop", "insert"
-      /** Required: The name of the top-level variable being displayed or modified in the Viz panel (e.g., "my_list", "game_state"). */
-      variableName: string;
-      /** Required: Options object containing details for the specified `action`. */
-      options: {
-        /** Optional: An array of string keys or number indices specifying the path from the top-level
-         *  `variableName` to the specific element within the data structure being targeted by the update.
-         *  - `[]` or omitted: Targets the root variable itself (used for `action: "set"` or `action: "removeVariable"`).
-         *  - `[0]`: Targets the first element of a list.
-         *  - `["name"]`: Targets the value associated with the key "name" in a dictionary or an attribute named "name" in an object.
-         *  - `[1, "value"]`: Targets the "value" key/attribute within the dictionary/object located at index 1 of a list.
-         *  Crucial for granular updates (setitem, delitem, append, etc.). */
-        path?: Array<string | number>;
-
-        /** Optional: The new `VizRepresentation` for the value being set or added.
-         *  Required for actions: "set", "setitem", "append", "insert", "add_set".
-         *  Can represent Python `None` (typically by sending `VizRepresentation` with `type: "NoneType"`).
-         *  Omitted for removal actions ("delitem", "pop", "removeVariable", "clear", "discard_set"). */
-        valueRepresentation?: VizRepresentation | null;
-
-        /** Optional: The `VizRepresentation` of the *key* involved when adding a *new* key-value pair
-         *  to a dictionary using the `action: "setitem"` command. Only required in that specific scenario.
-         *  Omitted for list updates or updates to existing dictionary keys. */
-        keyRepresentation?: VizRepresentation | null;
-
-        /** Optional: The new length (number of items) of the container *after* the operation.
-         *  Should be provided for actions that change the size of a container
-         *  (e.g., "append", "pop", "clear", "add_set", "discard_set", "insert", sometimes "setitem"/"delitem").
-         *  Helps the UI update length indicators accurately, especially for large or truncated containers. */
-        length?: number | null;
-        /** Note: Information about the 'old' value is typically not sent. The UI applies the update
-         *  based on the action, path, and new valueRepresentation to its current state. */
-      };
+      action: string; // "set", "removeVariable", "setitem", "append", "delitem", "clear", etc.
+      variableName: string; // Top-level variable name.
+      options: VizUpdateOptions;
     }
     ```
-    **Common `action` Values and Meanings:**
-        *   `set`: Replaces the entire representation for `variableName` (if `path` is empty/omitted) or replaces the node at the specified `path`. Requires `valueRepresentation`. Used by `Viz.show()`.
-        *   `removeVariable`: Removes the top-level `variableName` and its entire subtree from the display. `options` content is ignored but the object must be present. Used by `Viz.remove_variable()`.
-        *   `setitem`: Updates an existing item in a list (identified by index in `path`) or dict/object (identified by key/attribute name in `path`). Also used to add a *new* key-value pair to a dict (requires `keyRepresentation` in this case). Requires `path`, `valueRepresentation`. May update `length`. Triggered by `ObservableValue` mutations like `obs_list[i] = v`, `obs_dict[k] = v`.
-        *   `append`: Adds an item to the end of a list. Requires `path` (pointing to the list), `valueRepresentation`. Updates `length`. Triggered by `obs_list.append(v)`.
-        *   `delitem` / `"pop"` / `"remove"` (specific action may vary): Removes an item from a list (by index in `path`) or dict/object (by key/attribute name in `path`). Requires `path`. Updates `length`. Triggered by `del obs_list[i]`, `obs_dict.pop(k)`, etc.
-        *   `clear`: Empties a container (list, dict, set, object attributes). Requires `path` (pointing to the container). Updates `length` to 0. Triggered by `obs_list.clear()`.
-        *   `add_set`: Adds an element to a set. Requires `path` (pointing to the set), `valueRepresentation`. Updates `length`. Triggered by `obs_set.add(v)`.
-        *   `discard_set`: Removes an element from a set. Requires `path` (pointing to the set), `valueRepresentation` (identifies the element to remove, often via its `id`). Updates `length`. Triggered by `obs_set.discard(v)`.
-        *   `insert`: Inserts an element into a list at a specific index. Requires `path` (index is the last segment), `valueRepresentation`. Updates `length`. Triggered by `obs_list.insert(i, v)`.
-*   **`event` (Sidekick -> Hero)**
-    *   **Payload:** `never`
+*   **`event` (Sidekick -> Hero)**: Currently, `Viz` does not send events.
+
+### 7.5 `label` Component
+
+**Purpose:** Displays a single line of static or dynamic text.
+
+**Message Types:**
+
+*   **`spawn` (Hero -> Sidekick)**
+    *   **Payload:** `LabelSpawnPayload`
     ```typescript
-    // Currently, the Viz component is purely informational and does not send any events
-    // back to the Hero based on user interaction within the tree view.
-    type VizEventPayload = never;
+    interface LabelSpawnPayload extends BaseSpawnPayload {
+      text: string; // Required: Initial text to display.
+    }
     ```
+*   **`update` (Hero -> Sidekick)**
+    *   **Payload:** `LabelUpdatePayload | ChangeParentUpdatePayload`
+    ```typescript
+    type LabelUpdatePayload =
+      | {
+          action: "setText";
+          options: {
+            text: string; // Required: The new text for the label.
+          };
+        };
+    ```
+*   **`event` (Sidekick -> Hero)**: `Label` does not send events.
+
+### 7.6 `button` Component
+
+**Purpose:** A standard clickable button that can trigger actions in the Hero script.
+
+**Message Types:**
+
+*   **`spawn` (Hero -> Sidekick)**
+    *   **Payload:** `ButtonSpawnPayload`
+    ```typescript
+    interface ButtonSpawnPayload extends BaseSpawnPayload {
+      text: string; // Required: Text displayed on the button.
+    }
+    ```
+*   **`update` (Hero -> Sidekick)**
+    *   **Payload:** `ButtonUpdatePayload | ChangeParentUpdatePayload`
+    ```typescript
+    type ButtonUpdatePayload =
+      | {
+          action: "setText";
+          options: {
+            text: string; // Required: The new text for the button.
+          };
+        };
+    ```
+*   **`event` (Sidekick -> Hero)**
+    *   **Payload:** `ButtonEventPayload`
+    ```typescript
+    interface ButtonEventPayload {
+      event: "click"; // Indicates the button was clicked.
+      // No additional data needed for a simple button click.
+    }
+    ```
+
+### 7.7 `textbox` Component
+
+**Purpose:** A single-line text input field allowing users to enter text. Hero script can read the value and be notified upon submission (e.g., Enter key press or blur).
+
+**Message Types:**
+
+*   **`spawn` (Hero -> Sidekick)**
+    *   **Payload:** `TextboxSpawnPayload`
+    ```typescript
+    interface TextboxSpawnPayload extends BaseSpawnPayload {
+      initialValue?: string; // Optional: Initial text in the textbox.
+      placeholder?: string; // Optional: Placeholder text.
+    }
+    ```
+*   **`update` (Hero -> Sidekick)**
+    *   **Payload:** `TextboxUpdatePayload | ChangeParentUpdatePayload`
+    ```typescript
+    type TextboxUpdatePayload =
+      | {
+          action: "setValue"; // Sets the textbox content from Hero.
+          options: {
+            value: string; // Required: The new text content.
+          };
+        }
+      | {
+          action: "setPlaceholder";
+          options: {
+            placeholder: string; // Required: The new placeholder text.
+          };
+        };
+    ```
+*   **`event` (Sidekick -> Hero)**
+    *   **Payload:** `TextboxEventPayload`
+    ```typescript
+    interface TextboxEventPayload {
+      event: "submit"; // Text submitted (e.g., on Enter or blur).
+      value: string;  // Required: The current text content of the textbox.
+    }
+    // Note: "change" event (on every keystroke) is not currently supported.
+    ```
+
+### 7.8 `row` Container Component
+
+**Purpose:** A layout container that arranges its child components horizontally.
+
+**Message Types:**
+
+*   **`spawn` (Hero -> Sidekick)**
+    *   **Payload:** `RowSpawnPayload`
+    ```typescript
+    interface RowSpawnPayload extends BaseSpawnPayload {
+      // Row-specific layout options can be added here in the future if needed.
+      // e.g., gap, justifyContent, alignItems. For now, UI uses defaults.
+    }
+    ```
+*   **`update` (Hero -> Sidekick)**
+    *   **Payload:** `ChangeParentUpdatePayload` (No other `row`-specific updates currently).
+    ```typescript
+    // type RowUpdatePayload = { action: "someRowAction"; options: {...}; }; // Example
+    // Currently, only ChangeParentUpdatePayload is applicable.
+    ```
+*   **`event` (Sidekick -> Hero)**: `Row` does not send events.
+
+### 7.9 `column` Container Component
+
+**Purpose:** A layout container that arranges its child components vertically. The top-level implicit container (ID: "root") behaves like a Column.
+
+**Message Types:**
+
+*   **`spawn` (Hero -> Sidekick)**
+    *   **Payload:** `ColumnSpawnPayload`
+    ```typescript
+    interface ColumnSpawnPayload extends BaseSpawnPayload {
+      // Column-specific layout options can be added here in the future if needed.
+      // e.g., gap, justifyContent, alignItems. For now, UI uses defaults.
+    }
+    ```
+*   **`update` (Hero -> Sidekick)**
+    *   **Payload:** `ChangeParentUpdatePayload` (No other `column`-specific updates currently).
+    ```typescript
+    // type ColumnUpdatePayload = { action: "someColumnAction"; options: {...}; }; // Example
+    // Currently, only ChangeParentUpdatePayload is applicable.
+    ```
+*   **`event` (Sidekick -> Hero)**: `Column` does not send events.
+
+### 7.10 `markdown` Component
+
+**Purpose:** Renders Markdown formatted text content. Allows displaying rich text, lists, code blocks, links, and images parsed from a Markdown string.
+
+**Message Types:**
+
+*   **`spawn` (Hero -> Sidekick)**
+    *   **Payload:** `MarkdownSpawnPayload` - Defines the initial Markdown content.
+    ```typescript
+    interface MarkdownSpawnPayload extends BaseSpawnPayload {
+      /** Required: The initial Markdown string to be rendered. */
+      initialSource: string;
+    }
+    ```
+*   **`update` (Hero -> Sidekick)**
+    *   **Payload:** `MarkdownUpdatePayload | ChangeParentUpdatePayload`
+    ```typescript
+    type MarkdownUpdatePayload =
+      | {
+          action: "setSource";
+          options: {
+            /** Required: The new Markdown string to render. */
+            source: string;
+          };
+        };
+    ```
+*   **`event` (Sidekick -> Hero)**: `Markdown` component does not typically send events based on user interaction with the rendered content itself.
 
 ## 8. Error Handling (`error` Message Type)
 
 Used by the Sidekick UI to report problems encountered while trying to process a command received from the Hero.
 
 *   **Direction:** Sidekick -> Hero
-*   **Purpose:** Informs the Hero script that an error occurred on the UI side, usually related to a specific component instance. This could happen if the command was malformed, referred to a non-existent element (e.g., out-of-bounds grid cell), or caused an internal UI error.
-*   **`src`:** (string, Required) The `target` ID from the original command message sent by the Hero that caused the error. This allows the Hero script to identify which component instance the error relates to.
+*   **Purpose:** Informs the Hero script that an error occurred on the UI side.
+*   **`src`:** (string, Required) The `target` ID from the original command message sent by the Hero that caused the error.
 *   **Payload:** `ComponentErrorPayload`
 
 ```typescript
 interface ComponentErrorPayload {
-  /** Required: A string describing the error encountered by the Sidekick UI. */
-  message: string;
+  message: string; // Required: A string describing the error.
 }
 
-/** Message structure for reporting errors back to the Hero. */
-interface ComponentErrorMessage {
+interface ComponentErrorMessage extends BaseMessage {
   id: number; // 0
-  /** The component type associated with the error (e.g., "grid", "console", "canvas"). */
-  component: string;
+  component: string; // The component type associated with the error.
   type: "error";
-  /** Required: The ID of the component instance where the error occurred. Should match the 'target' of the command that failed. */
-  src: string;
+  src: string; // Required: ID of the component instance where the error occurred.
   payload: ComponentErrorPayload;
-  target?: never; // Error messages are from Sidekick, not targeted at Hero instances.
+  target?: never;
 }
 ```
 
 ## 9. Versioning and Extensibility
 
-*   This document defines a specific version of the protocol (implied version based on features described).
-*   Peers exchange library/application versions via the `system/announce` message, allowing for potential future compatibility checks (though not strictly enforced currently).
-*   Implementations **SHOULD** be robust to receiving messages with extra, unexpected fields within the main structure or the `payload`. Ignore unknown fields gracefully whenever possible.
-*   Implementations **MUST** validate the presence and basic type of **required** fields (as indicated in payload definitions and TypeScript interfaces) for messages they process. Missing required fields should typically result in the message being ignored and a warning logged, or potentially an `error` message being sent back if appropriate.
-*   Adding new components, actions, or modifying existing payloads in a way that breaks backward compatibility requires updating this specification document and likely coordinating version bumps across the ecosystem components (library, extension, webapp).
+*   This document defines a specific version of the protocol.
+*   Peers exchange library/application versions via `system/announce`.
+*   Implementations **SHOULD** be robust to receiving messages with extra, unexpected fields. Ignore unknown fields gracefully.
+*   Implementations **MUST** validate the presence and basic type of **required** fields for messages they process. Missing required fields should typically result in the message being ignored and a warning logged, or an `error` message sent back.
+*   Adding new components, actions, or modifying existing payloads in a way that breaks backward compatibility requires updating this specification and coordinating version bumps.

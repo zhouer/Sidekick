@@ -1,0 +1,123 @@
+/* webapp/src/components/markdown/MarkdownComponent.css */
+.markdown-component {
+    padding: 8px 12px;
+    font-size: 1em;
+    line-height: 1.6;
+    color: var(--sk-foreground);
+    background-color: var(--sk-card-background); /* Or transparent if inside a card */
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* Basic styling for common Markdown elements */
+.markdown-component h1,
+.markdown-component h2,
+.markdown-component h3,
+.markdown-component h4,
+.markdown-component h5,
+.markdown-component h6 {
+    margin-top: 1.2em;
+    margin-bottom: 0.6em;
+    font-weight: 600;
+    line-height: 1.25;
+    color: var(--sk-foreground); /* Ensure headings also use theme color */
+}
+
+.markdown-component h1 { font-size: 2em; border-bottom: 1px solid var(--sk-header-border); padding-bottom: 0.3em; }
+.markdown-component h2 { font-size: 1.75em; border-bottom: 1px solid var(--sk-header-border); padding-bottom: 0.3em; }
+.markdown-component h3 { font-size: 1.5em; }
+.markdown-component h4 { font-size: 1.25em; }
+.markdown-component h5 { font-size: 1em; }
+.markdown-component h6 { font-size: 0.85em; color: var(--sk-secondary-foreground); }
+
+.markdown-component p {
+    margin-bottom: 1em;
+}
+
+.markdown-component a {
+    color: var(--sk-focus-border); /* Use focus color for links */
+    text-decoration: none;
+}
+.markdown-component a:hover {
+    text-decoration: underline;
+}
+
+.markdown-component ul,
+.markdown-component ol {
+    margin-bottom: 1em;
+    padding-left: 2em; /* Indentation for lists */
+}
+
+.markdown-component li {
+    margin-bottom: 0.3em;
+}
+
+.markdown-component blockquote {
+    margin-left: 0;
+    margin-right: 0;
+    padding: 0.5em 1em;
+    color: var(--sk-secondary-foreground);
+    border-left: 0.25em solid var(--sk-border);
+    background-color: color-mix(in srgb, var(--sk-background) 95%, var(--sk-border) 5%);
+}
+
+.markdown-component code {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+    font-size: 0.85em;
+    padding: 0.2em 0.4em;
+    margin: 0 0.1em;
+    background-color: var(--sk-code-background);
+    border-radius: 3px;
+    color: var(--sk-code-foreground);
+}
+
+.markdown-component pre {
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+    font-size: 0.85em;
+    padding: 1em;
+    overflow: auto;
+    background-color: var(--sk-code-background);
+    border-radius: 4px;
+    margin-bottom: 1em;
+    border: 1px solid var(--sk-border);
+}
+
+.markdown-component pre code {
+    padding: 0;
+    margin: 0;
+    background-color: transparent;
+    border: none;
+    font-size: 1em; /* Inherit pre's font size */
+}
+
+.markdown-component hr {
+    height: 0.25em;
+    padding: 0;
+    margin: 24px 0;
+    background-color: var(--sk-border);
+    border: 0;
+}
+
+.markdown-component table {
+    border-collapse: collapse;
+    width: auto; /* Or 100% if you want full width tables */
+    margin-bottom: 1em;
+}
+
+.markdown-component th,
+.markdown-component td {
+    border: 1px solid var(--sk-border);
+    padding: 0.5em 0.75em;
+}
+
+.markdown-component th {
+    font-weight: 600;
+    background-color: color-mix(in srgb, var(--sk-background) 90%, var(--sk-border) 10%);
+}
+
+.markdown-component img {
+    max-width: 100%;
+    height: auto;
+    display: block; /* Prevent inline spacing issues */
+    margin: 0.5em 0;
+}

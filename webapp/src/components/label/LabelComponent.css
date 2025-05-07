@@ -1,0 +1,10 @@
+.label-component {
+    padding: 4px 8px; /* Basic padding */
+    font-size: 1em;   /* Default font size */
+    color: var(--sk-foreground);
+    white-space: nowrap; /* Enforce single line as per spec */
+    overflow: hidden;    /* Hide overflow */
+    text-overflow: ellipsis; /* Show ellipsis if text overflows */
+    display: inline-block; /* Allow it to sit inline but have dimensions */
+    max-width: 100%; /* Prevent overflow from breaking layout */
+}

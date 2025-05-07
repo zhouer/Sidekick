@@ -1,0 +1,10 @@
+.column-component {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch; /* Default alignment, children stretch to fill width */
+    gap: 8px; /* Default gap between children */
+    padding: 4px;
+    /* border: 1px dashed var(--sk-border); /* Optional: for visualizing during dev */
+    width: 100%;
+    box-sizing: border-box;
+}

@@ -5,12 +5,11 @@ import React, {
     useState,
     useRef,
     useEffect,
-    createRef // Used for creating refs for imperative components
+    createRef
 } from 'react';
-import { useCommunication, CommunicationMode } from './hooks/useCommunication'; // Communication management hook
-import { componentRegistry } from './components/componentRegistry'; // Maps component type to definition
+import { useCommunication, CommunicationMode } from './hooks/useCommunication';
+import { componentRegistry } from './components/componentRegistry';
 import {
-    // Message Types
     ReceivedMessage,
     SentMessage,
     SystemAnnounceMessage,
@@ -18,179 +17,240 @@ import {
     ComponentControlMessage,
     ComponentEventMessage,
     ComponentErrorMessage,
-    // State & Definition Types
     ComponentInstance,
     HeroPeerInfo,
-    ComponentHandle // Handle for imperative calls
-} from './types'; // Shared application types
+    ComponentHandle,
+    BaseSpawnPayload, // For typing spawn payload
+    ChangeParentUpdate, // For typing changeParent update
+    ROOT_CONTAINER_ID
+} from './types';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faInfoCircle } from '@fortawesome/free-solid-svg-icons'; // Info icon
-import './App.css'; // Application styles
+import { faInfoCircle } from '@fortawesome/free-solid-svg-icons';
+import './App.css';
 
 // --- Application State Definition ---
 interface AppState {
-    componentsById: Map<string, ComponentInstance>; // Map: Instance ID -> Component Data & State
-    componentOrder: string[];                       // Array of instance IDs, preserves creation order
-    heroStatus: HeroPeerInfo | null;                // Info about the connected Python 'Hero' script
+    componentsById: Map<string, ComponentInstance>;
+    // componentOrder: string[]; // May still be useful for top-level ordering or fallbacks
+    childrenByParentId: Map<string, string[]>; // ParentID -> Array of ChildIDs
+    heroStatus: HeroPeerInfo | null;
 }
 
-// Initial state when the application loads
 const initialState: AppState = {
     componentsById: new Map<string, ComponentInstance>(),
-    componentOrder: [],
+    // componentOrder: [],
+    childrenByParentId: new Map([[ROOT_CONTAINER_ID, []]]), // Initialize root container
     heroStatus: null,
 };
 
 // --- Reducer Actions Definition ---
-// Actions describe how the state can be changed
 type AppAction =
-    | { type: 'PROCESS_STATE_UPDATE'; message: ComponentControlMessage }  // Update state for non-imperative components
-    | { type: 'PROCESS_SPAWN'; message: ComponentControlMessage }         // Add a new component
-    | { type: 'PROCESS_REMOVE'; message: ComponentControlMessage }        // Remove an existing component
-    | { type: 'PROCESS_SYSTEM_ANNOUNCE'; message: SystemAnnounceMessage } // Handle Hero online/offline status
-    | { type: 'PROCESS_GLOBAL_CLEAR'; message: GlobalClearMessage };      // Clear all components (from backend command)
+    | { type: 'PROCESS_STATE_UPDATE'; message: ComponentControlMessage }
+    | { type: 'PROCESS_SPAWN'; message: ComponentControlMessage }
+    | { type: 'PROCESS_REMOVE'; message: ComponentControlMessage }
+    | { type: 'PROCESS_SYSTEM_ANNOUNCE'; message: SystemAnnounceMessage }
+    | { type: 'PROCESS_GLOBAL_CLEAR'; message: GlobalClearMessage }
+    | { type: 'PROCESS_CHANGE_PARENT'; message: ComponentControlMessage & { payload: ChangeParentUpdate } }; // Specific type for changeParent
 
 // =============================================================================
 // == Main Application Reducer ==
-// Handles state updates based on dispatched actions.
-// Primarily deals with component lifecycle (spawn/remove) and non-imperative state updates.
 // =============================================================================
 const rootReducer: Reducer<AppState, AppAction> = (state, action): AppState => {
     switch (action.type) {
-        // --- Handle Spawn ---
-        // Adds a new component instance to the state
         case 'PROCESS_SPAWN': {
-            const { component: componentType, target, payload } = action.message;
+            const { component: componentType, target: instanceId, payload } = action.message;
+            const spawnPayload = payload as BaseSpawnPayload; // Cast to access 'parent'
+            const parentId = spawnPayload.parent || ROOT_CONTAINER_ID;
 
-            // Prevent duplicate IDs
-            if (state.componentsById.has(target)) {
-                console.warn(`Reducer: Spawn failed - Duplicate ID "${target}".`);
-                return state; // No change
+            if (state.componentsById.has(instanceId)) {
+                console.warn(`Reducer: Spawn failed - Duplicate ID "${instanceId}".`);
+                return state;
             }
 
-            // Find the component definition in the registry
             const componentDefinition = componentRegistry.get(componentType);
             if (!componentDefinition) {
                 console.warn(`Reducer: Spawn failed - Unknown component type "${componentType}".`);
-                return state; // No change
+                return state;
             }
 
             try {
-                // Get the initial state from the component's logic function
-                const initialComponentState = componentDefinition.getInitialState(target, payload);
+                const initialComponentState = componentDefinition.getInitialState(instanceId, spawnPayload, parentId);
                 const newComponentInstance: ComponentInstance = {
-                    id: target,
+                    id: instanceId,
                     type: componentType,
-                    state: initialComponentState
+                    parentId: parentId,
+                    state: initialComponentState,
                 };
 
-                // Create new state maps/arrays (immutability)
-                const newComponentById = new Map(state.componentsById).set(target, newComponentInstance);
-                const newComponentOrder = [...state.componentOrder, target]; // Add ID to the end
+                const newComponentsById = new Map(state.componentsById).set(instanceId, newComponentInstance);
+                const newChildrenByParentId = new Map(state.childrenByParentId);
 
-                console.log(`Reducer: Spawned component "${target}" (Type: ${componentType}). Current order:`, newComponentOrder);
-                return { ...state, componentsById: newComponentById, componentOrder: newComponentOrder };
+                // Add to parent's children list
+                const parentChildren = newChildrenByParentId.get(parentId) || [];
+                newChildrenByParentId.set(parentId, [...parentChildren, instanceId]);
+
+                // If it's a container, initialize its own children list
+                if (componentDefinition.isContainer) {
+                    newChildrenByParentId.set(instanceId, []);
+                }
+
+                console.log(`Reducer: Spawned component "${instanceId}" (Type: ${componentType}, Parent: ${parentId}).`);
+                return { ...state, componentsById: newComponentsById, childrenByParentId: newChildrenByParentId };
 
             } catch (error: any) {
-                console.error(`Reducer: Error during getInitialState for component "${target}" (${componentType}):`, error.message || error);
-                return state; // Return original state on error
+                console.error(`Reducer: Error during getInitialState for "${instanceId}" (${componentType}):`, error.message || error);
+                // Send error back to Hero?
+                return state;
             }
         }
 
-        // --- Handle Non-Imperative State Updates ---
-        // Updates the state for components that *don't* use the imperative handle
-        case 'PROCESS_STATE_UPDATE': {
+        case 'PROCESS_STATE_UPDATE': { // Handles non-imperative state updates
             const { component: componentType, target, payload } = action.message;
 
             const currentComponent = state.componentsById.get(target);
             if (!currentComponent) {
                 console.warn(`Reducer: State Update failed - Component "${target}" not found.`);
-                return state; // No change
+                return state;
             }
 
             const componentDefinition = componentRegistry.get(componentType);
-            // This action should only be dispatched for non-imperative components
             if (!componentDefinition || componentDefinition.imperativeUpdate) {
-                console.error(`Reducer: State Update failed - Component type mismatch or unexpected imperative component "${target}" (${componentType})`);
-                return state; // No change
+                console.error(`Reducer: State Update failed for "${target}" - Not a non-imperative component or definition missing.`);
+                return state;
             }
-            if (payload === undefined) {
+            if (payload === undefined || payload === null) {
                 console.warn(`Reducer: State Update failed - Missing payload for "${target}".`);
-                return state; // No change
+                return state;
             }
+            // Exclude ChangeParentUpdate from here, it's handled by PROCESS_CHANGE_PARENT
+            if ((payload as any).action === "changeParent") {
+                console.warn(`Reducer: 'changeParent' action should be handled by PROCESS_CHANGE_PARENT. Ignoring in PROCESS_STATE_UPDATE for "${target}".`);
+                return state;
+            }
+
 
             try {
-                // Call the component's specific updateState function
-                const updatedComponentState = componentDefinition.updateState(currentComponent.state, payload as any);
+                const updatedComponentState = componentDefinition.updateState(currentComponent.state, payload as any, target);
+                if (updatedComponentState === currentComponent.state) return state;
 
-                // If updateState returned the exact same state object, no actual change occurred
-                if (updatedComponentState === currentComponent.state) {
-                    return state;
-                }
-
-                // Create new state map with the updated instance
                 const updatedComponentInstance = { ...currentComponent, state: updatedComponentState };
                 const newComponentsById = new Map(state.componentsById).set(target, updatedComponentInstance);
-
-                // console.debug(`Reducer: Updated state for component "${target}" (${componentType})`);
                 return { ...state, componentsById: newComponentsById };
 
             } catch (error: any) {
-                console.error(`Reducer: Error during updateState for component "${target}" (${componentType}):`, error.message || error);
-                return state; // Return original state on error
+                console.error(`Reducer: Error during updateState for "${target}" (${componentType}):`, error.message || error);
+                return state;
             }
         }
 
-        // --- Handle Remove ---
-        // Removes a component instance from the state
-        case 'PROCESS_REMOVE': {
-            const { target } = action.message;
+        case 'PROCESS_CHANGE_PARENT': {
+            const { target: instanceId, payload } = action.message; // payload is ChangeParentUpdate
+            const { parent: newParentId /*, insertBefore */ } = payload.options;
 
-            // Check if the component actually exists
-            if (!state.componentsById.has(target)) {
-                return state; // Already removed, no change needed
+            const componentToMove = state.componentsById.get(instanceId);
+            if (!componentToMove) {
+                console.warn(`Reducer: ChangeParent failed - Component "${instanceId}" not found.`);
+                return state;
+            }
+            if (!state.childrenByParentId.has(newParentId) && newParentId !== ROOT_CONTAINER_ID) {
+                const newParentDef = state.componentsById.get(newParentId);
+                if (!newParentDef || !componentRegistry.get(newParentDef.type)?.isContainer) {
+                    console.warn(`Reducer: ChangeParent failed - New parent "${newParentId}" is not a valid container or does not exist.`);
+                    return state;
+                }
             }
 
-            // Create new map and array without the removed component
+
+            const oldParentId = componentToMove.parentId || ROOT_CONTAINER_ID;
+
+            if (oldParentId === newParentId) {
+                // TODO: Handle reordering within the same parent if `insertBefore` is provided
+                console.log(`Reducer: ChangeParent - Component "${instanceId}" already child of "${newParentId}". Reordering not yet implemented.`);
+                return state;
+            }
+
             const newComponentsById = new Map(state.componentsById);
-            newComponentsById.delete(target);
-            const newComponentOrder = state.componentOrder.filter(id => id !== target);
+            const newChildrenByParentId = new Map(state.childrenByParentId);
 
-            console.log(`Reducer: Removed component "${target}". Current order:`, newComponentOrder);
-            return { ...state, componentsById: newComponentsById, componentOrder: newComponentOrder };
+            // 1. Remove from old parent's children list
+            const oldParentChildren = newChildrenByParentId.get(oldParentId) || [];
+            newChildrenByParentId.set(oldParentId, oldParentChildren.filter(id => id !== instanceId));
+
+            // 2. Add to new parent's children list (append for now)
+            const newParentChildren = newChildrenByParentId.get(newParentId) || [];
+            // Ensure new parent has a children array if it's the first child
+            if (!newChildrenByParentId.has(newParentId)) {
+                newChildrenByParentId.set(newParentId, []);
+            }
+            newChildrenByParentId.set(newParentId, [...newParentChildren, instanceId]);
+
+
+            // 3. Update component's parentId
+            newComponentsById.set(instanceId, { ...componentToMove, parentId: newParentId });
+
+            console.log(`Reducer: Moved component "${instanceId}" from parent "${oldParentId}" to "${newParentId}".`);
+            return { ...state, componentsById: newComponentsById, childrenByParentId: newChildrenByParentId };
         }
 
-        // --- Handle System Announce (Hero Status) ---
+        case 'PROCESS_REMOVE': {
+            const { target: instanceIdToRemove } = action.message;
+            if (!state.componentsById.has(instanceIdToRemove)) return state;
+
+            let newComponentsById = new Map(state.componentsById);
+            let newChildrenByParentId = new Map(state.childrenByParentId);
+
+            const
+                q: string[] = [instanceIdToRemove]; // Queue for BFS/DFS removal
+            const removedIds = new Set<string>();
+
+            while (q.length > 0) {
+                const currentId = q.shift()!;
+                if (removedIds.has(currentId)) continue;
+
+                const componentToRemove = newComponentsById.get(currentId);
+                if (!componentToRemove) continue;
+
+                // 1. Remove from its parent's children list
+                const parentId = componentToRemove.parentId || ROOT_CONTAINER_ID;
+                const parentChildren = newChildrenByParentId.get(parentId) || [];
+                newChildrenByParentId.set(parentId, parentChildren.filter(id => id !== currentId));
+
+                // 2. If it's a container, enqueue its children for removal
+                const componentDef = componentRegistry.get(componentToRemove.type);
+                if (componentDef?.isContainer) {
+                    const childrenOfCurrent = newChildrenByParentId.get(currentId) || [];
+                    childrenOfCurrent.forEach(childId => q.push(childId));
+                    newChildrenByParentId.delete(currentId); // Remove its own entry from childrenByParentId
+                }
+
+                // 3. Remove from componentsById
+                newComponentsById.delete(currentId);
+                removedIds.add(currentId);
+                console.log(`Reducer: Removed component "${currentId}".`);
+            }
+
+            return { ...state, componentsById: newComponentsById, childrenByParentId: newChildrenByParentId, heroStatus: state.heroStatus };
+        }
+
         case 'PROCESS_SYSTEM_ANNOUNCE': {
             const { payload } = action.message;
-
-            // Only process announcements from the 'hero' role
             if (payload && payload.role === 'hero') {
-                console.log(`Reducer: Processing Hero announce (PeerID: ${payload.peerId}, Status: ${payload.status})`);
-                // Determine the new status object (null if offline)
                 const newHeroStatus: HeroPeerInfo | null = payload.status === 'online' ? { ...payload, role: 'hero' } : null;
-
-                // Only update state if the status or peer ID actually changed
                 if (state.heroStatus?.peerId !== newHeroStatus?.peerId || state.heroStatus?.status !== newHeroStatus?.status) {
                     return { ...state, heroStatus: newHeroStatus };
                 }
             }
-            // Ignore announcements from 'sidekick' or other roles
-            return state; // No relevant change
+            return state;
         }
 
-        // --- Handle Global Clear (from backend) ---
         case 'PROCESS_GLOBAL_CLEAR': {
-            console.log("Reducer: Processing global/clearAll command from backend.");
-            // Only update if there are components to clear
-            if (state.componentsById.size > 0 || state.componentOrder.length > 0) {
-                // Reset maps and order, keep hero status
-                return { ...initialState, heroStatus: state.heroStatus };
-            }
-            return state; // Already cleared
+            console.log("Reducer: Processing global/clearAll command.");
+            return {
+                ...initialState, // Resets componentsById, childrenByParentId (with root)
+                heroStatus: state.heroStatus // Preserve hero status
+            };
         }
 
-        // Default case for unknown actions
         default:
             console.warn("Reducer: Received unknown action type:", (action as any)?.type);
             return state;
@@ -199,102 +259,72 @@ const rootReducer: Reducer<AppState, AppAction> = (state, action): AppState => {
 
 // =============================================================================
 // == Main Application Component ==
-// Orchestrates WebSocket connection, state management, and rendering of components.
 // =============================================================================
 function App() {
     const [appState, dispatch] = useReducer(rootReducer, initialState);
-    const { componentsById, componentOrder, heroStatus } = appState;
-    const [hoveredInfoId, setHoveredInfoId] = useState<string | null>(null); // Tracks hovered info icon for tooltips
+    const { componentsById, childrenByParentId, heroStatus } = appState;
+    const [hoveredInfoId, setHoveredInfoId] = useState<string | null>(null);
 
-    // --- Refs ---
-    // Stores refs to component instances that handle updates imperatively
     const imperativeComponentRefs = useRef<Map<string, React.RefObject<ComponentHandle | null>>>(new Map());
-    // Stores payloads for imperative updates that arrived before the component was ready
-    const pendingImperativeUpdates = useRef<Map<string, any[]>>(new Map()); // Key: componentId, Value: array of payloads
+    const pendingImperativeUpdates = useRef<Map<string, any[]>>(new Map());
 
-    // --- Callback: Process Pending Updates when a Component Signals Ready ---
-    // Passed as `onReady` prop to imperative components.
     const onComponentReady = useCallback((componentId: string) => {
         console.log(`App: Received ready signal from component "${componentId}".`);
-
-        // Check if there are pending updates queued for this component
         const pendingUpdates = pendingImperativeUpdates.current.get(componentId);
         const componentRef = imperativeComponentRefs.current.get(componentId);
 
-        // Ensure pending updates exist AND the component's handle/method is now available
         if (pendingUpdates && pendingUpdates.length > 0 && componentRef?.current?.processUpdate) {
-            console.log(`App: Processing ${pendingUpdates.length} queued update(s) for ready component "${componentId}".`);
-
-            // Get a stable reference to the processing function
+            console.log(`App: Processing ${pendingUpdates.length} queued update(s) for "${componentId}".`);
             const processUpdateFunc = componentRef.current.processUpdate;
             try {
-                // Process each queued payload using the component's imperative function
-                pendingUpdates.forEach(payload => {
-                    processUpdateFunc(payload);
-                });
+                pendingUpdates.forEach(payload => processUpdateFunc(payload));
             } catch (error) {
-                console.error(`App: Error processing queued updates for component "${componentId}":`, error);
-                // Consider sending an error back to the backend/Python side here
+                console.error(`App: Error processing queued updates for "${componentId}":`, error);
             } finally {
-                // CRITICAL: Clear the queue for this component after attempting to process
                 pendingImperativeUpdates.current.delete(componentId);
-                console.log(`App: Cleared pending update queue for "${componentId}".`);
             }
         } else if (pendingUpdates && pendingUpdates.length > 0) {
-            // This case might happen in rare edge cases or if the handle setup is slow
-            console.warn(`App: Component "${componentId}" signaled ready, but its imperative handle/processUpdate is still not available. ${pendingUpdates.length} update(s) remain queued.`);
-        } else {
-            console.debug(`App: Component "${componentId}" is ready, no pending updates found.`);
+            console.warn(`App: "${componentId}" ready, but handle/processUpdate not available. ${pendingUpdates.length} updates remain.`);
         }
-    }, []); // This callback has no dependencies as it only interacts with refs
+    }, []);
 
-    // --- Callback: Handle Incoming Sidekick Messages ---
-    // This function decides whether to dispatch to the reducer or call an imperative handle
     const handleSidekickMessage = useCallback((messageData: any) => {
-        // Basic message structure validation
         if (typeof messageData !== 'object' || messageData === null || !messageData.component || !messageData.type) {
-            console.error("App: Received invalid message structure from Sidekick:", messageData);
+            console.error("App: Received invalid message from Sidekick:", messageData);
+            return;
+        }
+        const message = messageData as ReceivedMessage;
+
+        if (message.type === 'update' && 'target' in message && (message.payload as any)?.action === 'changeParent') {
+            dispatch({ type: 'PROCESS_CHANGE_PARENT', message: message as ComponentControlMessage & { payload: ChangeParentUpdate } });
             return;
         }
 
-        const message = messageData as ReceivedMessage; // Type assertion
-
-        // --- Route 'update' messages based on component type ---
         if (message.type === 'update' && 'target' in message) {
             const componentMessage = message as ComponentControlMessage;
             const componentDefinition = componentRegistry.get(componentMessage.component);
 
-            // Check if this component type uses imperative updates
             if (componentDefinition?.imperativeUpdate) {
                 const componentRef = imperativeComponentRefs.current.get(componentMessage.target);
-
-                // Check if the component's handle and processUpdate method are ready
                 if (componentRef?.current?.processUpdate) {
-                    // Handle is ready: Call the component's method directly
-                    // console.debug(`App: Routing update for "${componentMessage.target}" imperatively.`);
                     try {
                         componentRef.current.processUpdate(componentMessage.payload);
                     } catch (error) {
                         console.error(`App: Error calling imperative processUpdate for "${componentMessage.target}":`, error);
-                        // Future: Consider sending error back via sendMessage
                     }
                 } else {
-                    // Handle is not ready: Queue the payload
-                    console.debug(`App: Queuing update for imperative component "${componentMessage.target}" (handle not ready). Payload:`, componentMessage.payload);
+                    console.debug(`App: Queuing update for imperative "${componentMessage.target}" (handle not ready).`);
                     const queue = pendingImperativeUpdates.current.get(componentMessage.target) || [];
                     queue.push(componentMessage.payload);
                     pendingImperativeUpdates.current.set(componentMessage.target, queue);
                 }
-                // ** Stop further processing for this message **
                 return;
             } else {
-                // Not an imperative component: Dispatch to reducer for normal state update
                 dispatch({ type: 'PROCESS_STATE_UPDATE', message: componentMessage });
-                return; // Message processed
+                return;
             }
         }
 
-        // --- Route other message types to the reducer ---
         if (message.type === 'spawn' && 'target' in message) {
             dispatch({ type: 'PROCESS_SPAWN', message: message as ComponentControlMessage });
         } else if (message.type === 'remove' && 'target' in message) {
@@ -304,94 +334,46 @@ function App() {
         } else if (message.component === 'global' && message.type === 'clearAll') {
             dispatch({ type: 'PROCESS_GLOBAL_CLEAR', message: message as GlobalClearMessage });
         } else {
-            // Log unhandled message types
             console.warn("App: Received unhandled message type:", message);
         }
+    }, [/* dispatch is stable */]);
 
-    }, [/* No dependencies: uses refs and dispatch (stable) */]);
+    const { mode, isConnected, status, sendMessage, runScript, stopScript } = useCommunication(handleSidekickMessage);
 
-    // --- Communication Setup (WebSocket or Pyodide) ---
-    const { 
-        mode, 
-        isConnected, 
-        status, 
-        sendMessage, 
-        runScript, 
-        stopScript
-    } = useCommunication(handleSidekickMessage);
-
-    // --- Effect: Clean Up Refs and Pending Queues for Removed Components ---
-    useEffect(() => {
-        const currentComponentIds = new Set(componentOrder);
-        const refsAndQueuesToRemove: string[] = [];
-
-        // Find refs/queues corresponding to components that are no longer in componentOrder
+    useEffect(() => { // Cleanup refs for removed components
+        const currentComponentIds = new Set(componentsById.keys());
         imperativeComponentRefs.current.forEach((_, componentId) => {
-            if (!currentComponentIds.has(componentId)) {
-                refsAndQueuesToRemove.push(componentId);
-            }
+            if (!currentComponentIds.has(componentId)) imperativeComponentRefs.current.delete(componentId);
         });
         pendingImperativeUpdates.current.forEach((_, componentId) => {
-            if (!currentComponentIds.has(componentId) && !refsAndQueuesToRemove.includes(componentId)) {
-                refsAndQueuesToRemove.push(componentId); // Catch queues for components removed before ready
-            }
+            if (!currentComponentIds.has(componentId)) pendingImperativeUpdates.current.delete(componentId);
         });
+    }, [componentsById]);
 
-
-        // Perform cleanup if any stale entries were found
-        if (refsAndQueuesToRemove.length > 0) {
-            console.log(`App: Cleaning up refs and pending queues for removed components: ${refsAndQueuesToRemove.join(', ')}`);
-            refsAndQueuesToRemove.forEach(componentId => {
-                imperativeComponentRefs.current.delete(componentId);
-                pendingImperativeUpdates.current.delete(componentId);
-            });
-        }
-    }, [componentOrder]); // Rerun whenever the list of active components changes
-
-    // --- Callback: Handle Interactions from Child Components (e.g., clicks, input) ---
-    // Sends event/error messages back to the backend via WebSocket
     const handleComponentInteraction = useCallback((interactionMessage: SentMessage) => {
-        // Validate structure before sending
         if (!interactionMessage || !interactionMessage.component || !interactionMessage.type) {
-            console.error("App: Invalid interaction message structure from component:", interactionMessage);
+            console.error("App: Invalid interaction message from component:", interactionMessage);
             return;
         }
-
-        // Only send event/error types initiated by the UI component interaction
-        if (interactionMessage.type === 'event' || interactionMessage.type === 'error') {
-            // Ensure the source ID ('src') is present for event/error messages
-            const eventOrErrorMsg = interactionMessage as ComponentEventMessage | ComponentErrorMessage;
-            if (eventOrErrorMsg.src) {
-                sendMessage(eventOrErrorMsg); // Send validated message
-            } else {
-                console.error("App: Invalid event/error message missing 'src' field:", interactionMessage);
-            }
-        } else if (interactionMessage.component === 'system' && interactionMessage.type === 'announce') {
-            // Allow sending system messages if needed (though usually handled by useWebSocket)
+        if ((interactionMessage.type === 'event' || interactionMessage.type === 'error') && (interactionMessage as ComponentEventMessage | ComponentErrorMessage).src) {
             sendMessage(interactionMessage);
-        }
-        else {
+        } else if (interactionMessage.component === 'system' && interactionMessage.type === 'announce') {
+            sendMessage(interactionMessage);
+        } else {
             console.error("App: Attempted to send message of unexpected type via interaction:", interactionMessage);
         }
-    }, [sendMessage]); // Dependency: sendMessage ensures stability
+    }, [sendMessage]);
 
-    // --- Render Helper: Render Status Indicators in Header ---
-    const renderStatus = () => {
-        // Get Sidekick (this webapp) version from injected variable
+    const renderStatus = () => { /* ... (same as before) ... */
         const sidekickStatusText = `Sidekick (v${__APP_VERSION__})`;
-
-        // Determine Hero status text and class
         let heroStatusText = 'Hero: Offline';
-        let heroStatusClass = 'hero-status-offline'; // Default class
+        let heroStatusClass = 'hero-status-offline';
         if (heroStatus?.status === 'online') {
-            // Include version if available
-            // heroStatusText = `Hero: Online (v${heroStatus.version || '?'})`;
             heroStatusText = `Hero: Online`;
-            heroStatusClass = 'hero-status-online'; // Apply online style class
+            heroStatusClass = 'hero-status-online';
         }
 
         if (mode === 'websocket') {
-            // Determine WebSocket status text based on the 'status' state variable
             let wsStatusText = 'Unknown';
             switch (status) {
                 case 'connecting': wsStatusText = 'Connecting'; break;
@@ -400,19 +382,10 @@ function App() {
                 case 'reconnecting': wsStatusText = 'Reconnecting'; break;
             }
             const wsStatusClass = isConnected ? 'status-connected' : 'status-disconnected';
-
-            return (
-                <>
-                    <p className={wsStatusClass}>WebSocket: {wsStatusText}</p>
-                    <p className={heroStatusClass}>{heroStatusText}</p>
-                    {/*<p className="app-version">{sidekickStatusText}</p>*/}
-                </>
-            );
+            return (<><p className={wsStatusClass}>WebSocket: {wsStatusText}</p><p className={heroStatusClass}>{heroStatusText}</p></>);
         } else {
-            // Script mode status
             let scriptStatusText = 'Script: Unknown';
             let scriptStatusClass = 'status-neutral';
-
             switch (status) {
                 case 'initializing': scriptStatusText = 'Script: Initializing'; scriptStatusClass = 'status-neutral'; break;
                 case 'ready': scriptStatusText = 'Script: Ready'; scriptStatusClass = 'status-connected'; break;
@@ -422,130 +395,91 @@ function App() {
                 case 'error': scriptStatusText = 'Script: Error'; scriptStatusClass = 'status-disconnected'; break;
                 case 'terminated': scriptStatusText = 'Script: Terminated'; scriptStatusClass = 'status-neutral'; break;
             }
-
-            return (
-                <>
-                    <p className={scriptStatusClass}>{scriptStatusText}</p>
-                    <p className={heroStatusClass}>{heroStatusText}</p>
-                    {/*<p className="app-version">{sidekickStatusText}</p>*/}
-                </>
-            );
+            return (<><p className={scriptStatusClass}>{scriptStatusText}</p><p className={heroStatusClass}>{heroStatusText}</p></>);
         }
     };
 
-    // --- Render Helper: Render Active Components ---
-    const renderComponents = () => {
-        // Iterate over the componentOrder array to render components in the correct sequence
-        return componentOrder.map(componentId => {
-            const componentInstance = componentsById.get(componentId);
+    // --- Recursive Rendering Function ---
+    const renderComponentTree = useCallback((componentId: string): React.ReactNode => {
+        const componentInstance = componentsById.get(componentId);
+        if (!componentInstance) {
+            console.error(`App Render: Component data for ID "${componentId}" not found!`);
+            return <div key={componentId} className="component-card error">Error: Component data missing for {componentId}</div>;
+        }
 
-            // Safety check: Ensure component data exists
-            if (!componentInstance) {
-                console.error(`App Render: Component data for ID "${componentId}" not found in state map!`);
-                return <div key={componentId} className="component-card error">Error: Component data missing for {componentId}</div>;
+        const componentDefinition = componentRegistry.get(componentInstance.type);
+        if (!componentDefinition) {
+            console.error(`App Render: Def for type "${componentInstance.type}" (ID: "${componentId}") not registered!`);
+            return <div key={componentId} className="component-card error">Error: Unknown Type '{componentInstance.type}'</div>;
+        }
+
+        const ComponentToRender = componentDefinition.component;
+        let componentRef: React.RefObject<ComponentHandle | null> | undefined = undefined;
+
+        if (componentDefinition.imperativeUpdate) {
+            if (!imperativeComponentRefs.current.has(componentId)) {
+                imperativeComponentRefs.current.set(componentId, createRef<ComponentHandle | null>());
             }
+            componentRef = imperativeComponentRefs.current.get(componentId);
+        }
 
-            // Find the corresponding component definition from the registry
-            const componentDefinition = componentRegistry.get(componentInstance.type);
-            if (!componentDefinition) {
-                console.error(`App Render: Component definition for type "${componentInstance.type}" (ID: "${componentId}") not registered!`);
-                return <div key={componentId} className="component-card error">Error: Unknown Component Type '{componentInstance.type}'</div>;
-            }
+        const componentProps: any = {
+            id: componentInstance.id,
+            state: componentInstance.state,
+            onInteraction: handleComponentInteraction,
+        };
+        if (componentDefinition.imperativeUpdate) componentProps.onReady = onComponentReady;
 
-            const Component = componentDefinition.component; // Get the React component constructor
-            let componentRef: React.RefObject<ComponentHandle | null > | undefined = undefined; // Ref for imperative components
+        // For container components, pass childrenIds and the render function itself
+        if (componentDefinition.isContainer) {
+            componentProps.childrenIds = childrenByParentId.get(componentId) || [];
+            componentProps.renderChild = renderComponentTree; // Pass the recursive render function
+        }
 
-            // --- Ref Management: Get or Create Ref for Imperative Components ---
-            if (componentDefinition.imperativeUpdate) {
-                // If a ref for this ID doesn't exist in our map yet, create it
-                if (!imperativeComponentRefs.current.has(componentId)) {
-                    console.debug(`App Render: Creating ref for imperative component "${componentId}"`);
-                    imperativeComponentRefs.current.set(componentId, createRef<ComponentHandle | null>());
-                }
-                // Retrieve the ref (guaranteed to exist now)
-                componentRef = imperativeComponentRefs.current.get(componentId);
-            }
+        const handleMouseEnterInfo = () => setHoveredInfoId(componentId);
+        const handleMouseLeaveInfo = () => setHoveredInfoId(null);
+        const isInfoHovered = hoveredInfoId === componentId;
+        const displayName = componentDefinition.displayName || componentInstance.type;
 
-            // --- Prepare Props for the Component ---
-            // Use 'any' for props temporarily for easier prop spreading, consider stricter typing if needed
-            const componentProps: any = {
-                id: componentInstance.id,
-                state: componentInstance.state, // Pass component-specific state
-                onInteraction: handleComponentInteraction, // Pass interaction callback
-            };
-            // Conditionally add the onReady prop only for imperative components
-            if (componentDefinition.imperativeUpdate) {
-                componentProps.onReady = onComponentReady;
-            }
+        // Wrap non-container components in a card, containers might style themselves
+        const Wrapper = componentDefinition.isContainer ? React.Fragment : 'div';
+        const wrapperProps = componentDefinition.isContainer ? {} : { className: "component-card" };
 
-            // --- Tooltip Logic (for displaying component type/ID on hover) ---
-            const handleMouseEnterInfo = () => setHoveredInfoId(componentId);
-            const handleMouseLeaveInfo = () => setHoveredInfoId(null);
-            const isInfoHovered = hoveredInfoId === componentId;
-            const componentDisplayName = componentDefinition.displayName || componentInstance.type; // Use display name or type string
 
-            // Render the component within a styled card container
-            return (
-                <div key={componentInstance.id} className="component-card">
-                    {/* Info Icon & Tooltip */}
-                    <div
-                        className="component-info-icon"
-                        onMouseEnter={handleMouseEnterInfo}
-                        onMouseLeave={handleMouseLeaveInfo}
-                        aria-label={`Info for ${componentDisplayName}: ${componentInstance.id}`}
-                    >
-                        <FontAwesomeIcon icon={faInfoCircle} />
-                    </div>
-                    {isInfoHovered && (
-                        <div className="component-tooltip">
-                            Type: {componentDisplayName}
-                            <br />
-                            ID: {componentInstance.id}
+        return (
+            <Wrapper {...wrapperProps} key={componentInstance.id}>
+                {!componentDefinition.isContainer && ( // Only show info icon for non-container items in cards
+                    <>
+                        <div className="component-info-icon" onMouseEnter={handleMouseEnterInfo} onMouseLeave={handleMouseLeaveInfo} aria-label={`Info for ${displayName}: ${componentInstance.id}`}>
+                            <FontAwesomeIcon icon={faInfoCircle} />
                         </div>
-                    )}
-                    {/* Render the actual component, passing ref and props */}
-                    <Component ref={componentRef} {...componentProps} />
-                </div>
-            );
-        }); // End map over componentOrder
-    };
+                        {isInfoHovered && (<div className="component-tooltip">Type: {displayName}<br />ID: {componentInstance.id}</div>)}
+                    </>
+                )}
+                <ComponentToRender ref={componentRef} {...componentProps} />
+            </Wrapper>
+        );
+    }, [componentsById, childrenByParentId, handleComponentInteraction, onComponentReady, hoveredInfoId]);
 
-    // --- Main Application JSX Structure ---
+
+    const rootChildren = childrenByParentId.get(ROOT_CONTAINER_ID) || [];
+
     return (
         <div className="App">
-            {/* Application Header */}
             <header className="App-header">
                 <h1>Sidekick</h1>
-                <div className="status-indicators">
-                    {renderStatus()} {/* Render dynamic status indicators */}
-                </div>
+                <div className="status-indicators">{renderStatus()}</div>
                 {mode === 'script' && (
                     <div className="script-controls">
-                        <button
-                            onClick={runScript}
-                            disabled={status !== 'ready' && status !== 'stopped' && status !== 'terminated' && status !== 'error'}
-                            title="Run the Python script"
-                        >
-                            Run
-                        </button>
-                        <button
-                            onClick={stopScript}
-                            disabled={status !== 'running'} // Only enable when running
-                            title="Stop the Python script"
-                        >
-                            Stop
-                        </button>
+                        <button onClick={runScript} disabled={!(status === 'ready' || status === 'stopped' || status === 'terminated' || status === 'error')} title="Run Script">Run</button>
+                        <button onClick={stopScript} disabled={status !== 'running'} title="Stop Script">Stop</button>
                     </div>
                 )}
             </header>
-
-            {/* Main Content Area */}
             <main className="App-main">
-                {componentOrder.length === 0
-                    // Display message when no components are active
+                {componentsById.size === 0 && rootChildren.length === 0
                     ? <p>No components active. Waiting for Hero script...</p>
-                    // Otherwise, render the active components
-                    : renderComponents()
+                    : rootChildren.map(childId => renderComponentTree(childId))
                 }
             </main>
         </div>

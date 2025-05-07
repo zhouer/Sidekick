@@ -1,0 +1,21 @@
+.textbox-component {
+    padding: 8px 10px;
+    font-size: 1em;
+    border: 1px solid var(--sk-input-border);
+    border-radius: 4px;
+    background-color: var(--sk-input-background);
+    color: var(--sk-input-foreground);
+    min-width: 150px; /* Basic width */
+    box-sizing: border-box;
+}
+
+.textbox-component::placeholder {
+    color: var(--sk-input-placeholder-fg);
+    opacity: 1;
+}
+
+.textbox-component:focus {
+    border-color: var(--sk-focus-border);
+    outline: none;
+    box-shadow: 0 0 0 2px var(--sk-focus-border);
+}
