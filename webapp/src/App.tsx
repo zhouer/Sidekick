@@ -20,7 +20,6 @@ import {
     ComponentErrorMessage,
     // State & Definition Types
     ComponentInstance,
-    ComponentDefinition, // Removed explicit import, used via componentRegistry
     HeroPeerInfo,
     ComponentHandle // Handle for imperative calls
 } from './types'; // Shared application types

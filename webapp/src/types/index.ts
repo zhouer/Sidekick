@@ -35,7 +35,7 @@ interface BaseHeroMessage extends BaseMessage {
 // System Announce message (sent by Hero or Sidekick, received by Sidekick/Hero)
 export interface SystemAnnounceMessage extends BaseMessage {
     component: "system";
-    type: "announce"; // Changed from method
+    type: "announce";
     payload: AnnouncePayload;
     target?: never; // System messages don't target specific instances
     src?: never;
@@ -44,7 +44,7 @@ export interface SystemAnnounceMessage extends BaseMessage {
 // Global Clear All message (Hero -> Sidekick)
 export interface GlobalClearMessage extends BaseHeroMessage {
     component: "global";
-    type: "clearAll"; // Changed from method
+    type: "clearAll";
     payload?: null; // Payload is null or omitted
     target?: never; // Global ops don't target specific instances
     src?: never;
@@ -53,7 +53,7 @@ export interface GlobalClearMessage extends BaseHeroMessage {
 // Component Control messages (Hero -> Sidekick)
 export interface ComponentControlMessage extends BaseHeroMessage {
     component: "grid" | "console" | "viz" | "canvas" | "control"; // Add other components here
-    type: "spawn" | "update" | "remove"; // Changed from method
+    type: "spawn" | "update" | "remove";
     target: string; // Target instance ID is required
     payload: any; // Component-specific payload structure (defined in component types/*)
 }
