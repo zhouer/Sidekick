@@ -9,7 +9,7 @@ This library provides the Python interface for interacting with the [Sidekick Vi
 
 ## Quick Start
 
-1.  **Install the Python Library:** 
+1.  **Install the Python Library:**
 
     ```shell
     pip install sidekick-py
@@ -47,9 +47,9 @@ This library provides the Python interface for interacting with the [Sidekick Vi
 
     Run your script using `python your_file.py` in the terminal, or click the `Run` button in VS Code.
 
-5.  **Interact:** 
+5.  **Interact:**
 
-    Click cells in the Sidekick panel to see colors change (press `Ctrl+C` to stop)
+    Click cells in the Sidekick panel to see colors change (press `Ctrl+C` to stop).
 
 ## Learn More
 

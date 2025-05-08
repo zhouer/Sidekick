@@ -13,17 +13,17 @@ Perfect for **learners**, **educators**, **parents teaching coding**, and anyone
 
 ## Quick Start
 
-1.  **Install the Python Library:** 
+1.  **Install the Python Library:**
 
     ```shell
     pip install sidekick-py
     ```
 
-2.  **Install the VS Code Extension:** 
+2.  **Install the VS Code Extension:**
 
     Get "Sidekick - Your Visual Coding Buddy" from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=sidekick-coding.sidekick-coding)
 
-3.  **Open Sidekick Panel:** 
+3.  **Open Sidekick Panel:**
 
     Use the command palette (`Ctrl+Shift+P`) and run `Sidekick: Show Panel`.
 
@@ -51,9 +51,9 @@ Perfect for **learners**, **educators**, **parents teaching coding**, and anyone
 
     Run your script using `python your_file.py` in the terminal, or click the `Run` button in VS Code.
 
-5.  **Interact:** 
+5.  **Interact:**
 
-    Click cells in the Sidekick panel to see colors change (press `Ctrl+C` to stop)
+    Click cells in the Sidekick panel to see colors change.
 
 ## Why Choose Sidekick?
 
@@ -64,45 +64,59 @@ Perfect for **learners**, **educators**, **parents teaching coding**, and anyone
 
 ## Features
 
-### 1. [`Grid`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.grid) - Interactive Cell-Based Visualizations
+### Core Visual Components
 
-*   `Grid(num_columns, num_rows)`: Create a grid with specified dimensions
-*   `set_color()`, `set_text()`: Set colors and text
-*   `on_click()`: Handle user interaction
+1.  **[`Grid`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.grid)** - Interactive Cell-Based Visualizations
+    *   `Grid(num_columns, num_rows)`: Create a grid.
+    *   `set_color()`, `set_text()`: Set cell colors and text.
+    *   `on_click()`: Handle user clicks on cells.
 
-### 2. [`Console`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.console) - Text-Based Input and Output
+2.  **[`Console`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.console)** - Text-Based Input and Output
+    *   `Console(show_input=False)`: Create a console area.
+    *   `print()`: Display output text.
+    *   `on_input_text()`: Handle user text submission (if `show_input=True`).
 
-*   `Console(show_input=False)`: Create a console that optionally includes input field
-*   `print()`: Display output
-*   `on_input_text()`: Collect user input
+3.  **[`Canvas`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.canvas)** - 2D Graphics and Animation
+    *   `Canvas(width, height)`: Create a drawing canvas.
+    *   `draw_line()`, `draw_rect()`, `draw_circle()`, `draw_polygon()`, `draw_ellipse()`, `draw_text()`: Draw shapes and text.
+    *   `buffer()`: Context manager for smooth, double-buffered animations.
+    *   `on_click()`: Respond to clicks on the canvas.
 
-### 3. [`Control`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.control) - Interactive UI Components
+4.  **[`Viz`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.viz)** - Data Structure Visualization
+    *   `Viz()`: Create a panel for visualizing variables.
+    *   `show()`: Display complex data (lists, dicts, sets, objects).
+    *   `ObservableValue`: Wrap data for automatic visualization updates on change.
 
-*   `Control()`: Create a control panel for UI components
-*   `add_button()`: Create buttons
-*   `add_text_input()`: Add text inputs
-*   `on_click()`: Handle button clicks
-*   `on_input_text()`: Process text input
+### UI & Layout Components
 
-### 4. [`Canvas`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.canvas) - 2D Graphics and Animation
+5.  **[`Label`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.label)** - Simple Text Display
+    *   `Label(text)`: Display a line of text.
+    *   `.text` property: Get or set the displayed text.
 
-*   `Canvas(width, height)`: Create a drawing canvas with specified dimensions
-*   `draw_line()`, `draw_polyline()`: Draw lines
-*   `draw_rect()`, `draw_circle()`, `draw_polygon()`, `draw_ellipse()`: Draw shapes
-*   `draw_text()`: Add text
-*   `buffer()`: Create smooth animations with this context manager
-*   `on_click()`: Respond to clicks
+6.  **[`Button`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.button)** - Clickable Buttons
+    *   `Button(text)`: Create a button.
+    *   `.text` property: Get or set the button label.
+    *   `on_click()`, `@button.click`: Handle button clicks.
 
-### 5. [`Viz`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.viz) - Data Structure Visualization
+7.  **[`Textbox`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.textbox)** - Single-Line Text Input
+    *   `Textbox(initial_value="", placeholder="")`: Create a text input field.
+    *   `.value` property: Get or set the text content.
+    *   `.placeholder` property: Get or set the placeholder hint.
+    *   `on_submit()`, `@textbox.submit`: Handle text submission (on Enter/blur).
 
-*   `Viz()`: Create a visualization panel for data structures
-*   `show()`: Display complex data
-*   `ObservableValue`: Wrap data structures to update visualizations automatically
+8.  **[`Markdown`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.markdown)** - Formatted Text Display
+    *   `Markdown(initial_source)`: Display text formatted with Markdown.
+    *   `.source` property: Get or set the Markdown source string.
 
-### 6. Managing Script Lifecycle
+9.  **Layout Containers (`Row`, `Column`)**
+    *   [`Row()`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.row): Arranges child components horizontally.
+    *   [`Column()`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.column): Arranges child components vertically.
+    *   Use `container.add_child(component)` or `Component(..., parent=container)` to structure layouts.
 
-*   `sidekick.run_forever()`: Keep your script running to handle interactions
-*   `sidekick.shutdown()`: Gracefully stop the script when needed
+### Managing Script Lifecycle
+
+*   `sidekick.run_forever()`: Keep your script running to handle interactions (clicks, input). Necessary for interactive components.
+*   `sidekick.shutdown()`: Gracefully stop the script and disconnect (can be called from callbacks).
 
 ## Learn More
 
