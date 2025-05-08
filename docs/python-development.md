@@ -17,8 +17,14 @@ The library operates under a specific connection model:
     *   Upon readiness, the library sends a `global/clearAll` message to the UI.
 3.  **Synchronous Sends:** Once the connection is ready, messages sent via component methods (like `grid.set_color()` or `button.text = "New"`) are attempted immediately. There is no internal queue or buffering if the connection is not ready; connection establishment blocks instead.
 4.  **Exception-Based Error Handling:** Connection failures (initial refusal, timeout waiting for UI, disconnection during operation) will immediately **raise specific `SidekickConnectionError` exceptions**, halting the operation. The library does **not** attempt automatic reconnection. The user's script must handle these exceptions if recovery is desired (though typically the script would exit).
-5.  **Component Parenting:** Components can be nested using the `parent` argument in their constructor or by using `container.add_child(component)` method on `Row` or `Column` instances.
-6.  **UI Event Handling:** User interactions (clicks, text submissions) in the UI trigger event messages back to Python, which are dispatched to specific callback functions registered via methods like `button.on_click` or decorators like `@textbox.submit`.
+5.  **Component Parenting:** Components can be nested using several methods:
+    *   The `parent` argument in a component's constructor (`Button(..., parent=my_row)`).
+    *   The `container.add_child(component)` method on `Row` or `Column` instances after creation.
+    *   Passing existing child components as positional arguments to the `Row` or `Column` constructor (`Row(button1, label1)`). Internally, this uses `add_child`.
+6.  **UI Event Handling:** User interactions (clicks, text submissions) in the UI trigger event messages back to Python, which are dispatched to specific callback functions registered via:
+    *   Constructor parameters (e.g., `Button(..., on_click=my_handler)`).
+    *   Dedicated methods (e.g., `button.on_click(my_handler)`).
+    *   Decorators (e.g., `@button.click`).
 
 ## 2. Development Setup
 
@@ -92,15 +98,15 @@ This module orchestrates the communication channel and connection lifecycle.
 *   **Dispatch:** `_handle_incoming_message` routes incoming `event` and `error` messages based on the `src` field (the `target_id` of the UI component that sent the message) to the appropriate handler in `_message_handlers`.
 *   **Handler Registration:** `BaseComponent.__init__` registers its `_internal_message_handler` method using its unique `target_id`.
 *   **`BaseComponent._internal_message_handler`:**
-    *   Base implementation handles `type: "error"` messages, calling the user's `on_error` callback if registered.
+    *   Base implementation handles `type: "error"` messages, calling the user's registered error callback (`_error_callback`) if set.
     *   **Subclasses override** this to handle their specific `type: "event"` messages. For example:
         *   `Grid`: Checks `payload['event'] == 'click'`, extracts `x`, `y`, calls `_click_callback`.
         *   `Button`: Checks `payload['event'] == 'click'`, calls `_click_callback`.
         *   `Textbox`: Checks `payload['event'] == 'submit'`, extracts `value`, updates local `_value`, calls `_submit_callback`.
         *   `Canvas`: Checks `payload['event'] == 'click'`, extracts `x`, `y`, calls `_click_callback`.
         *   `Console`: Checks `payload['event'] == 'inputText'`, extracts `value`, calls `_input_text_callback`.
-*   **User Callbacks:** Functions provided by the user (e.g., via `button.on_click`, `@textbox.submit`) are stored on the component instance and called by the `_internal_message_handler`.
-*   **Callback Exception Handling:** Exceptions *inside* user callbacks are caught, logged via `logger.exception`, but do **not** crash the listener thread or `run_forever`.
+*   **User Callbacks:** Functions provided by the user (e.g., via constructor params like `on_click=`, methods like `button.on_click()`, or decorators like `@textbox.submit`) are stored on the component instance (e.g., `_click_callback`) and called by the `_internal_message_handler`.
+*   **Callback Exception Handling:** Exceptions *inside* user callbacks are caught by the `_internal_message_handler` and logged via `logger.exception`. They do **not** crash the listener thread or `run_forever`.
 
 ### 3.5. Component Interaction (`BaseComponent`, `_send_command`, `_send_update`)
 
@@ -110,15 +116,20 @@ This module orchestrates the communication channel and connection lifecycle.
         *   Generates unique `target_id`.
         *   Registers `_internal_message_handler`.
         *   Accepts optional `parent` (instance or ID string). If provided, adds `{"parent": parent_id}` to the `spawn` payload (using `camelCase`). If `parent` is `None`, the key is omitted, defaulting to `"root"` in the UI.
+        *   Accepts optional `on_error` callback and registers it using `self.on_error()`.
         *   Sends the `spawn` command via `_send_command()`.
+    *   **Subclass `__init__`:**
+        *   Accept component-specific arguments (e.g., `text` for `Button`).
+        *   Accept relevant event callbacks (e.g., `on_click`, `on_submit`) and register them using the component's specific methods (`self.on_click`, `self.on_submit`).
+        *   Call `super().__init__(..., on_error=on_error)` to handle base initialization and error callback registration.
     *   **`_send_command(type, payload)`:** Internal helper for `spawn` and `remove`. Constructs message with `component_type`, `msg_type`, `target_id`, and `payload`, then calls `connection.send_message()`.
     *   **`_send_update(payload)`:** Internal helper for methods modifying state (e.g., `grid.set_color`, `label.text = ...`). Constructs `update` message (`type: "update"`, `target: self.target_id`, `payload: {action: ..., options: ...}`). The `payload` passed *to* `_send_update` must contain the specific `action` and `options`.
     *   **`remove()`:** Unregisters handler, resets callbacks (`_reset_specific_callbacks`), sends `remove` command.
-    *   **`on_error(callback)`:** Registers user error handler.
-*   **`_reset_specific_callbacks()`:** Virtual method overridden by subclasses (`Button`, `Textbox`, `Grid`, `Console`, `Canvas`) to clear their specific callback attributes (e.g., `_click_callback`, `_submit_callback`) during `remove()`. `Label`, `Markdown`, `Row`, `Column` have simple pass-through implementations.
+    *   **`on_error(callback)` / `on_click(callback)` etc.:** Public methods to register/unregister user callbacks after initialization.
+*   **`_reset_specific_callbacks()`:** Virtual method overridden by subclasses (`Button`, `Textbox`, `Grid`, `Console`, `Canvas`) to clear their specific callback attributes (e.g., `_click_callback`, `_submit_callback`) during `remove()`. `Label`, `Markdown`, `Row`, `Column`, `Viz` have simple pass-through implementations.
 *   **Layout (`Row`, `Column`):**
-    *   Provide `add_child(child_component)` method.
-    *   This method calls `child_component._send_update(...)` with an action `changeParent` and options `{"parent": self.target_id}`. The child component sends the message about itself.
+    *   `__init__` accepts `*children` arguments. It iterates through them and calls `self.add_child()` for each.
+    *   `add_child(child_component)` method calls `child_component._send_update(...)` with an action `changeParent` and options `{"parent": self.target_id}`. The child component sends the message about itself being moved.
 
 ### 3.6. Protocol Compliance: `snake_case` to `camelCase` Conversion
 
@@ -133,18 +144,18 @@ This module orchestrates the communication channel and connection lifecycle.
 ### 3.7. Reactivity (`ObservableValue`, `Viz`)
 
 *   **`ObservableValue`:** Wrapper for lists, dicts, sets. Intercepts mutation methods (`append`, `__setitem__`, `add`, `update`, `clear`, etc.) and calls `_notify()`.
-*   **`Viz.show()`:** If passed an `ObservableValue`, subscribes its `_handle_observable_update` method. Stores the `unsubscribe` function.
-*   **`Viz._handle_observable_update`:** Triggered by `_notify()`. Constructs granular `update` message payload (using `_get_representation` for values) and sends via `_send_update()`.
+*   **`Viz.show()`:** If passed an `ObservableValue`, subscribes its `_handle_observable_update` method. Stores the `unsubscribe` function returned by `ObservableValue.subscribe`.
+*   **`Viz._handle_observable_update`:** Triggered by `ObservableValue._notify()`. Constructs granular `update` message payload (using `_get_representation` for values) and sends via `_send_update()`.
 *   **`_get_representation()`:** Internal recursive helper converting Python data to the JSON structure required by Viz UI, handling nesting, recursion limits, type conversion, and observable tracking.
 
 ### 3.8. Canvas Double Buffering (`canvas.py`)
 
 *   `Canvas.buffer()` returns a context manager (`_CanvasBufferContextManager`).
 *   `with canvas.buffer() as buf:` yields `_CanvasBufferProxy`.
-*   Proxy methods (`buf.draw_*()`) automatically target an acquired offscreen buffer ID.
-*   `__enter__` acquires buffer ID (sending `createBuffer` if needed), clears the offscreen buffer.
-*   `__exit__` sends `drawBuffer` (offscreen -> onscreen), releases buffer ID to pool.
-*   `Canvas.remove()` sends `destroyBuffer` commands for pooled buffers.
+*   Proxy methods (`buf.draw_*()`) automatically target an acquired offscreen buffer ID by setting the `buffer_id` argument when calling the main `Canvas.draw_*` methods.
+*   `_CanvasBufferContextManager.__enter__` acquires buffer ID (sending `createBuffer` if needed via `_acquire_buffer_id`), clears the offscreen buffer.
+*   `_CanvasBufferContextManager.__exit__` sends `drawBuffer` (offscreen -> onscreen) command via `_send_draw_buffer` if no exception occurred, releases buffer ID to pool via `_release_buffer_id`.
+*   `Canvas.remove()` sends `destroyBuffer` commands for pooled buffers before calling `super().remove()`.
 
 ### 3.9. Lifecycle & Synchronization Functions
 
@@ -154,15 +165,14 @@ This module orchestrates the communication channel and connection lifecycle.
 
 ## 4. API Design Notes
 
-*   **Public API:** Uses standard Python `snake_case` for functions/methods, `CapWords` for classes. Component configuration via `__init__` arguments, state modification/retrieval via properties (`label.text`, `textbox.value`) or methods (`grid.set_color`). Event handling via `on_click`/`on_submit` methods or `@*.click`/`@*.submit` decorators.
+*   **Public API:** Uses standard Python `snake_case` for functions/methods, `CapWords` for classes. Component configuration via `__init__` arguments, state modification/retrieval via properties (`label.text`, `textbox.value`) or methods (`grid.set_color`). Event handling via constructor parameters (`on_click=...`), `on_click`/`on_submit` methods, or `@*.click`/`@*.submit` decorators.
 *   **Error Handling Strategy:**
-    *   **Argument Errors:** Standard Python exceptions (`ValueError`, `TypeError`, `IndexError`) for invalid user input.
+    *   **Argument Errors:** Standard Python exceptions (`ValueError`, `TypeError`, `IndexError`) for invalid user input to methods/constructors.
     *   **Connection Errors:** Specific `SidekickConnectionError` subclasses raised for connection issues (Refused, Timeout, Disconnected). Generally unrecoverable by the library.
-    *   **Errors from Sidekick UI:** Messages with `type: "error"` received from the UI are routed to the component's `on_error` callback (if registered). Do not typically raise Python exceptions.
-    *   **User Callback Errors:** Exceptions *inside* user callbacks (`on_click`, etc.) are caught, logged via `logger.exception`, but do not stop the listener or `run_forever`.
+    *   **Errors from Sidekick UI:** Messages with `type: "error"` received from the UI are routed to the component's error callback (`_error_callback`, set via constructor `on_error=` or `component.on_error()`). Do not typically raise Python exceptions.
+    *   **User Callback Errors:** Exceptions *inside* user callbacks (`on_click`, etc.) are caught by the internal message handler, logged via `logger.exception`, but do not stop the listener or `run_forever`.
 
 ## 5. Logging Strategy
 
 *   Uses Python's standard `logging` module. Root logger `"sidekick"`.
 *   Default `logging.NullHandler` prevents logs unless user configures logging (e.g., `logging.basicConfig(level=logging.DEBUG)`).
-*   `DEBUG` level recommended for troubleshooting library issues.

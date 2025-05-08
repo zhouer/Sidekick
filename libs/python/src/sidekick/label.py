@@ -6,18 +6,23 @@ update it later by setting the `text` property.
 
 Labels are useful for displaying information, titles, or descriptions alongside
 other components. They can be placed inside layout containers like `Row` or
-`Column` by specifying the `parent` during initialization.
+`Column` by specifying the `parent` during initialization, or by adding them
+as children to a container's constructor.
 """
 
 from . import logger
 from .base_component import BaseComponent
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Dict, Any, Union, Callable # Added Callable for on_error
 
 class Label(BaseComponent):
     """Represents a non-interactive text Label component instance in the Sidekick UI.
 
-    Creates a simple text display area. Update the displayed text by setting
-    the `text` property.
+    Creates a simple text display area. You can set the initial text when creating
+    the label and update the displayed text later by setting the `label.text` property.
+
+    Example:
+        `status_label = sidekick.Label("Status: Idle")`
+        `status_label.text = "Status: Processing..."`
 
     Attributes:
         target_id (str): The unique identifier for this label instance.
@@ -27,18 +32,34 @@ class Label(BaseComponent):
         self,
         text: str = "",
         parent: Optional[Union['BaseComponent', str]] = None,
+        on_error: Optional[Callable[[str], None]] = None, # For BaseComponent
     ):
         """Initializes the Label object and creates the UI element.
 
+        This function is called when you create a new Label, for example:
+        `title = sidekick.Label("My Application Title")`
+
+        It sends a message to the Sidekick UI to display a new text label.
+
         Args:
-            text (str): The initial text to display. Defaults to "".
-            parent (Optional[Union['BaseComponent', str]]): The parent container.
-                If `None`, added to the root container.
+            text (str): The initial text to display on the label.
+                Defaults to an empty string.
+            parent (Optional[Union['BaseComponent', str]]): The parent container
+                (e.g., a `sidekick.Row` or `sidekick.Column`) where this label
+                should be placed. If `None` (the default), the label is added
+                to the main Sidekick panel area.
+            on_error (Optional[Callable[[str], None]]): A function to call if
+                an error message related to this specific label occurs in the
+                Sidekick UI. The function should accept one string argument
+                (the error message). Defaults to `None`.
 
         Raises:
-            SidekickConnectionError: If connection to Sidekick fails.
-            TypeError: If `parent` is an invalid type.
+            SidekickConnectionError: If the library cannot connect to the
+                Sidekick UI panel.
+            TypeError: If `parent` is an invalid type, or if `on_error` is
+                provided but is not a callable function.
         """
+        # Ensure initial text is a string.
         self._text = str(text)
 
         # Prepare the payload for the 'spawn' command.
@@ -50,22 +71,28 @@ class Label(BaseComponent):
         super().__init__(
             component_type="label",
             payload=spawn_payload,
-            parent=parent # Pass parent to BaseComponent
+            parent=parent,
+            on_error=on_error # Pass to BaseComponent's __init__
         )
-        logger.info(f"Label '{self.target_id}' initialized with text '{self._text}'.")
+        logger.info(
+            f"Label '{self.target_id}' initialized with text "
+            f"'{self._text[:50]}{'...' if len(self._text) > 50 else ''}'."
+        )
 
     @property
     def text(self) -> str:
         """str: The text currently displayed by the label.
 
         Setting this property updates the label's text in the Sidekick UI.
+        For example:
+        `my_label.text = "New information here"`
         """
         return self._text
 
     @text.setter
     def text(self, new_text: str):
         """Sets the text displayed by the label."""
-        new_text_str = str(new_text)
+        new_text_str = str(new_text) # Ensure it's a string
         # Update local state first
         self._text = new_text_str
         # Prepare payload for the 'setText' update action.
@@ -76,13 +103,22 @@ class Label(BaseComponent):
         }
         # Send the update command to the UI.
         self._send_update(payload)
-        logger.debug(f"Label '{self.target_id}' text set to '{new_text_str}'.")
+        logger.debug(
+            f"Label '{self.target_id}' text set to "
+            f"'{new_text_str[:50]}{'...' if len(new_text_str) > 50 else ''}'."
+        )
 
-    # Labels are non-interactive, so no specific event handling or callbacks needed here.
-    # The base _internal_message_handler is sufficient for handling potential errors.
+    # Labels are non-interactive from the Python script's perspective
+    # (they don't send events like clicks back to Python).
+    # The base _internal_message_handler is sufficient for handling
+    # potential 'error' messages related to the Label itself.
 
     def _reset_specific_callbacks(self):
-        """Internal: Resets label-specific callbacks (none currently)."""
+        """Internal: Resets label-specific callbacks (none currently).
+
+        Called by `BaseComponent.remove()`. Label currently has no specific
+        user-settable callbacks beyond `on_error` (handled by base).
+        """
         super()._reset_specific_callbacks()
-        # No specific callbacks for Label currently.
-        pass
+        # No specific callbacks unique to Label to reset at this time.
+        logger.debug(f"Label '{self.target_id}': No specific callbacks to reset.")

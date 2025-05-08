@@ -6,7 +6,8 @@ you to visually represent geometric concepts, create algorithm visualizations,
 build simple game graphics, or even produce basic animations controlled by your code.
 
 The canvas can be placed inside layout containers like `Row` or `Column` by
-specifying the `parent` during initialization.
+specifying the `parent` during initialization, or by adding it as a child
+to a container's constructor.
 
 Key Features:
 
@@ -22,7 +23,8 @@ Key Features:
     `canvas.buffer()` context manager. This draws a complete frame off-screen
     before displaying it all at once.
 *   **Interactivity:** Make your canvas respond to user clicks using the
-    `on_click()` method to register a callback function.
+    `on_click()` method or the `on_click` constructor parameter to register a
+    callback function.
 
 Basic Usage:
     >>> import sidekick
@@ -30,21 +32,30 @@ Basic Usage:
     >>> canvas = sidekick.Canvas(300, 200)
     >>> canvas.draw_line(10, 10, 290, 190, line_color='red')
 
-Usage with a Parent Container:
+Interactive Usage with a Parent Container:
     >>> import sidekick
     >>> my_layout_row = sidekick.Row()
-    >>> # Create a canvas inside the 'my_layout_row'
-    >>> canvas_in_row = sidekick.Canvas(150, 100, parent=my_layout_row)
+    >>>
+    >>> def canvas_clicked(x_coord, y_coord):
+    ...     # Draw a small circle where the user clicked
+    ...     canvas_in_row.draw_circle(x_coord, y_coord, 5, fill_color='green')
+    ...
+    >>> canvas_in_row = sidekick.Canvas(
+    ...     150, 100,
+    ...     parent=my_layout_row,
+    ...     on_click=canvas_clicked
+    ... )
     >>> canvas_in_row.draw_circle(75, 50, 40, fill_color='blue')
+    >>> # sidekick.run_forever() # Keep script running to process clicks
 """
 
 import threading
 import math # Used in examples, good to keep imported
-from typing import Optional, Dict, Any, Callable, List, Tuple, ContextManager, Union # Added Union
+from typing import Optional, Dict, Any, Callable, List, Tuple, ContextManager, Union
 
 from . import logger
-from . import connection
-from .errors import SidekickConnectionError
+# from . import connection # Not directly used here, BaseComponent handles it
+from .errors import SidekickConnectionError # Used in Canvas.buffer() __exit__
 from .base_component import BaseComponent
 
 # Type hint for a list of points used in polylines/polygons
@@ -53,6 +64,10 @@ PointList = List[Tuple[int, int]]
 
 class _CanvasBufferProxy:
     """Internal helper object used with the `canvas.buffer()` context manager. (Internal).
+
+    This object is what you get inside a `with canvas.buffer() as buf:` block.
+    All drawing methods called on `buf` (e.g., `buf.draw_line()`) will target
+    a hidden, off-screen buffer instead of drawing directly to the visible canvas.
 
     Args:
         canvas (Canvas): The parent `Canvas` instance this proxy belongs to.
@@ -126,56 +141,107 @@ class _CanvasBufferProxy:
 class _CanvasBufferContextManager:
     """Internal context manager returned by `canvas.buffer()` for double buffering. (Internal).
 
+    When you use `with canvas.buffer() as buf:`, this object's `__enter__` method
+    is called to set up an off-screen buffer, and its `__exit__` method is called
+    when the `with` block finishes to draw the off-screen buffer's contents to the
+    visible canvas.
+
     Args:
         canvas (Canvas): The parent `Canvas` instance this context manager belongs to.
     """
     def __init__(self, canvas: 'Canvas'):
         self._canvas = canvas
-        self._buffer_id: Optional[int] = None
+        self._buffer_id: Optional[int] = None # The ID of the off-screen buffer being used.
 
     def __enter__(self) -> _CanvasBufferProxy:
         """Prepares and provides an offscreen buffer when entering the `with` block."""
+        # Acquire an available buffer ID from the canvas's pool.
+        # This might involve creating a new buffer in the UI if none are free.
         self._buffer_id = self._canvas._acquire_buffer_id()
-        logger.debug(f"Canvas '{self._canvas.target_id}': Entering buffer context, acquired buffer ID {self._buffer_id}.")
-        _CanvasBufferProxy(self._canvas, self._buffer_id).clear()
-        return _CanvasBufferProxy(self._canvas, self._buffer_id)
+        logger.debug(
+            f"Canvas '{self._canvas.target_id}': Entering buffer context, "
+            f"acquired offscreen buffer ID {self._buffer_id}."
+        )
+        # Create a proxy object that will direct all its drawing calls
+        # to this specific off-screen buffer.
+        buffer_proxy = _CanvasBufferProxy(self._canvas, self._buffer_id)
+        # It's good practice to clear the off-screen buffer before drawing on it,
+        # to ensure no remnants from previous uses are visible.
+        buffer_proxy.clear()
+        return buffer_proxy
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Finalizes buffer operations when exiting the `with` block."""
+        """Finalizes buffer operations when exiting the `with` block.
+
+        If no exception occurred within the `with` block, this method sends a command
+        to the Sidekick UI to draw the contents of the off-screen buffer (identified
+        by `self._buffer_id`) onto the visible canvas (on-screen buffer).
+        It then releases the off-screen buffer ID back to the canvas's pool.
+        """
         if self._buffer_id is None:
-            logger.error(f"Canvas '{self._canvas.target_id}': Exiting buffer context but _buffer_id is None!")
-            return False
+            # This should ideally not happen if __enter__ succeeded.
+            logger.error(
+                f"Canvas '{self._canvas.target_id}': Exiting buffer context, "
+                f"but _buffer_id is unexpectedly None! Cannot draw to screen."
+            )
+            return False # Indicate an issue, but don't suppress outer exceptions.
 
         try:
+            # Only draw the buffer to the screen if the 'with' block completed without errors.
             if exc_type is None:
-                logger.debug(f"Canvas '{self._canvas.target_id}': Exiting buffer context normally. Drawing buffer {self._buffer_id} to screen.")
-                self._canvas._send_draw_buffer(source_buffer_id=self._buffer_id, target_buffer_id=self._canvas.ONSCREEN_BUFFER_ID)
+                logger.debug(
+                    f"Canvas '{self._canvas.target_id}': Exiting buffer context normally. "
+                    f"Drawing buffer {self._buffer_id} to screen (buffer ID {self._canvas.ONSCREEN_BUFFER_ID})."
+                )
+                self._canvas._send_draw_buffer(
+                    source_buffer_id=self._buffer_id,
+                    target_buffer_id=self._canvas.ONSCREEN_BUFFER_ID # ONSCREEN_BUFFER_ID is 0
+                )
             else:
+                # If an exception occurred inside the 'with' block, the off-screen buffer
+                # might be in an inconsistent state. It's safer not to draw it.
                 logger.warning(
                     f"Canvas '{self._canvas.target_id}': Exiting buffer context due to an exception "
-                    f"({exc_type}). Content of buffer {self._buffer_id} NOT drawn."
+                    f"of type '{exc_type.__name__ if exc_type else 'Unknown'}'. "
+                    f"Content of offscreen buffer {self._buffer_id} will NOT be drawn to the screen."
                 )
         except SidekickConnectionError as e:
-             logger.error(f"Canvas '{self._canvas.target_id}': Connection error during buffer __exit__: {e}")
+             # Log connection errors during the buffer finalization.
+             logger.error(
+                f"Canvas '{self._canvas.target_id}': Connection error during "
+                f"buffer __exit__ (drawing to screen): {e}"
+            )
+             # Let the original exception (if any from the 'with' block) propagate.
         except Exception as e_exit:
-             logger.exception(f"Canvas '{self._canvas.target_id}': Unexpected error during buffer __exit__: {e_exit}")
+             # Catch any other unexpected errors during the drawing process.
+             logger.exception(
+                f"Canvas '{self._canvas.target_id}': Unexpected error during "
+                f"buffer __exit__ (drawing to screen): {e_exit}"
+            )
+             # Let the original exception (if any) propagate.
 
+        # Always release the buffer ID back to the pool, regardless of exceptions.
         self._canvas._release_buffer_id(self._buffer_id)
-        self._buffer_id = None
-        return False # Propagate exceptions
+        self._buffer_id = None # Clear the stored buffer ID.
+
+        # Return False to propagate any exceptions that occurred *within* the 'with' block.
+        # If exc_type is None, returning False has no effect.
+        return False
 
 
 class Canvas(BaseComponent):
     """Represents a 2D drawing canvas component instance in the Sidekick UI.
 
-    Provides a surface within the Sidekick panel for programmatic drawing.
-    Can be placed within layout containers like `Row` or `Column`.
+    Provides a surface within the Sidekick panel for programmatic drawing of shapes,
+    text, and for creating simple animations. The canvas origin (0,0) is at the
+    top-left corner. It can be nested within layout containers like `Row` or `Column`.
 
     Attributes:
         target_id (str): The unique identifier for this canvas instance.
         width (int): The width of the canvas drawing area in pixels (read-only).
         height (int): The height of the canvas drawing area in pixels (read-only).
     """
+    # Special ID representing the main, visible on-screen canvas buffer in the UI.
     ONSCREEN_BUFFER_ID = 0
 
     def __init__(
@@ -183,57 +249,100 @@ class Canvas(BaseComponent):
         width: int,
         height: int,
         parent: Optional[Union['BaseComponent', str]] = None,
+        on_click: Optional[Callable[[int, int], None]] = None, # New parameter
+        on_error: Optional[Callable[[str], None]] = None, # For BaseComponent
     ):
         """Initializes a new Canvas object and creates its UI element in Sidekick.
 
+        This function is called when you create a new Canvas, for example:
+        `my_drawing_area = sidekick.Canvas(400, 300, on_click=handle_drawing_click)`
+
+        It sends a message to the Sidekick UI to display a new drawing canvas.
+
         Args:
-            width (int): The desired width of the canvas in pixels. Must be positive.
-            height (int): The desired height of the canvas in pixels. Must be positive.
-            parent (Optional[Union['BaseComponent', str]]): The parent container.
-                If `None`, added to the root container.
+            width (int): The desired width of the canvas in pixels.
+                Must be a positive integer (e.g., > 0).
+            height (int): The desired height of the canvas in pixels.
+                Must be a positive integer (e.g., > 0).
+            parent (Optional[Union['BaseComponent', str]]): The parent container
+                (e.g., a `sidekick.Row` or `sidekick.Column`) where this canvas
+                should be placed. If `None` (the default), the canvas is added
+                to the main Sidekick panel area.
+            on_click (Optional[Callable[[int, int], None]]): A function to call
+                when the user clicks on the canvas. This is an alternative to using
+                the `my_canvas.on_click(callback)` method later. The function
+                should accept two integer arguments: `x` (the x-coordinate of the
+                click relative to the canvas top-left) and `y` (the y-coordinate).
+                Defaults to `None`.
+            on_error (Optional[Callable[[str], None]]): A function to call if
+                an error related to this specific canvas occurs in the Sidekick UI.
+                The function should take one string argument (the error message).
+                Defaults to `None`.
 
         Raises:
             ValueError: If `width` or `height` are not positive integers.
-            SidekickConnectionError: If connection to Sidekick fails.
-            TypeError: If `parent` is an invalid type.
+            SidekickConnectionError: If the library cannot connect to the
+                Sidekick UI panel.
+            TypeError: If `parent` is an invalid type, or if `on_click` or
+                `on_error` are provided but are not callable functions.
         """
         if not isinstance(width, int) or width <= 0:
             raise ValueError("Canvas width must be a positive integer.")
         if not isinstance(height, int) or height <= 0:
             raise ValueError("Canvas height must be a positive integer.")
 
+        # Prepare payload for the 'spawn' command.
+        # Keys must be camelCase per the protocol.
         spawn_payload: Dict[str, Any] = {
             "width": width,
             "height": height
         }
 
-        super().__init__(
-            component_type="canvas",
-            payload=spawn_payload,
-            parent=parent  # Pass the parent argument to BaseComponent
-        )
-
+        # Initialize attributes before super() call.
         self._width = width
         self._height = height
         self._click_callback: Optional[Callable[[int, int], None]] = None
-        self._buffer_pool: Dict[int, bool] = {}
-        self._next_buffer_id: int = 1
-        self._buffer_lock = threading.Lock()
+        self._buffer_pool: Dict[int, bool] = {} # Stores {buffer_id: is_in_use}
+        self._next_buffer_id: int = 1 # Start offscreen buffer IDs from 1 (0 is onscreen)
+        self._buffer_lock = threading.Lock() # Protects access to _buffer_pool and _next_buffer_id
 
-        logger.info(f"Canvas '{self.target_id}' initialized (size={self.width}x{self.height}).")
+        super().__init__(
+            component_type="canvas",
+            payload=spawn_payload,
+            parent=parent,
+            on_error=on_error # Pass to BaseComponent's __init__
+        )
+        logger.info(
+            f"Canvas '{self.target_id}' initialized "
+            f"(size={self.width}x{self.height})."
+        )
+
+        # Register on_click callback if provided in the constructor.
+        if on_click is not None:
+            self.on_click(on_click)
 
     @property
     def width(self) -> int:
-        """int: The width of the canvas in pixels (read-only)."""
+        """int: The width of the canvas in pixels (read-only).
+
+        Set during initialization and cannot be changed later.
+        """
         return self._width
 
     @property
     def height(self) -> int:
-        """int: The height of the canvas in pixels (read-only)."""
+        """int: The height of the canvas in pixels (read-only).
+
+        Set during initialization and cannot be changed later.
+        """
         return self._height
 
     def _internal_message_handler(self, message: Dict[str, Any]):
-        """Handles incoming 'event' or 'error' messages for this canvas. (Internal)."""
+        """Handles incoming 'event' or 'error' messages for this canvas. (Internal).
+
+        This method is called by the Sidekick connection manager when an event
+        (like a "click") occurs on this canvas in the UI.
+        """
         msg_type = message.get("type")
         payload = message.get("payload")
 
@@ -241,36 +350,57 @@ class Canvas(BaseComponent):
             event_type = payload.get("event") if payload else None
             if event_type == "click" and self._click_callback:
                 try:
+                    # The UI sends 'x' and 'y' coordinates of the click.
                     x = payload.get('x')
                     y = payload.get('y')
+                    # Validate that x and y are integers.
                     if isinstance(x, int) and isinstance(y, int):
                         self._click_callback(x, y)
                     else:
+                         # This indicates a protocol mismatch or UI bug.
                          logger.warning(
                             f"Canvas '{self.target_id}' received 'click' event "
                             f"with missing/invalid coordinates: {payload}"
                          )
                 except Exception as e:
+                    # Prevent errors in user callback from crashing the listener.
                     logger.exception(
                         f"Error occurred inside Canvas '{self.target_id}' on_click callback: {e}"
                     )
-            else:
+            elif event_type: # An event occurred but we don't have a handler or it's an unknown type
                  logger.debug(
                     f"Canvas '{self.target_id}' received unhandled event type '{event_type}' "
-                    f"or no click callback registered."
+                    f"or no click callback registered for 'click'."
                  )
+        # Always call the base handler for potential 'error' messages or other base handling.
         super()._internal_message_handler(message)
 
     def on_click(self, callback: Optional[Callable[[int, int], None]]):
         """Registers a function to be called when the user clicks on the canvas.
 
+        The provided callback function will be executed in your Python script.
+        It will receive two integer arguments: the `x` and `y` coordinates of the
+        click, relative to the top-left corner of the canvas.
+
+        You can also set this callback directly when creating the canvas using
+        the `on_click` parameter in its constructor.
+
         Args:
-            callback (Optional[Callable[[int, int], None]]): The function to execute.
-                It must accept two integer arguments: `x` (column) and `y` (row)
-                of the click. Pass `None` to remove a callback.
+            callback (Optional[Callable[[int, int], None]]): The function to execute
+                when the canvas is clicked. It must accept two integer arguments:
+                `x` (column/horizontal coordinate) and `y` (row/vertical coordinate)
+                of the click. Pass `None` to remove a previously registered callback.
 
         Raises:
             TypeError: If `callback` is not a callable function or `None`.
+
+        Example:
+            >>> def log_click_position(x_pos, y_pos):
+            ...     print(f"Canvas clicked at ({x_pos}, {y_pos})")
+            ...
+            >>> my_canvas = sidekick.Canvas(200, 100)
+            >>> my_canvas.on_click(log_click_position)
+            >>> # sidekick.run_forever() # Needed to process clicks
         """
         if callback is not None and not callable(callback):
             raise TypeError("The provided on_click callback must be a callable function or None.")
@@ -280,105 +410,178 @@ class Canvas(BaseComponent):
     def buffer(self) -> ContextManager[_CanvasBufferProxy]:
         """Provides a context manager (`with` statement) for efficient double buffering.
 
-        Draw operations within the `with` block target a hidden buffer. Upon exiting
-        the block, the hidden buffer's content is drawn to the visible canvas.
+        When you want to draw multiple shapes or create an animation frame, drawing
+        each element directly to the screen can cause flickering. Double buffering
+        solves this by first drawing everything to a hidden, off-screen buffer.
+        Once all drawing operations for the frame are complete (when the `with`
+        block ends), the entire content of the hidden buffer is instantly drawn
+        to the visible canvas. This results in smoother graphics and animations.
 
         Returns:
-            ContextManager[_CanvasBufferProxy]: A context manager yielding a proxy
-            for drawing on the hidden buffer.
+            ContextManager[_CanvasBufferProxy]: A context manager. When used in a
+            `with` statement, it yields a `_CanvasBufferProxy` object. All drawing
+            methods called on this proxy object will target the hidden buffer.
 
         Example:
-            >>> with canvas.buffer() as frame_buffer:
+            >>> # Assume 'my_canvas' is an existing sidekick.Canvas instance
+            >>> with my_canvas.buffer() as frame_buffer:
+            ...     # These draw calls happen on a hidden buffer
+            ...     frame_buffer.clear() # Clear the hidden buffer first
             ...     frame_buffer.draw_circle(50, 50, 10, fill_color='red')
-            ... # Screen updates when 'with' block ends.
+            ...     frame_buffer.draw_rect(100, 30, 20, 40, fill_color='blue')
+            ...
+            >>> # When the 'with' block exits, the screen updates once with the red circle
+            >>> # and blue rectangle, avoiding flicker.
         """
         return _CanvasBufferContextManager(self)
 
     def _acquire_buffer_id(self) -> int:
-        """Internal: Gets an available offscreen buffer ID or creates one."""
-        with self._buffer_lock:
+        """Internal: Gets an available offscreen buffer ID from the pool or creates a new one.
+
+        This method manages a pool of offscreen buffer IDs. If a free buffer ID
+        is available, it's reused. Otherwise, a new ID is generated, and a command
+        is sent to the UI to create a corresponding offscreen buffer. This is
+        thread-safe.
+
+        Returns:
+            int: The ID of an available (and now marked as 'in-use') offscreen buffer.
+                 Buffer IDs are always positive integers (>0).
+        """
+        with self._buffer_lock: # Ensure thread-safe access to the pool
+            # Try to find an existing, unused buffer ID in the pool.
             for buffer_id, is_in_use in self._buffer_pool.items():
                 if not is_in_use:
-                    self._buffer_pool[buffer_id] = True
-                    logger.debug(f"Canvas '{self.target_id}': Reusing buffer ID {buffer_id}.")
+                    self._buffer_pool[buffer_id] = True # Mark as in-use
+                    logger.debug(
+                        f"Canvas '{self.target_id}': Reusing offscreen buffer ID {buffer_id} from pool."
+                    )
                     return buffer_id
 
+            # If no free buffer ID was found, create a new one.
             new_id = self._next_buffer_id
-            self._next_buffer_id += 1
-            logger.debug(f"Canvas '{self.target_id}': Creating new buffer with ID {new_id}.")
+            self._next_buffer_id += 1 # Increment for the next potential new buffer
+
+            logger.debug(
+                f"Canvas '{self.target_id}': Creating new offscreen buffer with ID {new_id} in UI."
+            )
+            # Send a command to the UI to create this new offscreen buffer.
             self._send_canvas_update(
                 action="createBuffer",
-                options={"bufferId": new_id}
+                options={"bufferId": new_id} # Key is 'bufferId' (camelCase)
             )
-            self._buffer_pool[new_id] = True
+            self._buffer_pool[new_id] = True # Add to pool and mark as in-use
             return new_id
 
     def _release_buffer_id(self, buffer_id: int):
-        """Internal: Marks an offscreen buffer ID as no longer in use."""
-        with self._buffer_lock:
+        """Internal: Marks an offscreen buffer ID as no longer in use, returning it to the pool.
+
+        Called by `_CanvasBufferContextManager.__exit__` after the buffer's contents
+        have been drawn (or if an error occurred). This is thread-safe.
+
+        Args:
+            buffer_id (int): The ID of the offscreen buffer to release.
+        """
+        with self._buffer_lock: # Ensure thread-safe access to the pool
             if buffer_id in self._buffer_pool:
-                self._buffer_pool[buffer_id] = False
-                logger.debug(f"Canvas '{self.target_id}': Released buffer ID {buffer_id} back to pool.")
+                self._buffer_pool[buffer_id] = False # Mark as available
+                logger.debug(
+                    f"Canvas '{self.target_id}': Released offscreen buffer ID {buffer_id} back to pool."
+                )
             else:
+                # This might happen if remove() was called concurrently or other logic errors.
                 logger.warning(
                     f"Canvas '{self.target_id}': Attempted to release buffer ID {buffer_id}, "
-                    f"but it was not found in the active pool."
+                    f"but it was not found in the active pool. It might have been already destroyed."
                 )
 
     def _send_draw_buffer(self, source_buffer_id: int, target_buffer_id: int):
-        """Internal: Sends command to draw one buffer onto another."""
+        """Internal: Sends command to draw one buffer's content onto another buffer in the UI.
+
+        Typically used to draw an offscreen buffer (`source_buffer_id`) onto the
+        visible onscreen buffer (`target_buffer_id = ONSCREEN_BUFFER_ID`).
+
+        Args:
+            source_buffer_id (int): The ID of the buffer to copy from.
+            target_buffer_id (int): The ID of the buffer to draw onto.
+        """
         self._send_canvas_update(
             action="drawBuffer",
             options={
-                "sourceBufferId": source_buffer_id,
-                "targetBufferId": target_buffer_id
+                "sourceBufferId": source_buffer_id, # camelCase
+                "targetBufferId": target_buffer_id  # camelCase
             }
         )
 
     def _send_canvas_update(self, action: str, options: Dict[str, Any]):
-        """Internal helper to construct and send a Canvas 'update' command."""
+        """Internal helper to construct and send a Canvas 'update' command.
+
+        All canvas drawing operations and buffer manipulations use this method
+        to send their specific update commands to the UI.
+
+        Args:
+            action (str): The specific canvas action (e.g., "drawLine", "createBuffer").
+            options (Dict[str, Any]): A dictionary of options for that action,
+                with keys already in `camelCase` as required by the protocol.
+        """
         update_payload = {
             "action": action,
             "options": options,
         }
-        self._send_update(update_payload)
+        self._send_update(update_payload) # Calls BaseComponent._send_update
 
     def clear(self, buffer_id: Optional[int] = None):
         """Clears the specified canvas buffer (visible screen or an offscreen buffer).
 
+        If `buffer_id` is `None` or `0` (which is `Canvas.ONSCREEN_BUFFER_ID`),
+        this will clear the main, visible canvas area in the Sidekick UI.
+        If a positive `buffer_id` is provided (e.g., from within a
+        `canvas.buffer()` context), it clears that specific offscreen buffer.
+
         Args:
-            buffer_id (Optional[int]): ID of the buffer to clear. `None` or 0 for
-                the visible canvas.
+            buffer_id (Optional[int]): The ID of the buffer to clear.
+                Defaults to `None`, which means the visible onscreen canvas
+                (ID `0`). For offscreen buffers obtained via `canvas.buffer()`,
+                the proxy object automatically provides the correct ID.
 
         Raises:
-            SidekickConnectionError: If sending command fails.
+            SidekickConnectionError: If sending the command to the UI fails.
         """
+        # Determine the target buffer ID. If None, use the onscreen buffer ID.
         target_buffer_id = buffer_id if buffer_id is not None else self.ONSCREEN_BUFFER_ID
-        logger.debug(f"Canvas '{self.target_id}': Sending 'clear' command for buffer ID {target_buffer_id}.")
-        options = {"bufferId": target_buffer_id}
+        log_target = "visible canvas" if target_buffer_id == self.ONSCREEN_BUFFER_ID else f"buffer ID {target_buffer_id}"
+        logger.debug(f"Canvas '{self.target_id}': Sending 'clear' command for {log_target}.")
+
+        options = {"bufferId": target_buffer_id} # camelCase
         self._send_canvas_update("clear", options)
 
     def draw_line(self, x1: int, y1: int, x2: int, y2: int,
                   line_color: Optional[str] = None,
                   line_width: Optional[int] = None,
                   buffer_id: Optional[int] = None):
-        """Draws a straight line segment between two points.
+        """Draws a straight line segment between two points on the canvas.
 
         Args:
-            x1 (int): Start x-coordinate.
-            y1 (int): Start y-coordinate.
-            x2 (int): End x-coordinate.
-            y2 (int): End y-coordinate.
-            line_color (Optional[str]): Line color (CSS format). UI default if None.
-            line_width (Optional[int]): Line thickness in pixels (positive). UI default if None.
-            buffer_id (Optional[int]): Target buffer ID. Defaults to visible canvas.
+            x1 (int): The x-coordinate of the starting point of the line.
+            y1 (int): The y-coordinate of the starting point of the line.
+            x2 (int): The x-coordinate of the ending point of the line.
+            y2 (int): The y-coordinate of the ending point of the line.
+            line_color (Optional[str]): The color of the line, as a CSS color
+                string (e.g., 'blue', '#00FF00'). If `None`, the UI's default
+                line color will be used.
+            line_width (Optional[int]): The thickness of the line in pixels.
+                Must be a positive integer if provided. If `None`, the UI's
+                default line width will be used.
+            buffer_id (Optional[int]): The ID of the buffer to draw on.
+                Defaults to `None` (the visible onscreen canvas). When drawing
+                inside a `with canvas.buffer() as buf:`, `buf.draw_line(...)`
+                automatically targets the correct offscreen buffer.
 
         Raises:
-            ValueError: If `line_width` is not positive.
-            SidekickConnectionError: If sending command fails.
+            ValueError: If `line_width` is provided but is not a positive integer.
+            SidekickConnectionError: If sending the command to the UI fails.
         """
         target_buffer_id = buffer_id if buffer_id is not None else self.ONSCREEN_BUFFER_ID
-        options: Dict[str, Any] = {
+        options: Dict[str, Any] = { # Ensure keys are camelCase for the protocol
             "bufferId": target_buffer_id,
             "x1": x1, "y1": y1, "x2": x2, "y2": y2
         }
@@ -387,7 +590,7 @@ class Canvas(BaseComponent):
             if isinstance(line_width, int) and line_width > 0:
                 options["lineWidth"] = line_width
             else:
-                 raise ValueError("line_width must be a positive integer.")
+                 raise ValueError("line_width for draw_line must be a positive integer if provided.")
         self._send_canvas_update("drawLine", options)
 
     def draw_rect(self, x: int, y: int, width: int, height: int,
@@ -395,28 +598,34 @@ class Canvas(BaseComponent):
                   line_color: Optional[str] = None,
                   line_width: Optional[int] = None,
                   buffer_id: Optional[int] = None):
-        """Draws a rectangle.
+        """Draws a rectangle on the canvas.
+
+        The `(x, y)` coordinates specify the top-left corner of the rectangle.
 
         Args:
-            x (int): Top-left x-coordinate.
-            y (int): Top-left y-coordinate.
-            width (int): Rectangle width (non-negative).
-            height (int): Rectangle height (non-negative).
-            fill_color (Optional[str]): Fill color. Transparent if None.
-            line_color (Optional[str]): Outline color. UI default if None.
-            line_width (Optional[int]): Outline thickness (non-negative). 0 for no outline.
-                                       UI default if None.
+            x (int): The x-coordinate of the top-left corner.
+            y (int): The y-coordinate of the top-left corner.
+            width (int): The width of the rectangle in pixels. Must be non-negative.
+            height (int): The height of the rectangle in pixels. Must be non-negative.
+            fill_color (Optional[str]): The color to fill the rectangle with (CSS
+                format). If `None`, the rectangle will not be filled (transparent fill).
+            line_color (Optional[str]): The color of the rectangle's outline (CSS
+                format). If `None`, the UI's default outline color is used.
+            line_width (Optional[int]): The thickness of the outline in pixels.
+                Must be non-negative if provided. A `line_width` of `0` typically
+                means no outline. If `None`, the UI's default outline width is used.
             buffer_id (Optional[int]): Target buffer ID. Defaults to visible canvas.
 
         Raises:
-            ValueError: If `width`/`height` negative, or `line_width` invalid.
+            ValueError: If `width` or `height` are negative, or if `line_width`
+                        is provided but is not a non-negative integer.
             SidekickConnectionError: If sending command fails.
         """
         target_buffer_id = buffer_id if buffer_id is not None else self.ONSCREEN_BUFFER_ID
         if width < 0: raise ValueError("Rectangle width cannot be negative.")
         if height < 0: raise ValueError("Rectangle height cannot be negative.")
 
-        options: Dict[str, Any] = {
+        options: Dict[str, Any] = { # camelCase keys
             "bufferId": target_buffer_id,
             "x": x, "y": y, "width": width, "height": height
         }
@@ -426,7 +635,7 @@ class Canvas(BaseComponent):
             if isinstance(line_width, int) and line_width >= 0:
                 options["lineWidth"] = line_width
             else:
-                 raise ValueError("line_width must be a non-negative integer.")
+                 raise ValueError("line_width for draw_rect must be a non-negative integer if provided.")
         self._send_canvas_update("drawRect", options)
 
     def draw_circle(self, cx: int, cy: int, radius: int,
@@ -434,27 +643,30 @@ class Canvas(BaseComponent):
                     line_color: Optional[str] = None,
                     line_width: Optional[int] = None,
                     buffer_id: Optional[int] = None):
-        """Draws a circle.
+        """Draws a circle on the canvas.
 
         Args:
-            cx (int): Center x-coordinate.
-            cy (int): Center y-coordinate.
-            radius (int): Circle radius (positive).
-            fill_color (Optional[str]): Fill color. Not filled if None.
-            line_color (Optional[str]): Outline color. UI default if None.
-            line_width (Optional[int]): Outline thickness (non-negative). UI default if None.
+            cx (int): The x-coordinate of the circle's center.
+            cy (int): The y-coordinate of the circle's center.
+            radius (int): The radius of the circle in pixels. Must be positive.
+            fill_color (Optional[str]): Fill color (CSS format). No fill if `None`.
+            line_color (Optional[str]): Outline color (CSS format). UI default if `None`.
+            line_width (Optional[int]): Outline thickness (non-negative). UI default if `None`.
             buffer_id (Optional[int]): Target buffer ID. Defaults to visible canvas.
 
         Raises:
-            ValueError: If `radius` not positive, or `line_width` invalid.
+            ValueError: If `radius` is not positive, or if `line_width` is provided
+                        but is not a non-negative integer.
             SidekickConnectionError: If sending command fails.
         """
         target_buffer_id = buffer_id if buffer_id is not None else self.ONSCREEN_BUFFER_ID
-        if not isinstance(radius, (int, float)) or radius <= 0: # allow float for radius internally
+        # The protocol might expect integer radius, but allowing float internally
+        # and then converting can be convenient for calculations.
+        if not isinstance(radius, (int, float)) or radius <= 0:
             raise ValueError("Circle radius must be a positive number.")
-        radius_int = int(radius)
+        radius_int = int(radius) # Ensure integer for protocol if needed
 
-        options: Dict[str, Any] = {
+        options: Dict[str, Any] = { # camelCase keys
             "bufferId": target_buffer_id,
             "cx": cx, "cy": cy, "radius": radius_int
         }
@@ -464,44 +676,50 @@ class Canvas(BaseComponent):
             if isinstance(line_width, int) and line_width >= 0:
                 options["lineWidth"] = line_width
             else:
-                 raise ValueError("line_width must be a non-negative integer.")
+                 raise ValueError("line_width for draw_circle must be a non-negative integer if provided.")
         self._send_canvas_update("drawCircle", options)
 
     def draw_polyline(self, points: PointList,
                       line_color: Optional[str] = None,
                       line_width: Optional[int] = None,
                       buffer_id: Optional[int] = None):
-        """Draws a series of connected line segments (an open path).
+        """Draws a series of connected line segments (an open path) on the canvas.
 
         Args:
-            points (List[Tuple[int, int]]): List of at least two (x,y) vertex tuples.
-            line_color (Optional[str]): Color for all segments. UI default if None.
-            line_width (Optional[int]): Thickness for all segments (positive). UI default if None.
+            points (List[Tuple[int, int]]): A list of at least two (x,y) tuples
+                representing the vertices of the polyline. For example:
+                `[(10, 10), (50, 50), (10, 90)]` would draw a V-shape.
+            line_color (Optional[str]): Color for all segments (CSS format). UI default if `None`.
+            line_width (Optional[int]): Thickness for all segments (positive). UI default if `None`.
             buffer_id (Optional[int]): Target buffer ID. Defaults to visible canvas.
 
         Raises:
-            ValueError: If `points` has < 2 points, or `line_width` invalid.
-            TypeError: If `points` format is invalid.
+            ValueError: If `points` has fewer than 2 points, or if `line_width` is
+                        provided but is not a positive integer.
+            TypeError: If the `points` argument is not a list or if its elements
+                       are not valid (x,y) tuples/lists of numbers.
             SidekickConnectionError: If sending command fails.
         """
         target_buffer_id = buffer_id if buffer_id is not None else self.ONSCREEN_BUFFER_ID
         if not isinstance(points, list) or len(points) < 2:
             raise ValueError("draw_polyline requires a list of at least two (x, y) point tuples.")
+
+        # Validate and convert points to the protocol format ({'x': ..., 'y': ...})
         try:
             points_payload = [{"x": int(p[0]), "y": int(p[1])} for p in points]
         except (TypeError, IndexError, ValueError) as e:
              raise TypeError(
                 "Invalid data format in 'points' list for draw_polyline. "
-                f"Expect list of (x, y) tuples/lists with numbers. Error: {e}"
-            )
+                f"Expected a list of (x, y) tuples or lists containing numbers. Original error: {e}"
+            ) from e
 
-        options: Dict[str, Any] = {"bufferId": target_buffer_id, "points": points_payload}
+        options: Dict[str, Any] = {"bufferId": target_buffer_id, "points": points_payload} # camelCase
         if line_color is not None: options["lineColor"] = line_color
         if line_width is not None:
             if isinstance(line_width, int) and line_width > 0:
                 options["lineWidth"] = line_width
             else:
-                 raise ValueError("line_width must be a positive integer.")
+                 raise ValueError("line_width for draw_polyline must be a positive integer if provided.")
         self._send_canvas_update("drawPolyline", options)
 
     def draw_polygon(self, points: PointList,
@@ -509,30 +727,36 @@ class Canvas(BaseComponent):
                      line_color: Optional[str] = None,
                      line_width: Optional[int] = None,
                      buffer_id: Optional[int] = None):
-        """Draws a closed polygon shape.
+        """Draws a closed polygon shape on the canvas.
+
+        The last point in the `points` list will be automatically connected back
+        to the first point to close the shape.
 
         Args:
-            points (List[Tuple[int, int]]): List of at least three (x,y) vertex tuples.
-            fill_color (Optional[str]): Fill color. Not filled if None.
-            line_color (Optional[str]): Outline color. UI default if None.
-            line_width (Optional[int]): Outline thickness (non-negative). UI default if None.
+            points (List[Tuple[int, int]]): A list of at least three (x,y) tuples
+                representing the vertices of the polygon.
+            fill_color (Optional[str]): Fill color (CSS format). No fill if `None`.
+            line_color (Optional[str]): Outline color (CSS format). UI default if `None`.
+            line_width (Optional[int]): Outline thickness (non-negative). UI default if `None`.
             buffer_id (Optional[int]): Target buffer ID. Defaults to visible canvas.
 
         Raises:
-            ValueError: If `points` has < 3 points, or `line_width` invalid.
-            TypeError: If `points` format is invalid.
+            ValueError: If `points` has fewer than 3 points, or if `line_width` is
+                        provided but is not a non-negative integer.
+            TypeError: If the `points` argument is not a list or if its elements
+                       are not valid (x,y) tuples/lists of numbers.
             SidekickConnectionError: If sending command fails.
         """
         target_buffer_id = buffer_id if buffer_id is not None else self.ONSCREEN_BUFFER_ID
         if not isinstance(points, list) or len(points) < 3:
             raise ValueError("draw_polygon requires a list of at least three (x, y) point tuples.")
         try:
-            points_payload = [{"x": int(p[0]), "y": int(p[1])} for p in points]
+            points_payload = [{"x": int(p[0]), "y": int(p[1])} for p in points] # camelCase for payload
         except (TypeError, IndexError, ValueError) as e:
              raise TypeError(
                 "Invalid data format in 'points' list for draw_polygon. "
-                f"Expect list of (x, y) tuples/lists with numbers. Error: {e}"
-            )
+                f"Expected a list of (x, y) tuples or lists containing numbers. Original error: {e}"
+            ) from e
 
         options: Dict[str, Any] = {"bufferId": target_buffer_id, "points": points_payload}
         if fill_color is not None: options["fillColor"] = fill_color
@@ -541,7 +765,7 @@ class Canvas(BaseComponent):
             if isinstance(line_width, int) and line_width >= 0:
                 options["lineWidth"] = line_width
             else:
-                 raise ValueError("line_width must be a non-negative integer.")
+                 raise ValueError("line_width for draw_polygon must be a non-negative integer if provided.")
         self._send_canvas_update("drawPolygon", options)
 
     def draw_ellipse(self, cx: int, cy: int, radius_x: int, radius_y: int,
@@ -549,31 +773,32 @@ class Canvas(BaseComponent):
                      line_color: Optional[str] = None,
                      line_width: Optional[int] = None,
                      buffer_id: Optional[int] = None):
-        """Draws an ellipse (or oval) shape.
+        """Draws an ellipse (or oval) shape on the canvas.
 
         Args:
-            cx (int): Center x-coordinate.
-            cy (int): Center y-coordinate.
-            radius_x (int): Horizontal radius (positive).
-            radius_y (int): Vertical radius (positive).
-            fill_color (Optional[str]): Fill color. Not filled if None.
-            line_color (Optional[str]): Outline color. UI default if None.
-            line_width (Optional[int]): Outline thickness (non-negative). UI default if None.
+            cx (int): The x-coordinate of the ellipse's center.
+            cy (int): The y-coordinate of the ellipse's center.
+            radius_x (int): The horizontal radius of the ellipse in pixels. Must be positive.
+            radius_y (int): The vertical radius of the ellipse in pixels. Must be positive.
+            fill_color (Optional[str]): Fill color (CSS format). No fill if `None`.
+            line_color (Optional[str]): Outline color (CSS format). UI default if `None`.
+            line_width (Optional[int]): Outline thickness (non-negative). UI default if `None`.
             buffer_id (Optional[int]): Target buffer ID. Defaults to visible canvas.
 
         Raises:
-            ValueError: If radii not positive, or `line_width` invalid.
+            ValueError: If `radius_x` or `radius_y` are not positive, or if `line_width`
+                        is provided but is not a non-negative integer.
             SidekickConnectionError: If sending command fails.
         """
         target_buffer_id = buffer_id if buffer_id is not None else self.ONSCREEN_BUFFER_ID
-        if not isinstance(radius_x, (int, float)) or radius_x <= 0:
+        if not isinstance(radius_x, (int, float)) or radius_x <= 0: # Allow float for calc, convert for protocol
             raise ValueError("Ellipse radius_x must be a positive number.")
         if not isinstance(radius_y, (int, float)) or radius_y <= 0:
             raise ValueError("Ellipse radius_y must be a positive number.")
         radius_x_int = int(radius_x)
         radius_y_int = int(radius_y)
 
-        options: Dict[str, Any] = {
+        options: Dict[str, Any] = { # camelCase keys
             "bufferId": target_buffer_id,
             "cx": cx, "cy": cy,
             "radiusX": radius_x_int,
@@ -585,82 +810,111 @@ class Canvas(BaseComponent):
             if isinstance(line_width, int) and line_width >= 0:
                 options["lineWidth"] = line_width
             else:
-                 raise ValueError("line_width must be a non-negative integer.")
+                 raise ValueError("line_width for draw_ellipse must be a non-negative integer if provided.")
         self._send_canvas_update("drawEllipse", options)
 
     def draw_text(self, x: int, y: int, text: str,
                   text_color: Optional[str] = None,
                   text_size: Optional[int] = None,
                   buffer_id: Optional[int] = None):
-        """Draws a string of text.
+        """Draws a string of text on the canvas.
 
-        The (x,y) coordinates typically define the text's baseline start or top-left.
+        The `(x,y)` coordinates typically define the starting point of the text's
+        baseline (for many fonts) or the top-left corner. The exact interpretation
+        can depend on the UI's rendering implementation.
 
         Args:
-            x (int): X-coordinate for text position.
-            y (int): Y-coordinate for text position.
+            x (int): The x-coordinate for the text's position.
+            y (int): The y-coordinate for the text's position.
             text (str): The text string to display.
-            text_color (Optional[str]): Text color. UI default if None.
-            text_size (Optional[int]): Font size in pixels (positive). UI default if None.
+            text_color (Optional[str]): The color of the text (CSS format).
+                UI default if `None`.
+            text_size (Optional[int]): The font size in pixels. Must be positive
+                if provided. UI default if `None`.
             buffer_id (Optional[int]): Target buffer ID. Defaults to visible canvas.
 
         Raises:
-            ValueError: If `text_size` is not positive.
+            ValueError: If `text_size` is provided but is not a positive integer.
             SidekickConnectionError: If sending command fails.
         """
         target_buffer_id = buffer_id if buffer_id is not None else self.ONSCREEN_BUFFER_ID
-        options: Dict[str, Any] = {
+        options: Dict[str, Any] = { # camelCase keys
             "bufferId": target_buffer_id,
             "x": x, "y": y,
-            "text": str(text)
+            "text": str(text) # Ensure text is a string
         }
         if text_color is not None: options["textColor"] = text_color
         if text_size is not None:
             if isinstance(text_size, int) and text_size > 0:
                 options["textSize"] = text_size
             else:
-                 raise ValueError("text_size must be a positive integer.")
+                 raise ValueError("text_size for draw_text must be a positive integer if provided.")
         self._send_canvas_update("drawText", options)
 
     def _reset_specific_callbacks(self):
-        """Internal: Resets canvas-specific callbacks."""
+        """Internal: Resets canvas-specific callbacks when the component is removed."""
         super()._reset_specific_callbacks() # Good practice if base had its own
         self._click_callback = None
+        logger.debug(f"Canvas '{self.target_id}': Click callback reset.")
 
     def remove(self):
-        """Removes the canvas and its offscreen buffers from the Sidekick UI."""
+        """Removes the canvas and its associated offscreen buffers from the Sidekick UI.
+
+        This method cleans up not only the visible canvas but also any offscreen
+        buffers that were created for double buffering via `canvas.buffer()`.
+        It's important to call this when you're done with a canvas to free up
+        resources in the Sidekick UI.
+        """
         logger.info(
             f"Requesting removal of canvas '{self.target_id}' and its associated offscreen buffers."
         )
+        # Lock the buffer pool while we iterate and send destroy commands.
         with self._buffer_lock:
+            # Get a list of all offscreen buffer IDs currently in the pool.
+            # We iterate over a copy of the keys because we might modify the pool.
             buffer_ids_to_destroy = [
-                bid for bid in self._buffer_pool if bid != self.ONSCREEN_BUFFER_ID
+                bid for bid in self._buffer_pool.keys() if bid != self.ONSCREEN_BUFFER_ID
             ]
-            for buffer_id in buffer_ids_to_destroy:
+            # Send a 'destroyBuffer' command for each offscreen buffer.
+            for buffer_id_to_remove in buffer_ids_to_destroy:
                  try:
                      logger.debug(
-                        f"Canvas '{self.target_id}': Sending 'destroyBuffer' for buffer ID {buffer_id}."
+                        f"Canvas '{self.target_id}': Sending 'destroyBuffer' for offscreen "
+                        f"buffer ID {buffer_id_to_remove} during canvas removal."
                      )
                      self._send_canvas_update(
                          action="destroyBuffer",
-                         options={"bufferId": buffer_id}
+                         options={"bufferId": buffer_id_to_remove} # camelCase
                      )
                  except SidekickConnectionError as e:
+                     # Log if destroying a buffer fails, but continue trying to remove the main canvas.
                      logger.warning(
-                        f"Canvas '{self.target_id}': Failed to destroy offscreen buffer "
-                        f"{buffer_id} during removal: {e}"
+                        f"Canvas '{self.target_id}': Failed to send 'destroyBuffer' command for "
+                        f"offscreen buffer {buffer_id_to_remove} during canvas removal: {e}"
                      )
                  except Exception as e_destroy:
                      logger.exception(
-                        f"Canvas '{self.target_id}': Unexpected error destroying buffer {buffer_id}: {e_destroy}"
+                        f"Canvas '{self.target_id}': Unexpected error destroying offscreen "
+                        f"buffer {buffer_id_to_remove} during canvas removal: {e_destroy}"
                      )
+            # Clear the local buffer pool and reset the ID counter.
             self._buffer_pool.clear()
-            self._next_buffer_id = 1
+            self._next_buffer_id = 1 # Reset for potential future canvas (though this one is being removed)
+
+        # Call the base class's remove() method to handle the removal of the main canvas component.
         super().remove()
 
     def __del__(self):
-        """Internal: Fallback cleanup attempt."""
+        """Internal: Fallback cleanup attempt.
+
+        It's best to explicitly call `canvas.remove()` when done.
+        This `__del__` is a fallback, attempting to clean up if `remove()` wasn't called.
+        """
         try:
-            super().__del__()
+            # Call super().__del__() first if it exists and does something (e.g., BaseComponent's __del__)
+            # However, BaseComponent's __del__ already handles unregistering.
+            # The main concern for Canvas.__del__ would be its specific resources like buffers,
+            # but sending commands in __del__ is risky. The remove() method is preferred.
+            super().__del__() # Let BaseComponent handle its part of __del__
         except Exception:
-            pass
+            pass # Suppress errors in __del__

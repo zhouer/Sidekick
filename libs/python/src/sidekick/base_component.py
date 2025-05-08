@@ -24,9 +24,9 @@ Key responsibilities managed by `BaseComponent`:
 *   **Removal:** Offering a standard `remove()` method to destroy the visual element
     in the Sidekick UI and clean up associated resources in the Python library.
     When a container is removed, its children should be recursively removed by the UI.
-*   **Error Handling:** Providing a way (`on_error()`) for users to register a
-    callback function to handle potential error messages sent back *from* the
-    Sidekick UI related to a specific component instance.
+*   **Error Handling:** Providing a way (`on_error()`, or via constructor) for
+    users to register a callback function to handle potential error messages sent
+    back *from* the Sidekick UI related to a specific component instance.
 *   **Message Routing:** Registering each instance with the connection manager so
     that incoming events (like clicks) or errors from the UI can be routed back
     to the correct Python object's internal handler (`_internal_message_handler`).
@@ -41,7 +41,7 @@ from . import logger
 from . import connection # Import the connection management component
 from .errors import SidekickConnectionError
 from .utils import generate_unique_id # For generating default instance IDs
-from typing import Optional, Dict, Any, Callable, Union # Added Union
+from typing import Optional, Dict, Any, Callable, Union
 
 class BaseComponent:
     """Base class for all Sidekick component interface classes.
@@ -74,61 +74,77 @@ class BaseComponent:
         component_type: str,
         payload: Optional[Dict[str, Any]] = None,
         parent: Optional[Union['BaseComponent', str]] = None,
+        on_error: Optional[Callable[[str], None]] = None, # New parameter
     ):
         """Initializes the base component, setting up ID, parent, connection, and registration.
 
         This constructor is called automatically by the `__init__` method of
-        subclasses. It performs the essential setup steps:
+        subclasses (like `Button`, `Grid`, etc.) when you create a new component,
+        for example: `my_label = sidekick.Label("Hello")`.
 
-        1.  **Activates Connection:** Calls `connection.activate_connection()`. This is
-            a **blocking call** the *first* time any component is created in a script.
-            It ensures the communication channel is established and the Sidekick UI
-            is ready before proceeding. Raises `SidekickConnectionError` on failure.
-        2.  **Assigns ID:** Generates a unique `target_id` for this instance.
-        3.  **Registers Handler:** Registers this instance's `_internal_message_handler`
-            method with the `connection` component.
-        4.  **Processes Parent:** Determines the parent ID string from the `parent`
-            argument. If a parent is specified, its ID is added to the `spawn` payload.
-            If `parent` is `None`, the component is added to the default top-level
-            container (ID: "root") by the UI.
-        5.  **Spawns UI Element:** Sends the initial 'spawn' command to the Sidekick UI
-            instructing it to create the corresponding visual element, using the
-            provided `payload` (potentially augmented with parent info) for initial
-            configuration.
+        It performs several essential setup steps:
+
+        1.  **Activates Connection:** Ensures the connection to the Sidekick UI panel
+            is active. This is a **blocking call** the *first* time any Sidekick
+            component is created in your script. It waits until the communication
+            channel is established and the Sidekick UI is ready before proceeding.
+        2.  **Assigns ID:** Generates a unique `target_id` for this component instance
+            (e.g., "label-1"). This ID helps Sidekick tell different components apart.
+        3.  **Registers Handler:** Sets up this component instance to receive messages
+            (like error reports) from the Sidekick UI that are specifically meant for it.
+        4.  **Processes Parent:** If you specify a `parent` (like a `Row` or `Column`),
+            this component will be visually placed inside that parent in the UI.
+            Otherwise, it's added to the main Sidekick panel area (the "root" container).
+        5.  **Spawns UI Element:** Sends a "spawn" command to the Sidekick UI,
+            instructing it to create and display the corresponding visual element
+            (e.g., a label, a button). The `payload` argument carries any initial
+            configuration data needed by the UI (like the label's text).
+        6.  **Sets Error Handler:** If you provide an `on_error` function, it's
+            registered so that your function will be called if an error related to
+            this component occurs in the Sidekick UI.
 
         Args:
             component_type (str): The internal type name of the component (e.g., "grid",
-                "label", "button"). This must match the type expected by the
-                Sidekick UI and defined in the communication protocol.
-            payload (Optional[Dict[str, Any]]): A dictionary containing the initial
-                configuration data needed by the Sidekick UI to correctly create
-                (spawn) the visual element (e.g., grid dimensions, initial text).
-                Keys within this dictionary should generally conform to the `camelCase`
-                convention required by the Sidekick communication protocol.
-                Defaults to None or an empty dictionary.
+                "label", "button"). This is used by the library and must match the
+                type expected by the Sidekick UI.
+            payload (Optional[Dict[str, Any]]): A dictionary containing initial
+                configuration data for the UI component (e.g., grid dimensions,
+                initial text for a label). Keys within this dictionary should
+                generally conform to the `camelCase` convention required by the
+                Sidekick communication protocol. Defaults to None or an empty dictionary.
             parent (Optional[Union['BaseComponent', str]]): The parent container for
                 this component. Can be:
-                - A `BaseComponent` instance (e.g., a `Row` or `Column` object).
+                - A Sidekick component instance (e.g., a `Row` or `Column` object).
                 - A `str` representing the `target_id` of an existing parent component.
                 - `None` (default): The component will be added to the top-level
                   "root" container in the Sidekick UI.
+            on_error (Optional[Callable[[str], None]]): A function to call if
+                an error message related to this specific component is sent back
+                from the Sidekick UI. The function should accept one string
+                argument (the error message). This is an alternative to calling
+                `my_component.on_error(callback)` after creation. Defaults to `None`.
 
         Raises:
             SidekickConnectionError (or subclass): If `connection.activate_connection()`
-                fails (e.g., cannot connect, timeout waiting for UI).
+                fails (e.g., cannot connect to the Sidekick server, or the UI
+                panel doesn't respond in time).
             TypeError: If the `parent` argument is provided but is not a `BaseComponent`
-                       instance, a string, or `None`.
+                       instance, a string, or `None`. Also raised if `on_error` is
+                       provided but is not a callable function.
+            ValueError: If `parent` is a string but it's empty.
         """
         # CRITICAL: Ensure the connection is active and ready before doing anything else.
-        connection.activate_connection() # Raises on failure.
+        # This is a blocking call the first time any component is created.
+        connection.activate_connection() # Raises SidekickConnectionError on failure.
 
         self.component_type = component_type
-        self._error_callback: Optional[Callable[[str], None]] = None
+        self._error_callback: Optional[Callable[[str], None]] = None # Initialize before use
 
         # Generate a unique Target ID for this component instance.
         self.target_id = generate_unique_id(component_type)
 
         # Register this instance's message handler with the connection manager.
+        # This allows _internal_message_handler to receive messages for this component.
         connection.register_message_handler(self.target_id, self._internal_message_handler)
 
         # Prepare the final payload for the 'spawn' command.
@@ -156,22 +172,26 @@ class BaseComponent:
                        f"If specifying a parent by ID, it must be a valid, non-empty target_id. "
                        f"If parent was a BaseComponent, its target_id was empty.")
                 logger.error(msg)
-                # This situation is likely a programming error, either in user code
-                # (passing empty string) or if a component's target_id was somehow empty.
+                # This situation is likely a programming error.
                 raise ValueError(msg)
 
             # Add the 'parent' key to the payload only if a valid parent ID was determined.
             # The protocol specifies that if 'parent' is omitted, it defaults to "root".
             final_spawn_payload["parent"] = parent_id_to_send
 
-        # Send the 'spawn' command to the UI.
+        # Send the 'spawn' command to the UI to create the visual element.
         self._send_command("spawn", final_spawn_payload)
+
+        # Register the on_error callback if it was provided in the constructor.
+        # This uses the public self.on_error() method which includes type checking.
+        if on_error is not None:
+            self.on_error(on_error)
 
         # Log initialization details, including the resolved parent.
         parent_display = parent_id_to_send if parent_id_to_send else "root (default)"
-        logger.debug(
-            f"Initialized BaseComponent: type='{component_type}', id='{self.target_id}', "
-            f"parent='{parent_display}'"
+        logger.info(
+            f"Initialized {self.component_type} component: id='{self.target_id}', "
+            f"parent='{parent_display}'."
         )
 
     def _internal_message_handler(self, message: Dict[str, Any]):
@@ -213,8 +233,15 @@ class BaseComponent:
                         f"'{self.target_id}' on_error callback: {e}"
                     )
         elif msg_type == "event":
-            logger.debug(f"BaseComponent received unhandled event for '{self.target_id}': {payload}")
-            pass # Subclasses handle specific events.
+            # This base implementation doesn't handle specific events itself.
+            # Subclasses should override this method to process their unique events
+            # (e.g., a "click" event for a Button, or a "submit" event for a Textbox).
+            # If a subclass doesn't handle an event, it will be logged here.
+            logger.debug(
+                f"BaseComponent received an 'event' for '{self.target_id}' "
+                f"that was not handled by a subclass: {payload}"
+            )
+            pass # Subclasses are responsible for handling specific events.
         else:
             logger.warning(
                 f"Component '{self.target_id}' received unexpected message type "
@@ -230,6 +257,8 @@ class BaseComponent:
 
         This method allows you to define a Python function (`callback`) that will
         be executed automatically when such an error message arrives for this component.
+        You can also set this callback directly when creating the component using
+        the `on_error` parameter in its constructor.
 
         Args:
             callback (Optional[Callable[[str], None]]): The function to call
@@ -238,14 +267,18 @@ class BaseComponent:
                 Pass `None` to remove a previously registered error handler.
 
         Raises:
-            TypeError: If `callback` is not a callable function (or None).
+            TypeError: If `callback` is not a callable function (or `None`).
 
         Example:
             >>> def my_grid_error_reporter(error_msg):
-            ...     print(f"Grid error: {error_msg}")
+            ...     print(f"Oops! The grid '{my_grid.target_id}' reported an error: {error_msg}")
             ...
+            >>> # Option 1: Using the method
             >>> my_grid = sidekick.Grid(5, 5)
             >>> my_grid.on_error(my_grid_error_reporter)
+            >>>
+            >>> # Option 2: Using the constructor parameter
+            >>> # my_other_grid = sidekick.Grid(3, 3, on_error=my_grid_error_reporter)
         """
         if callback is not None and not callable(callback):
             raise TypeError("The provided on_error callback must be a callable function or None.")
@@ -257,10 +290,12 @@ class BaseComponent:
 
         This method builds the message dictionary according to the Sidekick
         communication protocol and uses `connection.send_message` to transmit it.
+        It's used internally for "spawn" and "remove" commands.
 
         Note:
             Payload keys within `payload` should generally be `camelCase`. This method
-            does not perform case conversion; that responsibility lies with callers.
+            does not perform case conversion; that responsibility lies with callers
+            (typically the `__init__` methods of component subclasses).
 
         Args:
             msg_type (str): The type of command (e.g., "spawn", "update", "remove").
@@ -272,26 +307,29 @@ class BaseComponent:
                 or if `connection.send_message` fails.
         """
         message: Dict[str, Any] = {
-            "id": 0,
+            "id": 0, # Reserved, currently always 0.
             "component": self.component_type,
             "type": msg_type,
-            "target": self.target_id,
+            "target": self.target_id, # Identifies which component instance this command is for.
         }
         if payload is not None:
             message["payload"] = payload
 
-        connection.send_message(message)
+        connection.send_message(message) # This can raise SidekickConnectionError
 
     def _send_update(self, payload: Dict[str, Any]):
         """Convenience method for sending an 'update' command. (Internal).
 
         A shortcut for `_send_command("update", payload)`. Used by component methods
-        that modify an existing UI element.
+        that modify an existing UI element (e.g., `label.text = "New"`,
+        `grid.set_color(...)`).
 
         Note:
             The `payload` *must* include the component-specific `action` key
             (e.g., "setColor", "setText") and any `options` sub-dictionary
-            with `camelCase` keys, as defined by the protocol.
+            with `camelCase` keys, as defined by the protocol for that action.
+            The responsibility for correct `camelCase` formatting of `action` and
+            `options` keys lies with the calling component method.
 
         Args:
             payload (Dict[str, Any]): The complete payload for the 'update' command,
@@ -305,82 +343,113 @@ class BaseComponent:
                 f"Component '{self.target_id}' _send_update called with None payload. "
                 f"Sending empty payload, which might be invalid for most updates."
             )
-            payload = {}
+            payload = {} # Ensure payload is a dict, even if empty
         self._send_command("update", payload)
 
     def remove(self):
         """Removes this component instance from the Sidekick UI and cleans up resources.
 
-        Performs:
-        1.  Unregisters message handlers for this instance.
-        2.  Resets its specific user-defined callbacks (via `_reset_specific_callbacks()`).
-        3.  Sends a 'remove' command to the Sidekick UI to delete the visual element.
+        When you call `my_component.remove()`, this function performs several actions:
+        1.  It stops listening for messages specifically for this component.
+        2.  It clears any custom callback functions you might have set (like `on_error`,
+            or `on_click` for a button).
+        3.  It sends a 'remove' command to the Sidekick UI, instructing it to delete
+            the visual element from the panel.
 
         Important:
             After calling `remove()`, this component object should be considered
-            inactive. Further method calls may fail or have no effect.
+            inactive. Further method calls on it may fail or have no effect.
             If this component is a container (like `Row` or `Column`), the Sidekick UI
-            is responsible for recursively removing its child components.
+            is responsible for recursively removing its child components as well.
 
         Raises:
             SidekickConnectionError (or subclass): Can be raised by the
                 underlying `_send_command` if sending the 'remove' command fails.
-                Local cleanup will still be attempted.
+                However, the Python-side cleanup (unregistering handlers, clearing
+                callbacks) will still be attempted.
 
         Example:
             >>> my_label = sidekick.Label("Temporary Message")
-            >>> # ... use the label ...
-            >>> my_label.remove() # Removes the label from the Sidekick panel
+            >>> # ... (your script uses the label for a while) ...
+            >>> my_label.remove() # This makes the label disappear from the Sidekick panel
         """
         logger.info(
             f"Requesting removal of component '{self.component_type}' with id '{self.target_id}'."
         )
 
+        # Stop listening for messages for this specific component instance.
         connection.unregister_message_handler(self.target_id)
+
+        # Clear any registered error callback for this component.
         self._error_callback = None
+
+        # Call a hook for subclasses to clear their own specific callbacks (e.g., _click_callback).
         self._reset_specific_callbacks()
 
         try:
+             # Send the 'remove' command to the UI. No payload is needed for removal.
              self._send_command("remove", payload=None)
         except SidekickConnectionError as e:
+             # Log a warning if the command fails, but Python-side cleanup is done.
              logger.warning(
                 f"Failed to send 'remove' command for component '{self.target_id}' "
                 f"(it might remain visible in the UI): {e}. "
                 f"Internal Python-side cleanup still performed."
             )
+             # Depending on desired behavior, you might choose to re-raise 'e' here
+             # or allow the script to continue if only the UI removal failed.
+             # For now, we log and continue, as local cleanup is done.
 
     def _reset_specific_callbacks(self):
         """Internal hook for subclasses to reset their unique callback attributes. (Internal).
 
-        Called by `remove()`. Subclasses (like `Button`, `Textbox`) **must** override
-        this if they store references to user-provided callbacks (e.g., `_click_callback`).
-        The override should set these attributes to `None`.
+        This method is called by `remove()` before the component is fully removed.
+        Subclasses (like `Button`, `Textbox`, `Grid`) that store references to
+        user-provided callback functions (e.g., `_click_callback`, `_submit_callback`)
+        **must** override this method. The override should set these specific
+        callback attributes to `None` to help with garbage collection and prevent
+        potential issues with stale references.
 
         Example override in a `Button` subclass:
             ```python
             def _reset_specific_callbacks(self):
-                super()._reset_specific_callbacks() # Good practice if base had its own
+                super()._reset_specific_callbacks() # Good practice if base also had its own
                 self._click_callback = None
             ```
+        The base implementation here does nothing, as `BaseComponent` itself only
+        manages `_error_callback`, which is handled directly in `remove()`.
         """
-        # Base implementation does nothing. Subclasses provide the actual logic.
+        # Base implementation does nothing. Subclasses provide the actual logic
+        # for their own event-specific callbacks.
         pass
 
     def __del__(self):
         """Attempt to unregister message handler upon garbage collection. (Fallback).
 
         Warning:
-            Relying on `__del__` for cleanup is **strongly discouraged**. Python's
-            garbage collection timing is unpredictable. **Always explicitly call
-            `remove()`** on Sidekick components when finished to ensure proper
-            cleanup in both Python and the Sidekick UI. This is a best-effort fallback.
+            Relying on `__del__` for cleanup is **strongly discouraged** in Python,
+            as its execution is not guaranteed and can be unpredictable.
+            **Always explicitly call `remove()`** on Sidekick components when you are
+            finished with them. This ensures proper and timely cleanup in both your
+            Python script and the Sidekick UI.
+
+            This `__del__` method is provided as a last-resort, best-effort attempt
+            to unregister the component's message handler if `remove()` was not called
+            and the object is being garbage collected. It might help reduce resource
+            leakage in some edge cases but should not be depended upon.
         """
         try:
-            if hasattr(connection, 'unregister_message_handler') and self.target_id:
+            # Check if 'connection' module and 'unregister_message_handler' still exist
+            # and if this instance has a 'target_id'. This is to prevent errors
+            # during interpreter shutdown when modules might be partially torn down.
+            if hasattr(connection, 'unregister_message_handler') and hasattr(self, 'target_id') and self.target_id:
                  connection.unregister_message_handler(self.target_id)
                  logger.debug(
                     f"BaseComponent __del__ attempting fallback unregistration "
-                    f"for {self.component_type} id {self.target_id}"
+                    f"for {getattr(self, 'component_type', 'UnknownComponentType')} "
+                    f"id {self.target_id}"
                  )
         except Exception:
-            pass # Suppress errors during __del__.
+            # Suppress any errors during __del__, as recommended by Python guidelines.
+            # Errors in __del__ are often ignored or cause confusing warnings.
+            pass
