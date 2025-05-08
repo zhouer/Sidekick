@@ -135,7 +135,7 @@ body {
 /* Stop button styling */
 .script-controls button:nth-child(2) {
     background-color: var(--sk-button-danger-bg, #dc3545);
-    color: var(--sk-button-danger-fg, white);
+    color: var(--sk-button-danger-fg, #ffffff);
 }
 
 .script-controls button:nth-child(2):hover {
@@ -155,27 +155,14 @@ body {
 
 /* --- Main Content Area Styling --- */
 .App-main {
-    flex-grow: 1;
-    padding: 20px 15px; /* Slightly reduced padding */
     display: flex;
     flex-direction: column;
+    flex-grow: 1;
+    padding: 15px;
+    gap: 15px;
     align-items: center;
     width: 100%;
     box-sizing: border-box;
-}
-
-/* General styling for component containers */
-.component-card {
-    background-color: var(--sk-card-background); /* Use variable */
-    border: 1px solid var(--sk-card-border); /* Use variable */
-    border-radius: 6px; /* Slightly smaller radius */
-    padding: 15px;
-    width: 100%;
-    max-width: 1000px;
-    box-sizing: border-box;
-    margin-bottom: 15px; /* Spacing between cards */
-    position: relative;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease; /* Smooth transitions */
 }
 
 /* Style for the "No components active" message */

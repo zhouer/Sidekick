@@ -2,6 +2,8 @@
 .console-container {
     display: flex;
     flex-direction: column;
+    width: 100%;
+    max-width: 1000px; /* Set a max width for the console */
 }
 
 .console-output {

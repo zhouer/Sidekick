@@ -17,15 +17,18 @@
   --sk-focus-border: #007bff;
   --sk-input-border: #ccc;
   /* Components */
-  --sk-card-background: #ffffff;
-  --sk-card-border: #eee;
-  --sk-card-hover-border: #e0e0e0;
+  --sk-container-background: #fafafa;
+  --sk-container-border: #f0f0f0;
+  --sk-container-hover-border: #e0e0e0;
   --sk-header-background: #f8f9fa;
   --sk-header-foreground: #343a40;
   --sk-header-border: #dee2e6;
   --sk-tooltip-background: rgba(52, 58, 64, 0.95);
   --sk-tooltip-foreground: #ffffff;
   /* Buttons */
+  --sk-button-danger-bg: #dc3545;
+  --sk-button-danger-fg: #ffffff;
+  --sk-button-danger-hover-bg: #c82333;
   --sk-button-primary-bg: #007bff;
   --sk-button-primary-fg: #ffffff;
   --sk-button-primary-hover-bg: #0056b3;
@@ -81,16 +84,16 @@
     /* Re-assign variables with dark theme values */
     --sk-foreground: rgba(255, 255, 255, 0.87);
     --sk-background: #242424;
-    --sk-secondary-foreground: #a0a0a0;
+    --sk-secondary-foreground: #c0c0c0;
     --sk-disabled-foreground: #888888;
     /* Borders */
     --sk-border: #999999;
     --sk-focus-border: #007fd4;
     --sk-input-border: #555555;
     /* Components */
-    --sk-card-background: #2a2a2a;
-    --sk-card-border: #333333;
-    --sk-card-hover-border: #444444;
+    --sk-container-background: #2a2a2a;
+    --sk-container-border: #333333;
+    --sk-container-hover-border: #444444;
     --sk-header-background: #3c3c3c;
     --sk-header-foreground: #cccccc;
     --sk-header-border: #444444;

@@ -2,9 +2,14 @@
     display: flex;
     flex-direction: column;
     align-items: stretch; /* Default alignment, children stretch to fill width */
-    gap: 8px; /* Default gap between children */
-    padding: 4px;
-    /* border: 1px dashed var(--sk-border); /* Optional: for visualizing during dev */
+    gap: 10px;
+    padding: 15px;
     width: 100%;
+    max-width: 1000px;
     box-sizing: border-box;
+    background-color: var(--sk-container-background);
+    border: 1px solid var(--sk-container-border);
+    border-radius: 6px;
+    position: relative;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }

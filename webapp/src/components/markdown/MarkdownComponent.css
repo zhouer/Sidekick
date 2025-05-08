@@ -4,8 +4,9 @@
     font-size: 1em;
     line-height: 1.6;
     color: var(--sk-foreground);
-    background-color: var(--sk-card-background); /* Or transparent if inside a card */
+    background-color: var(--sk-container-background); /* Or transparent if inside a card */
     width: 100%;
+    max-width: 1000px;
     box-sizing: border-box;
 }
 

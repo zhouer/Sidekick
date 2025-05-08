@@ -2,9 +2,14 @@
     display: flex;
     flex-direction: row;
     align-items: flex-start; /* Default alignment, can be overridden by Python if Row gets layout props */
-    gap: 8px; /* Default gap between children */
-    padding: 4px; /* Padding around the row itself */
-    /* border: 1px dashed var(--sk-border); /* Optional: for visualizing during dev */
-    width: 100%; /* Default to take full available width */
+    gap: 10px;
+    padding: 15px;
+    width: 100%;
+    max-width: 1000px;
     box-sizing: border-box;
+    background-color: var(--sk-container-background);
+    border: 1px solid var(--sk-container-border);
+    border-radius: 6px;
+    position: relative;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }

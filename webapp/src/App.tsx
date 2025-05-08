@@ -402,13 +402,13 @@ function App() {
         const componentInstance = componentsById.get(componentId);
         if (!componentInstance) {
             console.error(`App Render: Component data for ID "${componentId}" not found!`);
-            return <div key={componentId} className="component-card error">Error: Component data missing for {componentId}</div>;
+            return <div key={componentId} className="error">Error: Component data missing for {componentId}</div>;
         }
 
         const componentDefinition = componentRegistry.get(componentInstance.type);
         if (!componentDefinition) {
             console.error(`App Render: Def for type "${componentInstance.type}" (ID: "${componentId}") not registered!`);
-            return <div key={componentId} className="component-card error">Error: Unknown Type '{componentInstance.type}'</div>;
+            return <div key={componentId} className="error">Error: Unknown Type '{componentInstance.type}'</div>;
         }
 
         const ComponentToRender = componentDefinition.component;
@@ -434,15 +434,10 @@ function App() {
             componentProps.renderChild = renderComponentTree; // Pass the recursive render function
         }
 
-        // Wrap non-container components in a card, containers might style themselves
-        const Wrapper = componentDefinition.isContainer ? React.Fragment : 'div';
-        const wrapperProps = componentDefinition.isContainer ? {} : { className: "component-card" };
-
-
         return (
-            <Wrapper {...wrapperProps} key={componentInstance.id}>
+            <React.Fragment key={componentInstance.id}>
                 <ComponentToRender ref={componentRef} {...componentProps} />
-            </Wrapper>
+            </React.Fragment>
         );
     }, [componentsById, childrenByParentId, handleComponentInteraction, onComponentReady, hoveredInfoId]);
 
@@ -463,7 +458,7 @@ function App() {
             </header>
             <main className="App-main">
                 {componentsById.size === 0 && rootChildren.length === 0
-                    ? <p>No components active. Waiting for Hero script...</p>
+                    ? <p>No active components</p>
                     : rootChildren.map(childId => renderComponentTree(childId))
                 }
             </main>

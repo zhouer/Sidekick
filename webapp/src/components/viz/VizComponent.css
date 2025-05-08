@@ -8,9 +8,9 @@
 
 .viz-variable-item {
     padding: 8px;
-    border: 1px solid var(--sk-card-border); /* Use variable */
+    border: 1px solid var(--sk-container-border); /* Use variable */
     border-radius: 4px;
-    background-color: var(--sk-card-background); /* Use variable */
+    background-color: var(--sk-container-background); /* Use variable */
     line-height: 1.4;
 }
 
@@ -33,7 +33,7 @@
 }
 
 .viz-value-container:hover {
-    background-color: color-mix(in srgb, var(--sk-card-background) 90%, var(--sk-foreground) 5%); /* Subtle hover */
+    background-color: color-mix(in srgb, var(--sk-container-background) 90%, var(--sk-foreground) 5%); /* Subtle hover */
 }
 
 /* Resting style for values explicitly tracked by ObservableValue */

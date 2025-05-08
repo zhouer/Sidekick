@@ -1,7 +1,7 @@
 /* Container to measure available width */
 .grid-container {
     width: 100%;
-    max-width: 100%; /* Ensure it doesn't overflow its parent */
+    max-width: min(100%, 1000px); /* Ensure it doesn't overflow its parent and limits to 1000px */
     overflow: hidden; /* Hide potential temporary overflow during resize */
 }
 
@@ -22,7 +22,7 @@
 .grid-cell {
     /* width/height set dynamically via inline styles */
     box-sizing: border-box;
-    background-color: var(--sk-card-background); /* Default cell background */
+    background-color: var(--sk-container-background); /* Default cell background */
     cursor: pointer;
     transition: background-color 0.1s ease, transform 0.1s ease, box-shadow 0.1s ease;
 
