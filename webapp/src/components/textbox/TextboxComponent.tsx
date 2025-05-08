@@ -27,7 +27,8 @@ const TextboxComponent = forwardRef<ComponentHandle | null, TextboxComponentProp
         };
 
         const handleSubmit = useCallback(() => {
-            if (onInteraction) {
+            // Only send the event if the value has actually changed
+            if (onInteraction && inputValue !== state.currentValue) {
                 const eventMessage: TextboxSubmitEvent = {
                     id: 0,
                     component: 'textbox',
@@ -39,7 +40,7 @@ const TextboxComponent = forwardRef<ComponentHandle | null, TextboxComponentProp
                 // The Python side will receive this event and update its record.
                 // If Python then sends a 'setValue' update, the useEffect above will sync.
             }
-        }, [id, inputValue, onInteraction]);
+        }, [id, inputValue, onInteraction, state.currentValue]);
 
         const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
             if (event.key === 'Enter') {
