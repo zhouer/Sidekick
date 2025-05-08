@@ -16,7 +16,7 @@ Key Features:
 *   **Optional Text Input:** Configure the console (`show_input=True`) to include
     a text input field at the bottom. Users can type text into this field and
     submit it back to your running Python script.
-*   **Input Handling:** Use the `on_input_text()` method or the `on_input_text`
+*   **Input Handling:** Use the `on_submit()` method or the `on_submit`
     constructor parameter to register a callback function that gets executed
     whenever the user submits text from the input field.
 *   **Clearing:** Use the `clear()` method to remove all previously displayed text.
@@ -36,7 +36,7 @@ Interactive Usage with a Parent Container:
     >>> console = sidekick.Console(
     ...     show_input=True,
     ...     parent=my_column,
-    ...     on_input_text=handle_command
+    ...     on_submit=handle_command
     ... )
     >>> # sidekick.run_forever() # Keep script running to process input
 """
@@ -59,7 +59,7 @@ class Console(BaseComponent):
         initial_text: str = "",
         show_input: bool = False,
         parent: Optional[Union['BaseComponent', str]] = None,
-        on_input_text: Optional[Callable[[str], None]] = None, # New parameter
+        on_submit: Optional[Callable[[str], None]] = None, # New parameter
         on_error: Optional[Callable[[str], None]] = None, # For BaseComponent
     ):
         """Initializes the Console object and creates the UI element.
@@ -67,7 +67,7 @@ class Console(BaseComponent):
         This function is called when you create a new Console, for example:
         `log_area = sidekick.Console()`
         or for interactive use:
-        `cmd_console = sidekick.Console(show_input=True, on_input_text=process_cmd)`
+        `cmd_console = sidekick.Console(show_input=True, on_submit=process_cmd)`
 
         It sends a message to the Sidekick UI to display a new console area.
 
@@ -81,10 +81,10 @@ class Console(BaseComponent):
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this console
                 should be placed. If `None` (the default), the console is added
                 to the main Sidekick panel area.
-            on_input_text (Optional[Callable[[str], None]]): A function to call
+            on_submit (Optional[Callable[[str], None]]): A function to call
                 when the user submits text from the input field (if `show_input`
                 is `True`). This is an alternative to using the
-                `my_console.on_input_text(callback)` method later. The function
+                `my_console.on_submit(callback)` method later. The function
                 should accept one string argument (the submitted text).
                 Defaults to `None`.
             on_error (Optional[Callable[[str], None]]): A function to call if
@@ -95,7 +95,7 @@ class Console(BaseComponent):
         Raises:
             SidekickConnectionError: If the library cannot connect to the
                 Sidekick UI panel.
-            TypeError: If `parent` is an invalid type, or if `on_input_text` or
+            TypeError: If `parent` is an invalid type, or if `on_submit` or
                 `on_error` are provided but are not callable functions.
         """
         spawn_payload: Dict[str, Any] = {
@@ -107,7 +107,7 @@ class Console(BaseComponent):
              spawn_payload["text"] = str(initial_text)
 
         # Initialize before super() in case super() triggers events or uses these.
-        self._input_text_callback: Optional[Callable[[str], None]] = None
+        self._submit_callback: Optional[Callable[[str], None]] = None
 
         super().__init__(
             component_type="console",
@@ -120,49 +120,49 @@ class Console(BaseComponent):
             f"(show_input={show_input}, initial_text='{initial_text[:50]}{'...' if len(initial_text)>50 else ''}')."
         )
 
-        # Register on_input_text callback if provided in the constructor.
-        # This uses the public self.on_input_text() method which includes type checking.
-        if on_input_text is not None:
-            self.on_input_text(on_input_text)
+        # Register on_submit callback if provided in the constructor.
+        # This uses the public self.on_submit() method which includes type checking.
+        if on_submit is not None:
+            self.on_submit(on_submit)
 
     def _internal_message_handler(self, message: Dict[str, Any]):
         """Handles incoming 'event' or 'error' messages for this console. (Internal).
 
         This method is called by the Sidekick connection manager when an event
-        (like "inputText") occurs on this console in the UI.
+        (like "submit") occurs on this console in the UI.
         """
         msg_type = message.get("type")
         payload = message.get("payload")
 
         if msg_type == "event":
             event_type = payload.get("event") if payload else None
-            if event_type == "inputText" and self._input_text_callback:
+            if event_type == "submit" and self._submit_callback:
                 try:
                     # The UI sends the submitted text in the 'value' field.
                     submitted_text = payload.get("value")
                     if isinstance(submitted_text, str):
-                        self._input_text_callback(submitted_text)
+                        self._submit_callback(submitted_text)
                     else:
                          # This case should ideally not happen if UI adheres to protocol.
                          logger.warning(
-                            f"Console '{self.target_id}' received 'inputText' event "
+                            f"Console '{self.target_id}' received 'submit' event "
                             f"with non-string value: {payload}"
                          )
                 except Exception as e:
                     # Prevent errors in user callback from crashing the listener.
                     logger.exception(
                         f"Error occurred inside Console '{self.target_id}' "
-                        f"on_input_text callback: {e}"
+                        f"on_submit callback: {e}"
                     )
             elif event_type: # An event occurred but we don't have a handler or it's an unknown type
                  logger.debug(
                     f"Console '{self.target_id}' received unhandled event type '{event_type}' "
-                    f"or no input callback registered for 'inputText'."
+                    f"or no input callback registered for 'submit'."
                  )
         # Always call the base handler for potential 'error' messages or other base handling.
         super()._internal_message_handler(message)
 
-    def on_input_text(self, callback: Optional[Callable[[str], None]]):
+    def on_submit(self, callback: Optional[Callable[[str], None]]):
         """Registers a function to call when the user submits text from the console's input field.
 
         This method is only relevant if the console was initialized with `show_input=True`.
@@ -170,7 +170,7 @@ class Console(BaseComponent):
         text string that the user submitted.
 
         You can also set this callback directly when creating the console using
-        the `on_input_text` parameter in its constructor.
+        the `on_submit` parameter in its constructor.
 
         Args:
             callback (Optional[Callable[[str], None]]): The function to call when
@@ -188,13 +188,13 @@ class Console(BaseComponent):
             ...         interactive_console.print(f"Unknown command: {command_str}")
             ...
             >>> interactive_console = sidekick.Console(show_input=True)
-            >>> interactive_console.on_input_text(my_command_handler)
+            >>> interactive_console.on_submit(my_command_handler)
             >>> # sidekick.run_forever() # Needed to process input
         """
         if callback is not None and not callable(callback):
-            raise TypeError("The provided on_input_text callback must be a callable function or None.")
-        logger.info(f"Setting on_input_text callback for console '{self.target_id}'.")
-        self._input_text_callback = callback
+            raise TypeError("The provided on_submit callback must be a callable function or None.")
+        logger.info(f"Setting on_submit callback for console '{self.target_id}'.")
+        self._submit_callback = callback
 
     def print(self, *args: Any, sep: str = ' ', end: str = '\n'):
         """Prints messages to this console instance in the Sidekick UI.
@@ -245,5 +245,5 @@ class Console(BaseComponent):
     def _reset_specific_callbacks(self):
         """Internal: Resets console-specific callbacks when the component is removed."""
         super()._reset_specific_callbacks()
-        self._input_text_callback = None
-        logger.debug(f"Console '{self.target_id}': Input text callback reset.")
+        self._submit_callback = None
+        logger.debug(f"Console '{self.target_id}': Submit callback reset.")

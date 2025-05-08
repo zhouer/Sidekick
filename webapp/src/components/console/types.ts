@@ -18,6 +18,6 @@ export interface ConsoleUpdatePayload {
 }
 
 export interface ConsoleEventPayload {
-    event: 'inputText';
+    event: 'submit';
     value: string; // The text submitted by the user
 }

@@ -34,7 +34,7 @@ const ConsoleComponent = forwardRef<ComponentHandle, ConsoleComponentProps>(
             }
             if (!inputValue.trim()) return;
 
-            const payload: ConsoleEventPayload = { event: 'inputText', value: inputValue };
+            const payload: ConsoleEventPayload = { event: 'submit', value: inputValue };
             const message: ComponentEventMessage = {
                 id: 0,
                 component: 'console',

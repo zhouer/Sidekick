@@ -701,7 +701,7 @@ def run_forever():
     It essentially pauses the main thread of your script in a loop, while the
     background listener thread (managed internally) continues to receive messages
     from Sidekick and trigger your registered callback functions (e.g., the
-    functions passed to `grid.on_click()` or `console.on_input_text()`).
+    functions passed to `grid.on_click()` or `console.on_submit()`).
 
     How to Stop `run_forever()`:
 
@@ -725,7 +725,7 @@ def run_forever():
         ...         sidekick.shutdown() # Stop run_forever from callback
         ...     else:
         ...         console.print(f"You typed: {text}")
-        >>> console.input_text_handler(handle_input)
+        >>> console.on_submit(handle_input)
         >>> console.print("Enter text or type 'quit' to exit.")
         >>>
         >>> # Keep script running to listen for input
