@@ -285,16 +285,11 @@ def simulation_loop():
 if __name__ == "__main__":
     try:
         controls_row = Row()
-        start_btn = Button(text='Start', parent=controls_row)
-        start_btn.on_click(handle_start_click)
-        stop_btn = Button(text='Stop', parent=controls_row)
-        stop_btn.on_click(handle_stop_click)
-        step_btn = Button(text='Step', parent=controls_row)
-        step_btn.on_click(handle_step_click)
-        random_btn = Button(text='Randomize', parent=controls_row)
-        random_btn.on_click(handle_random_click)
-        clear_btn = Button(text='Clear', parent=controls_row)
-        clear_btn.on_click(handle_clear_click)
+        start_btn = Button(text='Start', parent=controls_row, on_click=handle_start_click)
+        stop_btn = Button(text='Stop', parent=controls_row, on_click=handle_stop_click)
+        step_btn = Button(text='Step', parent=controls_row, on_click=handle_step_click)
+        random_btn = Button(text='Randomize', parent=controls_row, on_click=handle_random_click)
+        clear_btn = Button(text='Clear', parent=controls_row, on_click=handle_clear_click)
 
         grid = Grid(num_columns=GRID_WIDTH, num_rows=GRID_HEIGHT)
         grid.on_click(handle_grid_click) # Register grid click handler
