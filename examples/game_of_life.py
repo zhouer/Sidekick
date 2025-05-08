@@ -6,7 +6,7 @@ from copy import deepcopy
 from typing import List, Dict, Any, Optional
 
 import sidekick
-from sidekick import Grid, Console, Control
+from sidekick import Grid, Console, Row, Button
 
 # --- Configuration ---
 GRID_WIDTH = 30
@@ -33,7 +33,12 @@ sim_thread: Optional[threading.Thread] = None
 # Initialize with None, create after connection activation potentially
 grid: Optional[Grid] = None
 console: Optional[Console] = None
-controls: Optional[Control] = None
+controls_row: Optional[Row] = None
+start_btn: Optional[Button] = None
+stop_btn: Optional[Button] = None
+step_btn: Optional[Button] = None
+random_btn: Optional[Button] = None
+clear_btn: Optional[Button] = None
 
 # ==================================
 # == Game of Life Core Logic      ==
@@ -139,59 +144,88 @@ def draw_full_grid():
             color = LIVE_COLOR if game_grid[r][c] == 1 else DEAD_COLOR
             grid.set_color(c, r, color)
 
-def handle_control_click(control_id: str):
-    """Handles button clicks from the Control component."""
-    global running, game_grid
-    logging.debug(f"Control click handler received: {control_id}")
+def handle_start_click():
+    """Handles click on the Start button."""
+    global running
+    logging.debug("Start button clicked")
 
     if not console: return
 
     with run_lock: # Lock when potentially modifying 'running' or grid
-        if control_id == 'start_btn':
-            if not running:
-                running = True
-                console.print("Simulation Started.")
-                logging.info("Start button clicked - Running set to True")
-        elif control_id == 'stop_btn':
-            if running:
-                running = False
-                console.print("Simulation Stopped.")
-                logging.info("Stop button clicked - Running set to False")
-        elif control_id == 'step_btn':
-            # Stop simulation first, then perform one step
-            if running:
-                running = False
-                console.print("Simulation Stopped for Stepping.")
-                logging.info("Step button clicked - Running set to False")
-            # Compute and draw one step
-            console.print("Performing one step...")
-            logging.info("Step button clicked - Computing next gen")
-            current_grid_copy = deepcopy(game_grid) # Keep current state for comparison
-            next_grid = compute_next_gen()
-            if next_grid:
-                draw_grid(current_grid_copy, next_grid)
-                game_grid = next_grid # Update state after drawing changes
-            console.print("Step completed.")
-        elif control_id == 'random_btn':
-             # Stop simulation before randomizing
-            if running:
-                running = False
-                console.print("Simulation Stopped for Randomization.")
-                logging.info("Randomize button clicked - Running set to False")
-            randomize_grid()
-            draw_full_grid() # Draw the new randomized state
-            console.print("Grid randomized.")
-        elif control_id == 'clear_btn':
-             # Stop simulation before clearing
-            if running:
-                running = False
-                console.print("Simulation Stopped for Clearing.")
-                logging.info("Clear button clicked - Running set to False")
-            clear_grid()
-            draw_full_grid() # Draw the new cleared state
-            console.print("Grid cleared.")
-        else:
-            logging.warning(f"Unknown control click: {control_id}")
+        if not running:
+            running = True
+            console.print("Simulation Started.")
+            logging.info("Start button clicked - Running set to True")
+
+def handle_stop_click():
+    """Handles click on the Stop button."""
+    global running
+    logging.debug("Stop button clicked")
+
+    if not console: return
+
+    with run_lock: # Lock when potentially modifying 'running' or grid
+        if running:
+            running = False
+            console.print("Simulation Stopped.")
+            logging.info("Stop button clicked - Running set to False")
+
+def handle_step_click():
+    """Handles click on the Step button."""
+    global running, game_grid
+    logging.debug("Step button clicked")
+
+    if not console: return
+
+    with run_lock: # Lock when potentially modifying 'running' or grid
+        # Stop simulation first, then perform one step
+        if running:
+            running = False
+            console.print("Simulation Stopped for Stepping.")
+            logging.info("Step button clicked - Running set to False")
+        # Compute and draw one step
+        console.print("Performing one step...")
+        logging.info("Step button clicked - Computing next gen")
+        current_grid_copy = deepcopy(game_grid) # Keep current state for comparison
+        next_grid = compute_next_gen()
+        if next_grid:
+            draw_grid(current_grid_copy, next_grid)
+            game_grid = next_grid # Update state after drawing changes
+        console.print("Step completed.")
+
+def handle_random_click():
+    """Handles click on the Randomize button."""
+    global running
+    logging.debug("Randomize button clicked")
+
+    if not console: return
+
+    with run_lock: # Lock when potentially modifying 'running' or grid
+        # Stop simulation before randomizing
+        if running:
+            running = False
+            console.print("Simulation Stopped for Randomization.")
+            logging.info("Randomize button clicked - Running set to False")
+        randomize_grid()
+        draw_full_grid() # Draw the new randomized state
+        console.print("Grid randomized.")
+
+def handle_clear_click():
+    """Handles click on the Clear button."""
+    global running
+    logging.debug("Clear button clicked")
+
+    if not console: return
+
+    with run_lock: # Lock when potentially modifying 'running' or grid
+        # Stop simulation before clearing
+        if running:
+            running = False
+            console.print("Simulation Stopped for Clearing.")
+            logging.info("Clear button clicked - Running set to False")
+        clear_grid()
+        draw_full_grid() # Draw the new cleared state
+        console.print("Grid cleared.")
 
 def handle_grid_click(x: int, y: int):
     """Handles clicks on the Grid component."""
@@ -250,13 +284,17 @@ def simulation_loop():
 
 if __name__ == "__main__":
     try:
-        controls = Control()
-        controls.on_click(handle_control_click) # Register control click handler
-        controls.add_button(control_id='start_btn', button_text='Start')
-        controls.add_button(control_id='stop_btn', button_text='Stop')
-        controls.add_button(control_id='step_btn', button_text='Step')
-        controls.add_button(control_id='random_btn', button_text='Randomize')
-        controls.add_button(control_id='clear_btn', button_text='Clear')
+        controls_row = Row()
+        start_btn = Button(text='Start', parent=controls_row)
+        start_btn.on_click(handle_start_click)
+        stop_btn = Button(text='Stop', parent=controls_row)
+        stop_btn.on_click(handle_stop_click)
+        step_btn = Button(text='Step', parent=controls_row)
+        step_btn.on_click(handle_step_click)
+        random_btn = Button(text='Randomize', parent=controls_row)
+        random_btn.on_click(handle_random_click)
+        clear_btn = Button(text='Clear', parent=controls_row)
+        clear_btn.on_click(handle_clear_click)
 
         grid = Grid(num_columns=GRID_WIDTH, num_rows=GRID_HEIGHT)
         grid.on_click(handle_grid_click) # Register grid click handler
@@ -285,7 +323,12 @@ if __name__ == "__main__":
         logging.info("Stopping simulation flag.")
 
         # Optional: Explicitly remove components (though connection close handles handlers)
-        # if controls: controls.remove()
+        # if controls_row: controls_row.remove()
+        # if start_btn: start_btn.remove()
+        # if stop_btn: stop_btn.remove()
+        # if step_btn: step_btn.remove()
+        # if random_btn: random_btn.remove()
+        # if clear_btn: clear_btn.remove()
         # if grid: grid.remove()
         # if console: console.remove()
 

@@ -4,6 +4,7 @@ import threading
 import sys
 from typing import List, Tuple, Optional, Callable, Iterator, Dict, Any
 from enum import Enum, auto
+from sidekick import Button, Row, Textbox
 
 # --- Configuration ---
 DEFAULT_NUM_DISKS = 3
@@ -13,7 +14,7 @@ MOVE_DELAY = 0.5 # Adjusted delay
 # Disk Colors
 DISK_COLORS = [
     "#FFADAD", "#FFD6A5", "#FDFFB6", "#CAFFBF", "#9BF6FF",
-    "#A0C4FF", "#BDB2FF", "#FFC6FF", "#ff8fab", "#f8ad9d"
+    "#A0C4FF", "#BDB2FF", "#FFC6FF"
 ]
 PEG_COLOR = "#cccccc" # Light gray for pegs/base
 EMPTY_COLOR = None    # Use default background for empty cells
@@ -32,7 +33,9 @@ class HanoiVisualizer:
     """Handles all Sidekick UI interactions."""
     def __init__(self):
         self.grid: Optional[sidekick.Grid] = None
-        self.controls: Optional[sidekick.Control] = None
+        self.row: Optional[Row] = None
+        self.num_disks_input: Optional[Textbox] = None
+        self.start_pause_btn: Optional[Button] = None
         self.status_console: Optional[sidekick.Console] = None
         self.grid_width = 0
         self.grid_height = 0
@@ -43,56 +46,49 @@ class HanoiVisualizer:
         self.base_disk_width = 3
         self.disk_width_factor = 2
 
-        # Store control state locally for update workaround
-        self._control_configs: Dict[str, Dict[str, Any]] = {}
+        # Store button text for update
+        self._start_pause_btn_text: str = "Start"
 
     def setup_sidekick_ui(self, input_handler, click_handler):
         """Creates initial Sidekick controls and console."""
         sidekick.clear_all()
 
-        self.controls = sidekick.Control()
-        # Store config before adding for potential updates later
-        self._add_control_config("num_disks", control_type="textInput", text=str(DEFAULT_NUM_DISKS), button_text="Set & Reset", placeholder="Disks:")
-        self._add_control_config("start_pause", control_type="button", text="Start")
+        # Create a row for the controls
+        self.row = Row()
 
-        # Add controls to Sidekick UI
-        self.controls.add_text_input("num_disks", placeholder=self._control_configs["num_disks"]["config"].get("placeholder",""), initial_value=self._control_configs["num_disks"]["config"]["text"], button_text=self._control_configs["num_disks"]["config"]["button_text"])
-        self.controls.add_button("start_pause", self._control_configs["start_pause"]["config"]["text"])
+        # Create the text input for number of disks
+        self.num_disks_input = Textbox(
+            placeholder="Disks",
+            initial_value=str(DEFAULT_NUM_DISKS),
+            parent=self.row
+        )
+        self.num_disks_input.on_submit(input_handler)
 
-        # Register handlers
-        self.controls.on_input_text(input_handler)
-        self.controls.on_click(click_handler)
-        self.controls.on_error(lambda msg: sidekick.logger.error(f"Controls Error: {msg}"))
+        # Create the start/pause button
+        self._start_pause_btn_text = "Start"
+        self.start_pause_btn = Button(text=self._start_pause_btn_text, parent=self.row)
+        self.start_pause_btn.on_click(lambda: click_handler("start_pause"))
 
+        # Create the status console
         self.status_console = sidekick.Console(initial_text="--- Hanoi Log ---\n") # Initial title
         self.status_console.on_error(lambda msg: sidekick.logger.error(f"Status Console Error: {msg}"))
 
         self.grid = None
-        sidekick.logger.info("Sidekick UI components (controls, status) created.")
-
-    def _add_control_config(self, control_id: str, control_type: str, text: str, **kwargs):
-        """Stores control configuration."""
-        # Ensure kwargs are serializable if needed, though not strictly required here
-        config = {"text": text, **kwargs}
-        self._control_configs[control_id] = {
-            "controlType": control_type,
-            "config": config
-        }
+        sidekick.logger.info("Sidekick UI components (row, buttons, status) created.")
 
     def update_button_text(self, control_id: str, new_text: str):
-        """Updates button text (workaround: removes and re-adds)."""
-        if not self.controls or control_id not in self._control_configs or self._control_configs[control_id]["controlType"] != "button":
-             sidekick.logger.warning(f"Cannot update text for non-existent or non-button control: {control_id}")
-             return
+        """Updates button text."""
+        if control_id != "start_pause" or not self.start_pause_btn:
+            sidekick.logger.warning(f"Cannot update text for non-existent or unknown button: {control_id}")
+            return
         try:
-            # Update stored config first
-            self._control_configs[control_id]["config"]["text"] = new_text
-            # Remove and re-add the button in Sidekick
-            self.controls.remove_control(control_id)
-            self.controls.add_button(control_id, new_text)
+            # Update stored text first
+            self._start_pause_btn_text = new_text
+            # Update the button text
+            self.start_pause_btn.text = new_text
             sidekick.logger.debug(f"Updated button '{control_id}' text to '{new_text}'")
         except Exception as e:
-             sidekick.logger.error(f"Error updating button text for '{control_id}': {e}")
+            sidekick.logger.error(f"Error updating button text for '{control_id}': {e}")
 
 
     def calculate_and_init_grid(self, num_disks: int):
@@ -366,6 +362,11 @@ class HanoiController:
         self.visualizer.update_status(f"Initializing for {num_disks} disks...")
         self.stop_solver_thread() # Ensure any previous solve is stopped cleanly
 
+        # Double-check that solver thread is actually stopped before proceeding
+        if self._solve_thread and self._solve_thread.is_alive():
+            self.visualizer.update_status("Cannot initialize while solver is running. Try again later.")
+            return
+
         try:
             # Determine actual number of disks respecting MAX limit
             if num_disks > MAX_DISKS_FOR_LAYOUT:
@@ -426,28 +427,36 @@ class HanoiController:
             elif self.solve_state == SolveState.PAUSED:
                 self.resume_solve()
 
-    def handle_control_input(self, control_id: str, value: str):
+    def handle_control_input(self, value: str):
         """Handles disk number input and reset."""
-        if control_id == "num_disks":
+        try:
+            # Validate input first before attempting to stop the solver
+            num_disks_input = int(value)
+            if num_disks_input <= 0:
+                self.visualizer.update_status("Number of disks must be positive.")
+                return
+
             # Attempt to stop cleanly before re-initializing
             # stop_solver_thread() will update state to IDLE if it stops something
             current_state_before_stop = self.solve_state
             self.stop_solver_thread()
-            # If stopping failed or was already idle, ensure state is IDLE before init
-            if self._solve_thread and self._solve_thread.is_alive():
-                 self.visualizer.update_status("Failed to stop previous solve. Cannot reset.")
-                 return
-            if current_state_before_stop != SolveState.IDLE:
-                 self.set_state(SolveState.IDLE) # Explicitly set IDLE after stop
 
-            try:
-                num_disks_input = int(value)
-                self.initialize_game(num_disks_input) # Handles validation inside
-            except ValueError:
-                self.visualizer.update_status(f"Invalid input: '{value}'. Please enter a number.")
-            except Exception as e:
-                 self.visualizer.update_status(f"Error setting disks: {e}")
-                 sidekick.logger.exception("Error handling disk input")
+            # If stopping failed, ensure user is notified and don't proceed
+            if self._solve_thread and self._solve_thread.is_alive():
+                self.visualizer.update_status("Failed to stop previous solve. Cannot reset. Try again later.")
+                return
+
+            # Ensure state is IDLE before initialization
+            if current_state_before_stop != SolveState.IDLE:
+                self.set_state(SolveState.IDLE) # Explicitly set IDLE after stop
+
+            # Now safe to initialize the game with new disk count
+            self.initialize_game(num_disks_input) # Handles validation inside
+        except ValueError:
+            self.visualizer.update_status(f"Invalid input: '{value}'. Please enter a number.")
+        except Exception as e:
+            self.visualizer.update_status(f"Error setting disks: {e}")
+            sidekick.logger.exception("Error handling disk input")
 
     def start_solve(self):
         """Starts a new solve process in a thread."""
@@ -514,7 +523,10 @@ class HanoiController:
                  # Consider stronger interrupt if needed, but risky
             else:
                  sidekick.logger.info("Solver thread stopped.")
-        self._solve_thread = None
+                 self._solve_thread = None  # Only set to None if thread actually stopped
+        elif self._solve_thread and not self._solve_thread.is_alive():
+            # Thread exists but is not alive, safe to set to None
+            self._solve_thread = None
         # If stopping actively running/paused solve, reset state to IDLE
         if self.solve_state not in [SolveState.IDLE, SolveState.FINISHED]:
              self.set_state(SolveState.IDLE)

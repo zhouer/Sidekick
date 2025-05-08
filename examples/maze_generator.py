@@ -5,7 +5,7 @@ import logging
 from typing import List, Tuple, Set, Optional, Dict, Any
 
 import sidekick
-from sidekick import Grid, Console, Control
+from sidekick import Grid, Console, Button, Row
 
 # --- Configuration ---
 DEFAULT_WIDTH = 35
@@ -48,7 +48,9 @@ state_lock = threading.Lock()
 # --- Sidekick Component Instances ---
 grid: Optional[Grid] = None
 console: Optional[Console] = None
-controls: Optional[Control] = None
+row: Optional[Row] = None
+generate_btn: Optional[Button] = None
+solve_btn: Optional[Button] = None
 
 # --- Logging Setup ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -374,45 +376,50 @@ def solve_maze_task():
 
 
 # ==================================
-# == Sidekick Control Handler     ==
+# == Sidekick Button Handlers     ==
 # ==================================
-def handle_control_click(control_id: str):
-    """Handles button clicks from the Control component."""
+def handle_generate_click():
+    """Handles click on the Generate Maze button."""
     global solving, generating # Declare intention to modify global variables
-    if not console: logging.error("Control handler called but console is None!"); return
+    if not console: logging.error("Generate button handler called but console is None!"); return
 
-    logging.debug(f"Control click handler received: {control_id}")
+    logging.debug("Generate button clicked")
 
-    if control_id == 'generate_btn':
-        with state_lock:
-            # Interrupt solver if running
-            if solving: solving = False; console.print("Interrupting solver for new generation...")
-            # Interrupt generation if running (though unlikely to click again)
-            if generating: generating = False; console.print("Interrupting current generation...")
-        # Start generation in a new thread
-        gen_thread = threading.Thread(target=generate_maze_task, daemon=True)
-        gen_thread.start()
-    elif control_id == 'solve_btn':
-        with state_lock:
-            # Interrupt generation if running
-            if generating: generating = False; console.print("Interrupting generator for solving...")
-            # Interrupt solver if running (to restart it)
-            if solving: solving = False; console.print("Interrupting current solver to restart...")
-        # Start solving in a new thread
-        solve_thread = threading.Thread(target=solve_maze_task, daemon=True)
-        solve_thread.start()
-    else:
-        logging.warning(f"Unknown control click: {control_id}")
+    with state_lock:
+        # Interrupt solver if running
+        if solving: solving = False; console.print("Interrupting solver for new generation...")
+        # Interrupt generation if running (though unlikely to click again)
+        if generating: generating = False; console.print("Interrupting current generation...")
+    # Start generation in a new thread
+    gen_thread = threading.Thread(target=generate_maze_task, daemon=True)
+    gen_thread.start()
+
+def handle_solve_click():
+    """Handles click on the Solve Maze button."""
+    global solving, generating # Declare intention to modify global variables
+    if not console: logging.error("Solve button handler called but console is None!"); return
+
+    logging.debug("Solve button clicked")
+
+    with state_lock:
+        # Interrupt generation if running
+        if generating: generating = False; console.print("Interrupting generator for solving...")
+        # Interrupt solver if running (to restart it)
+        if solving: solving = False; console.print("Interrupting current solver to restart...")
+    # Start solving in a new thread
+    solve_thread = threading.Thread(target=solve_maze_task, daemon=True)
+    solve_thread.start()
 
 # ==================================
 # == Main Execution               ==
 # ==================================
 if __name__ == "__main__":
     try:
-        controls = Control()
-        controls.on_click(handle_control_click)
-        controls.add_button(control_id='generate_btn', button_text='Generate Maze (Prim\'s)') # Updated label
-        controls.add_button(control_id='solve_btn', button_text='Solve Maze (DFS)')
+        row = Row()
+        generate_btn = Button(text='Generate Maze (Prim\'s)', parent=row)
+        generate_btn.on_click(handle_generate_click)
+        solve_btn = Button(text='Solve Maze (DFS)', parent=row)
+        solve_btn.on_click(handle_solve_click)
 
         grid = Grid(num_columns=grid_width, num_rows=grid_height)
 
