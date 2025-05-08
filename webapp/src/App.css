@@ -178,69 +178,6 @@ body {
     transition: border-color 0.2s ease, box-shadow 0.2s ease; /* Smooth transitions */
 }
 
-.component-card:hover {
-    border-color: var(--sk-card-hover-border); /* Use variable */
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.07); /* Keep subtle shadow */
-}
-
-/* --- Info Icon Styles --- */
-.component-info-icon {
-    position: absolute;
-    top: 8px; /* Adjust positioning */
-    right: 8px;
-    color: var(--sk-secondary-foreground); /* Use variable */
-    font-size: 1em; /* Adjust size */
-    z-index: 10;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.2s ease-in-out, visibility 0s 0.2s linear, color 0.2s ease;
-}
-
-.component-card:hover .component-info-icon {
-    opacity: 0.6; /* Less prominent opacity */
-    visibility: visible;
-    transition-delay: 0s;
-}
-
-.component-info-icon:hover {
-    opacity: 1; /* Fully opaque on direct hover */
-    color: var(--sk-foreground); /* Use variable */
-}
-
-/* --- Tooltip Styles --- */
-.component-tooltip {
-    position: absolute;
-    top: 30px; /* Adjust position relative to icon */
-    right: 30px;
-    transform: translateY(-100%);
-    background-color: var(--sk-tooltip-background); /* Use variable */
-    color: var(--sk-tooltip-foreground); /* Use variable */
-    padding: 5px 8px; /* Reduced padding */
-    border-radius: 4px;
-    font-size: 0.75em; /* Smaller tooltip font */
-    white-space: pre-line; /* Allow wrapping on newline */
-    z-index: 20;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-    opacity: 0; /* Hidden by default */
-    visibility: hidden;
-    transition: opacity 0.15s ease, visibility 0.15s ease;
-    pointer-events: none;
-}
-
-/* Show tooltip when info icon is hovered */
-.component-info-icon:hover + .component-tooltip, /* If tooltip is sibling */
-.component-card:hover .component-info-icon:hover ~ .component-tooltip { /* More robust if nested differently */
-    opacity: 1;
-    visibility: visible;
-}
-
-/* Ensure wrapping works in tooltip */
-.component-tooltip br {
-    display: block; /* Make <br> work like block elements */
-    content: "";
-    margin-top: 4px; /* Add space after line break */
-}
-
 /* Style for the "No components active" message */
 .App-main > p {
     color: var(--sk-secondary-foreground);

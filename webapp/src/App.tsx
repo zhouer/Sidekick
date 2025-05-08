@@ -24,8 +24,6 @@ import {
     ChangeParentUpdate, // For typing changeParent update
     ROOT_CONTAINER_ID
 } from './types';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faInfoCircle } from '@fortawesome/free-solid-svg-icons';
 import './App.css';
 
 // --- Application State Definition ---
@@ -436,11 +434,6 @@ function App() {
             componentProps.renderChild = renderComponentTree; // Pass the recursive render function
         }
 
-        const handleMouseEnterInfo = () => setHoveredInfoId(componentId);
-        const handleMouseLeaveInfo = () => setHoveredInfoId(null);
-        const isInfoHovered = hoveredInfoId === componentId;
-        const displayName = componentDefinition.displayName || componentInstance.type;
-
         // Wrap non-container components in a card, containers might style themselves
         const Wrapper = componentDefinition.isContainer ? React.Fragment : 'div';
         const wrapperProps = componentDefinition.isContainer ? {} : { className: "component-card" };
@@ -448,14 +441,6 @@ function App() {
 
         return (
             <Wrapper {...wrapperProps} key={componentInstance.id}>
-                {!componentDefinition.isContainer && ( // Only show info icon for non-container items in cards
-                    <>
-                        <div className="component-info-icon" onMouseEnter={handleMouseEnterInfo} onMouseLeave={handleMouseLeaveInfo} aria-label={`Info for ${displayName}: ${componentInstance.id}`}>
-                            <FontAwesomeIcon icon={faInfoCircle} />
-                        </div>
-                        {isInfoHovered && (<div className="component-tooltip">Type: {displayName}<br />ID: {componentInstance.id}</div>)}
-                    </>
-                )}
                 <ComponentToRender ref={componentRef} {...componentProps} />
             </Wrapper>
         );
