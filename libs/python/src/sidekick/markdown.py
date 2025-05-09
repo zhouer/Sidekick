@@ -35,7 +35,7 @@ class Markdown(Component):
     """
     def __init__(
         self,
-        initial_source: str = "",
+        source: str,
         instance_id: Optional[str] = None,
         parent: Optional[Union['Component', str]] = None,
         on_error: Optional[Callable[[ErrorEvent], None]] = None,
@@ -49,8 +49,7 @@ class Markdown(Component):
         rendering Markdown content.
 
         Args:
-            initial_source (str): The initial Markdown source string to render.
-                Defaults to an empty string.
+            source (str): The initial Markdown source string to render.
             instance_id (Optional[str]): An optional, user-defined unique identifier
                 for this Markdown component. If `None`, an ID will be auto-generated.
                 Must be unique if provided.
@@ -71,7 +70,7 @@ class Markdown(Component):
                 provided but is not a callable function.
         """
         # Ensure initial source is a string.
-        self._source = str(initial_source)
+        self._source = str(source)
 
         # Prepare the payload for the 'spawn' command.
         # Keys must be camelCase per the protocol.
