@@ -156,88 +156,40 @@ interface ChangeParentUpdatePayload {
 }
 ```
 
-### 7.1 `grid` Component
+### 7.1 `button` Component
 
-**Purpose:** Displays and interacts with a 2D grid of cells. Ideal for visualizing maps, game boards, matrices, or simple pixel art. Allows setting cell color and text, and reacting to user clicks on individual cells.
+**Purpose:** A standard clickable button that can trigger actions in the Hero script.
 
 **Message Types:**
 
 *   **`spawn` (Hero -> Sidekick)**
-    *   **Payload:** `GridSpawnPayload` - Defines the initial dimensions of the grid.
+    *   **Payload:** `ButtonSpawnPayload`
     ```typescript
-    interface GridSpawnPayload extends BaseSpawnPayload {
-      numColumns: number; // Required: Must be > 0.
-      numRows: number;    // Required: Must be > 0.
+    interface ButtonSpawnPayload extends BaseSpawnPayload {
+      text: string; // Required: Text displayed on the button.
     }
     ```
 *   **`update` (Hero -> Sidekick)**
-    *   **Payload:** `GridUpdatePayload | ChangeParentUpdatePayload`
+    *   **Payload:** `ButtonUpdatePayload | ChangeParentUpdatePayload`
     ```typescript
-    type GridUpdatePayload =
-      | {
-          action: "setColor";
-          options: { x: number; y: number; color: string | null; }; // color: CSS color, null to clear.
-        }
+    type ButtonUpdatePayload =
       | {
           action: "setText";
-          options: { x: number; y: number; text: string | null; }; // text: null or "" to clear.
-        }
-      | {
-          action: "clearCell";
-          options: { x: number; y: number; };
-        }
-      | {
-          action: "clear"; // Clears all cells.
-          options?: undefined | null;
+          options: {
+            text: string; // Required: The new text for the button.
+          };
         };
     ```
 *   **`event` (Sidekick -> Hero)**
-    *   **Payload:** `GridEventPayload` - Reports user interaction events.
+    *   **Payload:** `ButtonEventPayload`
     ```typescript
-    interface GridEventPayload {
-      event: "click";
-      x: number; // 0-based column index.
-      y: number; // 0-based row index.
+    interface ButtonEventPayload {
+      event: "click"; // Indicates the button was clicked.
+      // No additional data needed for a simple button click.
     }
     ```
 
-### 7.2 `console` Component
-
-**Purpose:** Displays text output, similar to a standard terminal console, and optionally provides a field for user text input. Useful for logging messages, showing program status, or getting simple string inputs from the user.
-
-**Message Types:**
-
-*   **`spawn` (Hero -> Sidekick)**
-    *   **Payload:** `ConsoleSpawnPayload` - Configures the initial state of the console.
-    ```typescript
-    interface ConsoleSpawnPayload extends BaseSpawnPayload {
-      showInput: boolean; // Required: If true, show input field.
-      text?: string | null; // Optional: Initial text to display.
-    }
-    ```
-*   **`update` (Hero -> Sidekick)**
-    *   **Payload:** `ConsoleUpdatePayload | ChangeParentUpdatePayload`
-    ```typescript
-    type ConsoleUpdatePayload =
-      | {
-          action: "append";
-          options: { text: string; }; // Required: Text to append.
-        }
-      | {
-          action: "clear";
-          options?: undefined | null;
-        };
-    ```
-*   **`event` (Sidekick -> Hero)**
-    *   **Payload:** `ConsoleEventPayload` - Reports user input submission.
-    ```typescript
-    interface ConsoleEventPayload {
-      event: "submit";
-      value: string; // Required: The text string submitted.
-    }
-    ```
-
-### 7.3 `canvas` Component
+### 7.2 `canvas` Component
 
 **Purpose:** Provides a 2D drawing surface for rendering graphics programmatically. Supports drawing basic shapes, text, and includes a double buffering mechanism for smooth animations. Origin (0,0) is top-left.
 
@@ -294,46 +246,110 @@ interface ChangeParentUpdatePayload {
     }
     ```
 
-### 7.4 `viz` Component
+### 7.3 `column` Container Component
 
-**Purpose:** Displays Python variables and data structures (like lists, dictionaries, sets, custom objects) in an interactive, collapsible tree view. Supports `ObservableValue` for automatic updates.
-
-**Core Data Structure:** `VizRepresentation`
-```typescript
-interface VizRepresentation {
-  type: string; // Python data type (e.g., "int", "list", "object (ClassName)"). Special: "truncated", "recursive_ref", "error".
-  value: any;   // JS primitive, or array of VizRepresentations (for list/set), or array of {key: VizRep, value: VizRep} (for dict), or object of {attrName: VizRep} (for object). String for "truncated", "error", etc. "None" for NoneType.
-  length?: number; // Original Python container length.
-  observableTracked?: boolean; // True if from an ObservableValue.
-  id: string;       // Unique ID for this node.
-}
-```
+**Purpose:** A layout container that arranges its child components vertically. The top-level implicit container (ID: "root") behaves like a Column.
 
 **Message Types:**
 
 *   **`spawn` (Hero -> Sidekick)**
-    *   **Payload:** `VizSpawnPayload`
+    *   **Payload:** `ColumnSpawnPayload`
     ```typescript
-    interface VizSpawnPayload extends BaseSpawnPayload {} // No specific options currently.
+    interface ColumnSpawnPayload extends BaseSpawnPayload {
+      // Column-specific layout options can be added here in the future if needed.
+      // e.g., gap, justifyContent, alignItems. For now, UI uses defaults.
+    }
     ```
 *   **`update` (Hero -> Sidekick)**
-    *   **Payload:** `VizUpdatePayload | ChangeParentUpdatePayload`
+    *   **Payload:** `ChangeParentUpdatePayload` (No other `column`-specific updates currently).
     ```typescript
-    interface VizUpdateOptions {
-      path?: Array<string | number>; // Path from variableName to target element. Empty for root.
-      valueRepresentation?: VizRepresentation | null; // New value representation.
-      keyRepresentation?: VizRepresentation | null;   // Key rep for new dict items.
-      length?: number | null; // New container length after operation.
-    }
-    interface VizUpdatePayload {
-      action: string; // "set", "removeVariable", "setitem", "append", "delitem", "clear", etc.
-      variableName: string; // Top-level variable name.
-      options: VizUpdateOptions;
+    // type ColumnUpdatePayload = { action: "someColumnAction"; options: {...}; }; // Example
+    // Currently, only ChangeParentUpdatePayload is applicable.
+    ```
+*   **`event` (Sidekick -> Hero)**: `Column` does not send events.
+
+### 7.4 `console` Component
+
+**Purpose:** Displays text output, similar to a standard terminal console, and optionally provides a field for user text input. Useful for logging messages, showing program status, or getting simple string inputs from the user.
+
+**Message Types:**
+
+*   **`spawn` (Hero -> Sidekick)**
+    *   **Payload:** `ConsoleSpawnPayload` - Configures the initial state of the console.
+    ```typescript
+    interface ConsoleSpawnPayload extends BaseSpawnPayload {
+      showInput: boolean; // Required: If true, show input field.
+      text?: string | null; // Optional: Initial text to display.
     }
     ```
-*   **`event` (Sidekick -> Hero)**: Currently, `Viz` does not send events.
+*   **`update` (Hero -> Sidekick)**
+    *   **Payload:** `ConsoleUpdatePayload | ChangeParentUpdatePayload`
+    ```typescript
+    type ConsoleUpdatePayload =
+      | {
+          action: "append";
+          options: { text: string; }; // Required: Text to append.
+        }
+      | {
+          action: "clear";
+          options?: undefined | null;
+        };
+    ```
+*   **`event` (Sidekick -> Hero)**
+    *   **Payload:** `ConsoleEventPayload` - Reports user input submission.
+    ```typescript
+    interface ConsoleEventPayload {
+      event: "submit";
+      value: string; // Required: The text string submitted.
+    }
+    ```
 
-### 7.5 `label` Component
+### 7.5 `grid` Component
+
+**Purpose:** Displays and interacts with a 2D grid of cells. Ideal for visualizing maps, game boards, matrices, or simple pixel art. Allows setting cell color and text, and reacting to user clicks on individual cells.
+
+**Message Types:**
+
+*   **`spawn` (Hero -> Sidekick)**
+    *   **Payload:** `GridSpawnPayload` - Defines the initial dimensions of the grid.
+    ```typescript
+    interface GridSpawnPayload extends BaseSpawnPayload {
+      numColumns: number; // Required: Must be > 0.
+      numRows: number;    // Required: Must be > 0.
+    }
+    ```
+*   **`update` (Hero -> Sidekick)**
+    *   **Payload:** `GridUpdatePayload | ChangeParentUpdatePayload`
+    ```typescript
+    type GridUpdatePayload =
+      | {
+          action: "setColor";
+          options: { x: number; y: number; color: string | null; }; // color: CSS color, null to clear.
+        }
+      | {
+          action: "setText";
+          options: { x: number; y: number; text: string | null; }; // text: null or "" to clear.
+        }
+      | {
+          action: "clearCell";
+          options: { x: number; y: number; };
+        }
+      | {
+          action: "clear"; // Clears all cells.
+          options?: undefined | null;
+        };
+    ```
+*   **`event` (Sidekick -> Hero)**
+    *   **Payload:** `GridEventPayload` - Reports user interaction events.
+    ```typescript
+    interface GridEventPayload {
+      event: "click";
+      x: number; // 0-based column index.
+      y: number; // 0-based row index.
+    }
+    ```
+
+### 7.6 `label` Component
 
 **Purpose:** Displays a single line of static or dynamic text.
 
@@ -359,40 +375,57 @@ interface VizRepresentation {
     ```
 *   **`event` (Sidekick -> Hero)**: `Label` does not send events.
 
-### 7.6 `button` Component
+### 7.7 `markdown` Component
 
-**Purpose:** A standard clickable button that can trigger actions in the Hero script.
+**Purpose:** Renders Markdown formatted text content. Allows displaying rich text, lists, code blocks, links, and images parsed from a Markdown string.
 
 **Message Types:**
 
 *   **`spawn` (Hero -> Sidekick)**
-    *   **Payload:** `ButtonSpawnPayload`
+    *   **Payload:** `MarkdownSpawnPayload` - Defines the initial Markdown content.
     ```typescript
-    interface ButtonSpawnPayload extends BaseSpawnPayload {
-      text: string; // Required: Text displayed on the button.
+    interface MarkdownSpawnPayload extends BaseSpawnPayload {
+      /** Required: The initial Markdown string to be rendered. */
+      initialSource: string;
     }
     ```
 *   **`update` (Hero -> Sidekick)**
-    *   **Payload:** `ButtonUpdatePayload | ChangeParentUpdatePayload`
+    *   **Payload:** `MarkdownUpdatePayload | ChangeParentUpdatePayload`
     ```typescript
-    type ButtonUpdatePayload =
+    type MarkdownUpdatePayload =
       | {
-          action: "setText";
+          action: "setSource";
           options: {
-            text: string; // Required: The new text for the button.
+            /** Required: The new Markdown string to render. */
+            source: string;
           };
         };
     ```
-*   **`event` (Sidekick -> Hero)**
-    *   **Payload:** `ButtonEventPayload`
+*   **`event` (Sidekick -> Hero)**: `Markdown` component does not typically send events based on user interaction with the rendered content itself.
+
+### 7.8 `row` Container Component
+
+**Purpose:** A layout container that arranges its child components horizontally.
+
+**Message Types:**
+
+*   **`spawn` (Hero -> Sidekick)**
+    *   **Payload:** `RowSpawnPayload`
     ```typescript
-    interface ButtonEventPayload {
-      event: "click"; // Indicates the button was clicked.
-      // No additional data needed for a simple button click.
+    interface RowSpawnPayload extends BaseSpawnPayload {
+      // Row-specific layout options can be added here in the future if needed.
+      // e.g., gap, justifyContent, alignItems. For now, UI uses defaults.
     }
     ```
+*   **`update` (Hero -> Sidekick)**
+    *   **Payload:** `ChangeParentUpdatePayload` (No other `row`-specific updates currently).
+    ```typescript
+    // type RowUpdatePayload = { action: "someRowAction"; options: {...}; }; // Example
+    // Currently, only ChangeParentUpdatePayload is applicable.
+    ```
+*   **`event` (Sidekick -> Hero)**: `Row` does not send events.
 
-### 7.7 `textbox` Component
+### 7.9 `textbox` Component
 
 **Purpose:** A single-line text input field allowing users to enter text. Hero script can read the value and be notified upon submission (e.g., Enter key press or blur).
 
@@ -433,77 +466,44 @@ interface VizRepresentation {
     // Note: "change" event (on every keystroke) is not currently supported.
     ```
 
-### 7.8 `row` Container Component
+### 7.10 `viz` Component
 
-**Purpose:** A layout container that arranges its child components horizontally.
+**Purpose:** Displays Python variables and data structures (like lists, dictionaries, sets, custom objects) in an interactive, collapsible tree view. Supports `ObservableValue` for automatic updates.
 
-**Message Types:**
-
-*   **`spawn` (Hero -> Sidekick)**
-    *   **Payload:** `RowSpawnPayload`
-    ```typescript
-    interface RowSpawnPayload extends BaseSpawnPayload {
-      // Row-specific layout options can be added here in the future if needed.
-      // e.g., gap, justifyContent, alignItems. For now, UI uses defaults.
-    }
-    ```
-*   **`update` (Hero -> Sidekick)**
-    *   **Payload:** `ChangeParentUpdatePayload` (No other `row`-specific updates currently).
-    ```typescript
-    // type RowUpdatePayload = { action: "someRowAction"; options: {...}; }; // Example
-    // Currently, only ChangeParentUpdatePayload is applicable.
-    ```
-*   **`event` (Sidekick -> Hero)**: `Row` does not send events.
-
-### 7.9 `column` Container Component
-
-**Purpose:** A layout container that arranges its child components vertically. The top-level implicit container (ID: "root") behaves like a Column.
+**Core Data Structure:** `VizRepresentation`
+```typescript
+interface VizRepresentation {
+  type: string; // Python data type (e.g., "int", "list", "object (ClassName)"). Special: "truncated", "recursive_ref", "error".
+  value: any;   // JS primitive, or array of VizRepresentations (for list/set), or array of {key: VizRep, value: VizRep} (for dict), or object of {attrName: VizRep} (for object). String for "truncated", "error", etc. "None" for NoneType.
+  length?: number; // Original Python container length.
+  observableTracked?: boolean; // True if from an ObservableValue.
+  id: string;       // Unique ID for this node.
+}
+```
 
 **Message Types:**
 
 *   **`spawn` (Hero -> Sidekick)**
-    *   **Payload:** `ColumnSpawnPayload`
+    *   **Payload:** `VizSpawnPayload`
     ```typescript
-    interface ColumnSpawnPayload extends BaseSpawnPayload {
-      // Column-specific layout options can be added here in the future if needed.
-      // e.g., gap, justifyContent, alignItems. For now, UI uses defaults.
-    }
+    interface VizSpawnPayload extends BaseSpawnPayload {} // No specific options currently.
     ```
 *   **`update` (Hero -> Sidekick)**
-    *   **Payload:** `ChangeParentUpdatePayload` (No other `column`-specific updates currently).
+    *   **Payload:** `VizUpdatePayload | ChangeParentUpdatePayload`
     ```typescript
-    // type ColumnUpdatePayload = { action: "someColumnAction"; options: {...}; }; // Example
-    // Currently, only ChangeParentUpdatePayload is applicable.
-    ```
-*   **`event` (Sidekick -> Hero)**: `Column` does not send events.
-
-### 7.10 `markdown` Component
-
-**Purpose:** Renders Markdown formatted text content. Allows displaying rich text, lists, code blocks, links, and images parsed from a Markdown string.
-
-**Message Types:**
-
-*   **`spawn` (Hero -> Sidekick)**
-    *   **Payload:** `MarkdownSpawnPayload` - Defines the initial Markdown content.
-    ```typescript
-    interface MarkdownSpawnPayload extends BaseSpawnPayload {
-      /** Required: The initial Markdown string to be rendered. */
-      initialSource: string;
+    interface VizUpdateOptions {
+      path?: Array<string | number>; // Path from variableName to target element. Empty for root.
+      valueRepresentation?: VizRepresentation | null; // New value representation.
+      keyRepresentation?: VizRepresentation | null;   // Key rep for new dict items.
+      length?: number | null; // New container length after operation.
+    }
+    interface VizUpdatePayload {
+      action: string; // "set", "removeVariable", "setitem", "append", "delitem", "clear", etc.
+      variableName: string; // Top-level variable name.
+      options: VizUpdateOptions;
     }
     ```
-*   **`update` (Hero -> Sidekick)**
-    *   **Payload:** `MarkdownUpdatePayload | ChangeParentUpdatePayload`
-    ```typescript
-    type MarkdownUpdatePayload =
-      | {
-          action: "setSource";
-          options: {
-            /** Required: The new Markdown string to render. */
-            source: string;
-          };
-        };
-    ```
-*   **`event` (Sidekick -> Hero)**: `Markdown` component does not typically send events based on user interaction with the rendered content itself.
+*   **`event` (Sidekick -> Hero)**: Currently, `Viz` does not send events.
 
 ## 8. Error Handling (`error` Message Type)
 
