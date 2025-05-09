@@ -594,8 +594,7 @@ def clear_all():
     message = {
         "id": 0,
         "component": "global", # Target the global scope, not a specific component instance.
-        "type": "clearAll",
-        "payload": None     # No additional data needed for this command.
+        "type": "clearAll"
     }
     # Use the public send_message function, which handles readiness checks and errors.
     send_message(message)

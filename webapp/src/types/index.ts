@@ -43,7 +43,7 @@ export interface SystemAnnounceMessage extends BaseMessage {
 export interface GlobalClearMessage extends BaseHeroMessage {
     component: "global";
     type: "clearAll";
-    payload?: null;
+    payload?: never;
     target?: never;
     src?: never;
 }

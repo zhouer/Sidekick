@@ -109,15 +109,14 @@ Affect the entire Sidekick UI state, not specific component instances.
 
 *   **Direction:** Hero -> Sidekick
 *   **Purpose:** Instructs the Sidekick UI to remove all currently displayed component instances, effectively resetting the panel to its initial state (e.g., only the root container).
-*   **`target` / `src`:** Omitted.
-*   **Payload:** `null` or Omitted.
+*   **`target` / `src` / `payload` :** Omitted.
 
 ```typescript
 interface GlobalClearAllMessage extends BaseMessage {
   id: number; // 0
   component: "global";
   type: "clearAll";
-  payload?: null;
+  payload?: never;
   target?: never;
   src?: never;
 }
