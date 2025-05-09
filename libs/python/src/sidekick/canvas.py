@@ -60,7 +60,7 @@ from typing import Optional, Dict, Any, Callable, List, Tuple, ContextManager, U
 
 from . import logger
 from .errors import SidekickConnectionError
-from .base_component import BaseComponent
+from .component import Component
 from .events import CanvasClickEvent, ErrorEvent
 
 # Type hint for a list of points used in polylines/polygons
@@ -234,7 +234,7 @@ class _CanvasBufferContextManager:
         return False
 
 
-class Canvas(BaseComponent):
+class Canvas(Component):
     """Represents a 2D drawing canvas component instance in the Sidekick UI.
 
     Provides a surface within the Sidekick panel for programmatic drawing of shapes,
@@ -254,7 +254,7 @@ class Canvas(BaseComponent):
         width: int,
         height: int,
         instance_id: Optional[str] = None,
-        parent: Optional[Union['BaseComponent', str]] = None,
+        parent: Optional[Union['Component', str]] = None,
         on_click: Optional[Callable[[CanvasClickEvent], None]] = None,
         on_error: Optional[Callable[[ErrorEvent], None]] = None,
     ):
@@ -273,7 +273,7 @@ class Canvas(BaseComponent):
             instance_id (Optional[str]): An optional, user-defined unique identifier
                 for this canvas. If `None`, an ID will be auto-generated. Must be
                 unique if provided.
-            parent (Optional[Union['BaseComponent', str]]): The parent container
+            parent (Optional[Union['Component', str]]): The parent container
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this canvas
                 should be placed. If `None` (the default), the canvas is added
                 to the main Sidekick panel area.
@@ -318,7 +318,7 @@ class Canvas(BaseComponent):
         super().__init__(
             component_type="canvas",
             payload=spawn_payload,
-            instance_id=instance_id, # Pass instance_id to BaseComponent
+            instance_id=instance_id,
             parent=parent,
             on_error=on_error
         )
@@ -547,7 +547,7 @@ class Canvas(BaseComponent):
             "action": action,
             "options": options,
         }
-        self._send_update(update_payload) # Calls BaseComponent._send_update
+        self._send_update(update_payload)
 
     def clear(self, buffer_id: Optional[int] = None):
         """Clears the specified canvas buffer (visible screen or an offscreen buffer).
@@ -931,10 +931,10 @@ class Canvas(BaseComponent):
         This `__del__` is a fallback, attempting to clean up if `remove()` wasn't called.
         """
         try:
-            # Call super().__del__() first if it exists and does something (e.g., BaseComponent's __del__)
-            # However, BaseComponent's __del__ already handles unregistering.
+            # Call super().__del__() first if it exists and does something (e.g., Component's __del__)
+            # However, Component's __del__ already handles unregistering.
             # The main concern for Canvas.__del__ would be its specific resources like buffers,
             # but sending commands in __del__ is risky. The remove() method is preferred.
-            super().__del__() # Let BaseComponent handle its part of __del__
+            super().__del__() # Let Component handle its part of __del__
         except Exception:
             pass # Suppress errors in __del__

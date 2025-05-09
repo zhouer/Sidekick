@@ -24,11 +24,11 @@ You can also provide an `instance_id` to uniquely identify the Column.
 """
 
 from . import logger
-from .base_component import BaseComponent
+from .component import Component
 from .events import ErrorEvent
 from typing import Optional, Dict, Any, Union, Callable, Tuple
 
-class Column(BaseComponent):
+class Column(Component):
     """Represents a Column layout container instance in the Sidekick UI.
 
     Child components added to this container will be arranged vertically,
@@ -39,10 +39,10 @@ class Column(BaseComponent):
     """
     def __init__(
         self,
-        *children: BaseComponent,
-        instance_id: Optional[str] = None, # New: For BaseComponent
-        parent: Optional[Union['BaseComponent', str]] = None,
-        on_error: Optional[Callable[[ErrorEvent], None]] = None, # For BaseComponent
+        *children: Component,
+        instance_id: Optional[str] = None,
+        parent: Optional[Union['Component', str]] = None,
+        on_error: Optional[Callable[[ErrorEvent], None]] = None,
     ):
         """Initializes the Column layout container and creates the UI element.
 
@@ -56,7 +56,7 @@ class Column(BaseComponent):
         layout container.
 
         Args:
-            *children (BaseComponent): Zero or more Sidekick component instances
+            *children (Component): Zero or more Sidekick component instances
                 (e.g., `Button`, `Label`, another `Column`) to be immediately
                 added as children to this column. These child components must
                 already exist. When `Column` is created, it will attempt to
@@ -64,7 +64,7 @@ class Column(BaseComponent):
             instance_id (Optional[str]): An optional, user-defined unique identifier
                 for this Column. If `None`, an ID will be auto-generated. Must be
                 unique if provided.
-            parent (Optional[Union['BaseComponent', str]]): The parent container
+            parent (Optional[Union['Component', str]]): The parent container
                 (e.g., a `sidekick.Row`) where this Column itself should be placed.
                 If `None` (the default), the Column is added to the main Sidekick
                 panel area (which acts like a root column).
@@ -98,7 +98,7 @@ class Column(BaseComponent):
         if children:
             logger.debug(f"Column '{self.instance_id}': Adding {len(children)} children from constructor.") # Use self.instance_id
             for child_idx, child in enumerate(children):
-                if isinstance(child, BaseComponent):
+                if isinstance(child, Component):
                     try:
                         # The add_child method handles sending the "changeParent" update
                         # for the child component.
@@ -123,7 +123,7 @@ class Column(BaseComponent):
                         f"(e.g., Button, Label), but got {type(child).__name__}."
                     )
 
-    def add_child(self, child_component: BaseComponent):
+    def add_child(self, child_component: Component):
         """Moves an existing component into this Column container.
 
         This method sends a command to the Sidekick UI instructing it to make
@@ -137,13 +137,13 @@ class Column(BaseComponent):
             component, effectively moving it.
 
         Args:
-            child_component (BaseComponent): The Sidekick component instance
+            child_component (Component): The Sidekick component instance
                 (e.g., a `Button`, `Textbox`, `Grid`, another `Column`) to add
                 as a child to this column.
 
         Raises:
             TypeError: If `child_component` is not a valid Sidekick component instance
-                       (i.e., not derived from `BaseComponent`).
+                       (i.e., not derived from `Component`).
             SidekickConnectionError: If sending the update command to the UI fails.
 
         Example:
@@ -156,7 +156,7 @@ class Column(BaseComponent):
             >>> col_container.add_child(activate_button)
             >>> # Now title_label and activate_button appear vertically inside col_container
         """
-        if not isinstance(child_component, BaseComponent):
+        if not isinstance(child_component, Component):
             raise TypeError(
                 f"Invalid child type for Column.add_child(): Expected a Sidekick component "
                 f"instance (e.g., Button, Label), but got {type(child_component).__name__}."
@@ -195,7 +195,7 @@ class Column(BaseComponent):
     def _reset_specific_callbacks(self):
         """Internal: Resets column-specific callbacks (none currently).
 
-        Called by `BaseComponent.remove()`. Column currently has no specific
+        Called by `Component.remove()`. Column currently has no specific
         user-settable callbacks beyond `on_error` (handled by base).
         """
         super()._reset_specific_callbacks()

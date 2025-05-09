@@ -24,11 +24,11 @@ You can define the textbox's submission behavior in several ways:
 """
 
 from . import logger
-from .base_component import BaseComponent
+from .component import Component
 from .events import TextboxSubmitEvent, ErrorEvent
 from typing import Optional, Callable, Dict, Any, Union
 
-class Textbox(BaseComponent):
+class Textbox(Component):
     """Represents a single-line Textbox component instance in the Sidekick UI.
 
     Creates an input field where users can type text. Use the `on_submit`
@@ -51,7 +51,7 @@ class Textbox(BaseComponent):
         initial_value: str = "",
         placeholder: str = "",
         instance_id: Optional[str] = None,
-        parent: Optional[Union['BaseComponent', str]] = None,
+        parent: Optional[Union['Component', str]] = None,
         on_submit: Optional[Callable[[TextboxSubmitEvent], None]] = None,
         on_error: Optional[Callable[[ErrorEvent], None]] = None,
     ):
@@ -70,7 +70,7 @@ class Textbox(BaseComponent):
             instance_id (Optional[str]): An optional, user-defined unique identifier
                 for this textbox. If `None`, an ID will be auto-generated. Must be
                 unique if provided.
-            parent (Optional[Union['BaseComponent', str]]): The parent container
+            parent (Optional[Union['Component', str]]): The parent container
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this textbox
                 should be placed. If `None` (the default), the textbox is added
                 to the main Sidekick panel area.
@@ -110,7 +110,7 @@ class Textbox(BaseComponent):
         super().__init__(
             component_type="textbox",
             payload=spawn_payload,
-            instance_id=instance_id, # Pass instance_id to BaseComponent
+            instance_id=instance_id,
             parent=parent,
             on_error=on_error
         )

@@ -22,11 +22,11 @@ You can define the button's click behavior in several ways:
 """
 
 from . import logger
-from .base_component import BaseComponent
+from .component import Component
 from .events import ButtonClickEvent, ErrorEvent
 from typing import Optional, Callable, Dict, Any, Union
 
-class Button(BaseComponent):
+class Button(Component):
     """Represents a clickable Button component instance in the Sidekick UI.
 
     Creates a button with a text label. Use the `on_click` method, the
@@ -42,7 +42,7 @@ class Button(BaseComponent):
         self,
         text: str = "Button",
         instance_id: Optional[str] = None,
-        parent: Optional[Union['BaseComponent', str]] = None,
+        parent: Optional[Union['Component', str]] = None,
         on_click: Optional[Callable[[ButtonClickEvent], None]] = None,
         on_error: Optional[Callable[[ErrorEvent], None]] = None,
     ):
@@ -59,7 +59,7 @@ class Button(BaseComponent):
             instance_id (Optional[str]): An optional, user-defined unique identifier
                 for this button. If `None`, an ID will be auto-generated. Must be
                 unique if provided.
-            parent (Optional[Union['BaseComponent', str]]): The parent container
+            parent (Optional[Union['Component', str]]): The parent container
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this button
                 should be placed. If `None` (the default), the button is added
                 to the main Sidekick panel area.
@@ -93,7 +93,7 @@ class Button(BaseComponent):
         super().__init__(
             component_type="button",
             payload=spawn_payload,
-            instance_id=instance_id, # Pass instance_id to BaseComponent
+            instance_id=instance_id,
             parent=parent,
             on_error=on_error
         )

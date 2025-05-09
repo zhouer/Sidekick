@@ -49,11 +49,11 @@ Interactive Usage with a Parent Container:
 """
 
 from . import logger
-from .base_component import BaseComponent
+from .component import Component
 from .events import ConsoleSubmitEvent, ErrorEvent
 from typing import Optional, Callable, Dict, Any, Union
 
-class Console(BaseComponent):
+class Console(Component):
     """Represents a Console component instance in the Sidekick UI panel.
 
     Creates a scrollable text area for displaying output and optionally an input field
@@ -67,7 +67,7 @@ class Console(BaseComponent):
         initial_text: str = "",
         show_input: bool = False,
         instance_id: Optional[str] = None,
-        parent: Optional[Union['BaseComponent', str]] = None,
+        parent: Optional[Union['Component', str]] = None,
         on_submit: Optional[Callable[[ConsoleSubmitEvent], None]] = None,
         on_error: Optional[Callable[[ErrorEvent], None]] = None,
     ):
@@ -89,7 +89,7 @@ class Console(BaseComponent):
             instance_id (Optional[str]): An optional, user-defined unique identifier
                 for this console. If `None`, an ID will be auto-generated. Must be
                 unique if provided.
-            parent (Optional[Union['BaseComponent', str]]): The parent container
+            parent (Optional[Union['Component', str]]): The parent container
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this console
                 should be placed. If `None` (the default), the console is added
                 to the main Sidekick panel area.
@@ -124,7 +124,7 @@ class Console(BaseComponent):
         super().__init__(
             component_type="console",
             payload=spawn_payload,
-            instance_id=instance_id, # Pass instance_id to BaseComponent
+            instance_id=instance_id,
             parent=parent,
             on_error=on_error
         )

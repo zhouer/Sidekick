@@ -4,10 +4,10 @@ sidekick package
 Submodules
 ----------
 
-sidekick.base\_component module
+sidekick.component module
 ------------------------------
 
-.. automodule:: sidekick.base_component
+.. automodule:: sidekick.component
    :members:
    :show-inheritance:
    :undoc-members:

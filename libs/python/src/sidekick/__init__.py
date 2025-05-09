@@ -167,7 +167,7 @@ __all__ = [
     'SidekickTimeoutError',
     'SidekickDisconnectedError',
 
-    # Note: Does not include internal implementation details like BaseComponent,
+    # Note: Does not include internal implementation details like Component,
     # connection module functions (except the public ones listed above),
     # utility functions, or specific channel implementations.
 ]

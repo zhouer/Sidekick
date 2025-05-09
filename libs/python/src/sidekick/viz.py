@@ -46,7 +46,7 @@ Reactive Usage with a Parent Container:
 import functools
 from typing import Any, Dict, Optional, List, Union, Callable, Set, Tuple
 from . import logger
-from .base_component import BaseComponent
+from .component import Component
 from .events import ErrorEvent
 from .observable_value import ObservableValue, UnsubscribeFunction
 
@@ -304,7 +304,7 @@ def _get_representation(
     return rep
 
 
-class Viz(BaseComponent):
+class Viz(Component):
     """Represents the Variable Visualizer (Viz) component instance in the Sidekick UI.
 
     Creates an interactive panel for displaying Python variables and data structures.
@@ -323,7 +323,7 @@ class Viz(BaseComponent):
     def __init__(
         self,
         instance_id: Optional[str] = None,
-        parent: Optional[Union['BaseComponent', str]] = None,
+        parent: Optional[Union['Component', str]] = None,
         on_error: Optional[Callable[[ErrorEvent], None]] = None,
     ):
         """Initializes the Viz object and creates the UI panel.
@@ -338,7 +338,7 @@ class Viz(BaseComponent):
             instance_id (Optional[str]): An optional, user-defined unique identifier
                 for this Viz panel. If `None`, an ID will be auto-generated. Must be
                 unique if provided.
-            parent (Optional[Union['BaseComponent', str]]): The parent container
+            parent (Optional[Union['Component', str]]): The parent container
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this Viz panel
                 should be placed. If `None` (the default), the Viz panel is added
                 to the main Sidekick panel area.
@@ -663,7 +663,7 @@ class Viz(BaseComponent):
     def _reset_specific_callbacks(self):
         """Internal: Resets Viz-specific state, primarily clearing tracked variables.
 
-        Called by `BaseComponent.remove()`. For Viz, the main cleanup of
+        Called by `Component.remove()`. For Viz, the main cleanup of
         `_shown_variables` (including unsubscribing from observables) is more
         robustly handled in the overridden `Viz.remove()` method to ensure it
         happens *before* the UI component is instructed to remove itself.
@@ -686,7 +686,7 @@ class Viz(BaseComponent):
 
     # Viz component primarily sends data to the UI. It doesn't typically receive
     # interactive events (like clicks on variable nodes) back from the UI that would
-    # trigger Python callbacks, other than generic 'error' messages handled by BaseComponent.
+    # trigger Python callbacks, other than generic 'error' messages handled by Component.
     # Thus, no specific _internal_message_handler override is usually needed beyond base.
 
-    # __del__ is inherited from BaseComponent for fallback handler unregistration.
+    # __del__ is inherited from Component for fallback handler unregistration.

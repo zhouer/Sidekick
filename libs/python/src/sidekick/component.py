@@ -1,4 +1,4 @@
-"""Provides the foundational `BaseComponent` class for all Sidekick visual components.
+"""Provides the foundational `Component` class for all Sidekick visual components.
 
 This component defines the common blueprint and core functionalities shared by all
 the visual elements you create with Sidekick (like `Grid`, `Console`, `Canvas`,
@@ -6,7 +6,7 @@ the visual elements you create with Sidekick (like `Grid`, `Console`, `Canvas`,
 engine under the hood that handles essential tasks necessary for any Python object
 representing a component in the Sidekick UI.
 
-Key responsibilities managed by `BaseComponent`:
+Key responsibilities managed by `Component`:
 
 *   **Unique Identification:** Assigning or using a user-provided unique `instance_id`
     to each component instance, allowing Sidekick to distinguish between different
@@ -33,7 +33,7 @@ Key responsibilities managed by `BaseComponent`:
     to the correct Python object's internal handler (`_internal_message_handler`).
 
 Note:
-    You will typically **not** use `BaseComponent` directly in your scripts. Instead,
+    You will typically **not** use `Component` directly in your scripts. Instead,
     you'll instantiate its subclasses like `sidekick.Grid`, `sidekick.Console`, etc.
     This base class transparently handles the common low-level details for you.
 """
@@ -45,7 +45,7 @@ from .utils import generate_unique_id # For generating default instance IDs
 from .events import ErrorEvent # Import the structured ErrorEvent
 from typing import Optional, Dict, Any, Callable, Union
 
-class BaseComponent:
+class Component:
     """Base class for all Sidekick component interface classes.
 
     This abstract class manages the fundamental setup, unique identification,
@@ -78,9 +78,9 @@ class BaseComponent:
         self,
         component_type: str,
         payload: Optional[Dict[str, Any]] = None,
-        instance_id: Optional[str] = None, # New: User-provided instance ID
-        parent: Optional[Union['BaseComponent', str]] = None,
-        on_error: Optional[Callable[[ErrorEvent], None]] = None, # Updated signature
+        instance_id: Optional[str] = None,
+        parent: Optional[Union['Component', str]] = None,
+        on_error: Optional[Callable[[ErrorEvent], None]] = None,
     ):
         """Initializes the base component, setting up ID, parent, connection, and registration.
 
@@ -131,7 +131,7 @@ class BaseComponent:
                 for this component instance. If provided, it must be a non-empty string
                 and must be unique among all Sidekick components created in the current
                 script run. If `None` (default), a unique ID will be auto-generated.
-            parent (Optional[Union['BaseComponent', str]]): The parent container for
+            parent (Optional[Union['Component', str]]): The parent container for
                 this component. Can be:
                 - A Sidekick component instance (e.g., a `Row` or `Column` object).
                 - A `str` representing the `instance_id` of an existing parent component.
@@ -151,7 +151,7 @@ class BaseComponent:
                         stripping whitespace) or if the final `instance_id` (user-provided
                         or auto-generated) is found to be a duplicate of an already
                         registered component ID.
-            TypeError: If the `parent` argument is provided but is not a `BaseComponent`
+            TypeError: If the `parent` argument is provided but is not a `Component`
                        instance, a string, or `None`. Also raised if `on_error` is
                        provided but is not a callable function.
         """
@@ -200,7 +200,7 @@ class BaseComponent:
         # Process the parent argument and add it to the spawn payload if specified.
         parent_id_to_send: Optional[str] = None
         if parent is not None:
-            if isinstance(parent, BaseComponent):
+            if isinstance(parent, Component):
                 parent_id_to_send = parent.instance_id # Use the parent's instance_id
             elif isinstance(parent, str):
                 parent_id_to_send = parent # Assume it's a valid instance_id string
@@ -216,7 +216,7 @@ class BaseComponent:
             if not parent_id_to_send: # Checks for empty string too
                 msg = (f"Parent ID for component '{self.instance_id}' cannot be an empty string. "
                        f"If specifying a parent by ID, it must be a valid, non-empty instance_id. "
-                       f"If parent was a BaseComponent, its instance_id was empty.")
+                       f"If parent was a Component, its instance_id was empty.")
                 logger.error(msg)
                 # This situation is likely a programming error.
                 raise ValueError(msg)
@@ -294,7 +294,7 @@ class BaseComponent:
             # (e.g., a "click" event for a Button, or a "submit" event for a Textbox).
             # If a subclass doesn't handle an event, it will be logged here.
             logger.debug(
-                f"BaseComponent received an 'event' for '{self.instance_id}' "
+                f"Component received an 'event' for '{self.instance_id}' "
                 f"that was not handled by a subclass: {payload}"
             )
             pass # Subclasses are responsible for handling specific events.
@@ -481,7 +481,7 @@ class BaseComponent:
                 super()._reset_specific_callbacks() # Good practice if base also had its own
                 self._click_callback = None
             ```
-        The base implementation here does nothing, as `BaseComponent` itself only
+        The base implementation here does nothing, as `Component` itself only
         manages `_error_callback`, which is handled directly in `remove()`.
         """
         # Base implementation does nothing. Subclasses provide the actual logic
@@ -510,7 +510,7 @@ class BaseComponent:
             if hasattr(connection, 'unregister_message_handler') and hasattr(self, 'instance_id') and self.instance_id:
                  connection.unregister_message_handler(self.instance_id)
                  logger.debug(
-                    f"BaseComponent __del__ attempting fallback unregistration "
+                    f"Component __del__ attempting fallback unregistration "
                     f"for {getattr(self, 'component_type', 'UnknownComponentType')} "
                     f"id {self.instance_id}"
                  )

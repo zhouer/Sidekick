@@ -13,11 +13,11 @@ identify the Markdown component.
 """
 
 from . import logger
-from .base_component import BaseComponent
+from .component import Component
 from .events import ErrorEvent
 from typing import Optional, Dict, Any, Union, Callable
 
-class Markdown(BaseComponent):
+class Markdown(Component):
     """Represents a component that renders Markdown formatted text in the Sidekick UI.
 
     Creates an area where Markdown source text is rendered as formatted content.
@@ -37,7 +37,7 @@ class Markdown(BaseComponent):
         self,
         initial_source: str = "",
         instance_id: Optional[str] = None,
-        parent: Optional[Union['BaseComponent', str]] = None,
+        parent: Optional[Union['Component', str]] = None,
         on_error: Optional[Callable[[ErrorEvent], None]] = None,
     ):
         """Initializes the Markdown object and creates the UI element.
@@ -54,7 +54,7 @@ class Markdown(BaseComponent):
             instance_id (Optional[str]): An optional, user-defined unique identifier
                 for this Markdown component. If `None`, an ID will be auto-generated.
                 Must be unique if provided.
-            parent (Optional[Union['BaseComponent', str]]): The parent container
+            parent (Optional[Union['Component', str]]): The parent container
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this Markdown
                 component should be placed. If `None` (the default), it's added
                 to the main Sidekick panel area.
@@ -82,7 +82,7 @@ class Markdown(BaseComponent):
         super().__init__(
             component_type="markdown",
             payload=spawn_payload,
-            instance_id=instance_id, # Pass instance_id to BaseComponent
+            instance_id=instance_id,
             parent=parent,
             on_error=on_error
         )
@@ -130,7 +130,7 @@ class Markdown(BaseComponent):
     def _reset_specific_callbacks(self):
         """Internal: Resets markdown-specific callbacks (none currently).
 
-        Called by `BaseComponent.remove()`. Markdown currently has no specific
+        Called by `Component.remove()`. Markdown currently has no specific
         user-settable callbacks beyond `on_error` (handled by base).
         """
         super()._reset_specific_callbacks()

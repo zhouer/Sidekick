@@ -12,11 +12,11 @@ to uniquely identify the label.
 """
 
 from . import logger
-from .base_component import BaseComponent
+from .component import Component
 from .events import ErrorEvent
 from typing import Optional, Dict, Any, Union, Callable
 
-class Label(BaseComponent):
+class Label(Component):
     """Represents a non-interactive text Label component instance in the Sidekick UI.
 
     Creates a simple text display area. You can set the initial text when creating
@@ -34,7 +34,7 @@ class Label(BaseComponent):
         self,
         text: str = "",
         instance_id: Optional[str] = None,
-        parent: Optional[Union['BaseComponent', str]] = None,
+        parent: Optional[Union['Component', str]] = None,
         on_error: Optional[Callable[[ErrorEvent], None]] = None,
     ):
         """Initializes the Label object and creates the UI element.
@@ -50,7 +50,7 @@ class Label(BaseComponent):
             instance_id (Optional[str]): An optional, user-defined unique identifier
                 for this label. If `None`, an ID will be auto-generated. Must be
                 unique if provided.
-            parent (Optional[Union['BaseComponent', str]]): The parent container
+            parent (Optional[Union['Component', str]]): The parent container
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this label
                 should be placed. If `None` (the default), the label is added
                 to the main Sidekick panel area.
@@ -78,7 +78,7 @@ class Label(BaseComponent):
         super().__init__(
             component_type="label",
             payload=spawn_payload,
-            instance_id=instance_id, # Pass instance_id to BaseComponent
+            instance_id=instance_id,
             parent=parent,
             on_error=on_error
         )
@@ -125,7 +125,7 @@ class Label(BaseComponent):
     def _reset_specific_callbacks(self):
         """Internal: Resets label-specific callbacks (none currently).
 
-        Called by `BaseComponent.remove()`. Label currently has no specific
+        Called by `Component.remove()`. Label currently has no specific
         user-settable callbacks beyond `on_error` (handled by base).
         """
         super()._reset_specific_callbacks()

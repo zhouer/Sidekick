@@ -55,11 +55,11 @@ Interactive Usage with a Parent Container:
 """
 
 from . import logger
-from .base_component import BaseComponent
+from .component import Component
 from .events import GridClickEvent, ErrorEvent
 from typing import Optional, Callable, Dict, Any, Union
 
-class Grid(BaseComponent):
+class Grid(Component):
     """Represents an interactive Grid component instance in the Sidekick UI.
 
     Instantiate this class to create a grid of cells. You can set cell colors,
@@ -76,7 +76,7 @@ class Grid(BaseComponent):
         num_columns: int,
         num_rows: int,
         instance_id: Optional[str] = None,
-        parent: Optional[Union['BaseComponent', str]] = None,
+        parent: Optional[Union['Component', str]] = None,
         on_click: Optional[Callable[[GridClickEvent], None]] = None,
         on_error: Optional[Callable[[ErrorEvent], None]] = None,
     ):
@@ -95,7 +95,7 @@ class Grid(BaseComponent):
             instance_id (Optional[str]): An optional, user-defined unique identifier
                 for this grid. If `None`, an ID will be auto-generated. Must be
                 unique if provided.
-            parent (Optional[Union['BaseComponent', str]]): The parent container
+            parent (Optional[Union['Component', str]]): The parent container
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this grid
                 should be placed. If `None` (the default), the grid is added
                 to the main Sidekick panel area.
@@ -137,7 +137,7 @@ class Grid(BaseComponent):
         super().__init__(
             component_type="grid",
             payload=spawn_payload,
-            instance_id=instance_id, # Pass instance_id to BaseComponent
+            instance_id=instance_id,
             parent=parent,
             on_error=on_error
         )

@@ -23,11 +23,11 @@ You can also provide an `instance_id` to uniquely identify the Row.
 """
 
 from . import logger
-from .base_component import BaseComponent
+from .component import Component
 from .events import ErrorEvent
 from typing import Optional, Dict, Any, Union, Callable, Tuple
 
-class Row(BaseComponent):
+class Row(Component):
     """Represents a Row layout container instance in the Sidekick UI.
 
     Child components added to this container will be arranged horizontally,
@@ -38,10 +38,10 @@ class Row(BaseComponent):
     """
     def __init__(
         self,
-        *children: BaseComponent,
+        *children: Component,
         instance_id: Optional[str] = None,
-        parent: Optional[Union['BaseComponent', str]] = None,
-        on_error: Optional[Callable[[ErrorEvent], None]] = None, # For BaseComponent
+        parent: Optional[Union['Component', str]] = None,
+        on_error: Optional[Callable[[ErrorEvent], None]] = None,
     ):
         """Initializes the Row layout container and creates the UI element.
 
@@ -55,7 +55,7 @@ class Row(BaseComponent):
         layout container.
 
         Args:
-            *children (BaseComponent): Zero or more Sidekick component instances
+            *children (Component): Zero or more Sidekick component instances
                 (e.g., `Button`, `Label`, another `Row`) to be immediately added
                 as children to this row. These child components must already exist.
                 When `Row` is created, it will attempt to move each of these
@@ -63,7 +63,7 @@ class Row(BaseComponent):
             instance_id (Optional[str]): An optional, user-defined unique identifier
                 for this Row. If `None`, an ID will be auto-generated. Must be
                 unique if provided.
-            parent (Optional[Union['BaseComponent', str]]): The parent container
+            parent (Optional[Union['Component', str]]): The parent container
                 (e.g., a `sidekick.Column`) where this Row itself should be placed.
                 If `None` (the default), the Row is added to the main Sidekick
                 panel area.
@@ -97,7 +97,7 @@ class Row(BaseComponent):
         if children:
             logger.debug(f"Row '{self.instance_id}': Adding {len(children)} children from constructor.") # Use self.instance_id
             for child_idx, child in enumerate(children):
-                if isinstance(child, BaseComponent):
+                if isinstance(child, Component):
                     try:
                         # The add_child method handles sending the "changeParent" update
                         # for the child component.
@@ -124,7 +124,7 @@ class Row(BaseComponent):
                     )
 
 
-    def add_child(self, child_component: BaseComponent):
+    def add_child(self, child_component: Component):
         """Moves an existing component into this Row container.
 
         This method sends a command to the Sidekick UI instructing it to make
@@ -138,13 +138,13 @@ class Row(BaseComponent):
             component, effectively moving it.
 
         Args:
-            child_component (BaseComponent): The Sidekick component instance
+            child_component (Component): The Sidekick component instance
                 (e.g., a `Button`, `Textbox`, `Canvas`, another `Row`) to add
                 as a child to this row.
 
         Raises:
             TypeError: If `child_component` is not a valid Sidekick component instance
-                       (i.e., not derived from `BaseComponent`).
+                       (i.e., not derived from `Component`).
             SidekickConnectionError: If sending the update command to the UI fails.
 
         Example:
@@ -157,7 +157,7 @@ class Row(BaseComponent):
             >>> row_container.add_child(my_label)
             >>> # Now my_button and my_label appear horizontally inside row_container
         """
-        if not isinstance(child_component, BaseComponent):
+        if not isinstance(child_component, Component):
             raise TypeError(
                 f"Invalid child type for Row.add_child(): Expected a Sidekick component "
                 f"instance (e.g., Button, Label), but got {type(child_component).__name__}."
@@ -202,7 +202,7 @@ class Row(BaseComponent):
     def _reset_specific_callbacks(self):
         """Internal: Resets row-specific callbacks (none currently).
 
-        Called by `BaseComponent.remove()`. Row currently has no specific
+        Called by `Component.remove()`. Row currently has no specific
         user-settable callbacks beyond `on_error` (handled by base).
         """
         super()._reset_specific_callbacks()

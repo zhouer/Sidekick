@@ -80,7 +80,7 @@ This module orchestrates the communication channel and connection lifecycle.
 *   **Message Handling (`_handle_incoming_message`):**
     *   Called by the channel implementation when a message arrives.
     *   Handles `system/announce` to track UI readiness and set `_ready_event`.
-    *   Handles `event` messages: Looks up the handler function registered for the message's `src` instance ID in `_message_handlers` and calls it (typically the `_internal_message_handler` of the corresponding `BaseComponent` instance). The `src` field from the UI message corresponds to the component's `instance_id`.
+    *   Handles `event` messages: Looks up the handler function registered for the message's `src` instance ID in `_message_handlers` and calls it (typically the `_internal_message_handler` of the corresponding `Component` instance). The `src` field from the UI message corresponds to the component's `instance_id`.
     *   Handles `error` messages: Also routes to the specific component's `_internal_message_handler`.
 *   **Error Handling & Exceptions:** Raises specific `SidekickConnectionError` subclasses for different failure modes (Refused, Timeout, Disconnected).
 *   **Threading Primitives:** Uses `threading.Event` and `threading.RLock` for synchronization and state protection.
@@ -104,8 +104,8 @@ This module orchestrates the communication channel and connection lifecycle.
 
 *   A new module `sidekick.events` defines structured event classes (e.g., `ButtonClickEvent`, `GridClickEvent`, `ErrorEvent`) using `dataclasses`. These inherit from a `BaseSidekickEvent` which includes `instance_id` and `type`.
 *   **Dispatch:** `connection._handle_incoming_message` routes incoming `event` and `error` messages (raw dictionaries) based on the `src` field (the `instance_id` of the UI component that sent the message) to the appropriate handler in `_message_handlers`.
-*   **Handler Registration:** `BaseComponent.__init__` registers its `_internal_message_handler` method using its unique `instance_id`.
-*   **`BaseComponent._internal_message_handler`:**
+*   **Handler Registration:** `Component.__init__` registers its `_internal_message_handler` method using its unique `instance_id`.
+*   **`Component._internal_message_handler`:**
     *   Base implementation handles `type: "error"` messages by:
         1.  Extracting the error message string from the UI payload.
         2.  Constructing an `ErrorEvent` object (from `sidekick.events`), populating its `instance_id` (with `self.instance_id`) and `message`.
@@ -117,9 +117,9 @@ This module orchestrates the communication channel and connection lifecycle.
 *   **User Callbacks:** Functions provided by the user (e.g., via constructor params like `on_click=`, methods like `button.on_click()`, or decorators like `@textbox.submit`) are stored on the component instance (e.g., `_click_callback`) and called by the `_internal_message_handler` with the appropriate structured event object.
 *   **Callback Exception Handling:** Exceptions *inside* user callbacks are caught by the `_internal_message_handler` and logged via `logger.exception`. They do **not** crash the listener thread or `run_forever`.
 
-### 3.5. Component Interaction (`BaseComponent`, `_send_command`, `_send_update`)
+### 3.5. Component Interaction (`Component`, `_send_command`, `_send_update`)
 
-*   **`BaseComponent`:** Foundation for all visual/UI components.
+*   **`Component`:** Foundation for all visual/UI components.
     *   **`__init__`:**
         *   Implicitly calls `connection.activate_connection()` (blocking on first component creation).
         *   Handles `instance_id`:
@@ -150,7 +150,7 @@ This module orchestrates the communication channel and connection lifecycle.
 *   `connection.send_message` receives the fully constructed dictionary with `camelCase` keys and sends it as JSON.
 *   **Important Distinction:**
     *   Python-side, components are identified by `self.instance_id`.
-    *   In the JSON messages sent to/from the UI, the component identifier keys remain `"target"` (Python -> UI) and `"src"` (UI -> Python) as per the [Communication Protocol](./protocol.md). `BaseComponent._send_command` handles mapping `self.instance_id` to the `"target"` field. `connection._handle_incoming_message` uses the value from the `"src"` field to find the Python component by its `instance_id`.
+    *   In the JSON messages sent to/from the UI, the component identifier keys remain `"target"` (Python -> UI) and `"src"` (UI -> Python) as per the [Communication Protocol](./protocol.md). `Component._send_command` handles mapping `self.instance_id` to the `"target"` field. `connection._handle_incoming_message` uses the value from the `"src"` field to find the Python component by its `instance_id`.
 
 ### 3.7. Reactivity (`ObservableValue`, `Viz`)
 

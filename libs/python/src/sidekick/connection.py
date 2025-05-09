@@ -861,7 +861,7 @@ def shutdown():
 def register_message_handler(instance_id: str, handler: Callable[[Dict[str, Any]], None]):
     """Registers a handler function for messages targeted at a specific component instance. (Internal).
 
-    This is called automatically by `BaseComponent.__init__` when a Sidekick component
+    This is called automatically by `Component.__init__` when a Sidekick component
     (like `Grid`, `Console`) is created. It maps the component's unique `instance_id`
     to its `_internal_message_handler` method.
 
@@ -903,7 +903,7 @@ def register_message_handler(instance_id: str, handler: Callable[[Dict[str, Any]
 def unregister_message_handler(instance_id: str):
     """Removes the message handler for a specific component instance. (Internal).
 
-    Called automatically by `BaseComponent.remove()` when a component is explicitly
+    Called automatically by `Component.remove()` when a component is explicitly
     removed, and also during the final `close_connection` cleanup to clear all handlers.
 
     Args:
