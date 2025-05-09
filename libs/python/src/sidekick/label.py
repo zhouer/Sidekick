@@ -32,7 +32,7 @@ class Label(Component):
     """
     def __init__(
         self,
-        text: str = "",
+        text: str,
         instance_id: Optional[str] = None,
         parent: Optional[Union['Component', str]] = None,
         on_error: Optional[Callable[[ErrorEvent], None]] = None,
@@ -46,7 +46,6 @@ class Label(Component):
 
         Args:
             text (str): The initial text to display on the label.
-                Defaults to an empty string.
             instance_id (Optional[str]): An optional, user-defined unique identifier
                 for this label. If `None`, an ID will be auto-generated. Must be
                 unique if provided.
