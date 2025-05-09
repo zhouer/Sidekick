@@ -378,7 +378,7 @@ def solve_maze_task():
 # ==================================
 # == Sidekick Button Handlers     ==
 # ==================================
-def handle_generate_click():
+def handle_generate_click(e):
     """Handles click on the Generate Maze button."""
     global solving, generating # Declare intention to modify global variables
     if not console: logging.error("Generate button handler called but console is None!"); return
@@ -394,7 +394,7 @@ def handle_generate_click():
     gen_thread = threading.Thread(target=generate_maze_task, daemon=True)
     gen_thread.start()
 
-def handle_solve_click():
+def handle_solve_click(e):
     """Handles click on the Solve Maze button."""
     global solving, generating # Declare intention to modify global variables
     if not console: logging.error("Solve button handler called but console is None!"); return

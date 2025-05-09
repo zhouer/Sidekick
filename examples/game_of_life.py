@@ -144,7 +144,7 @@ def draw_full_grid():
             color = LIVE_COLOR if game_grid[r][c] == 1 else DEAD_COLOR
             grid.set_color(c, r, color)
 
-def handle_start_click():
+def handle_start_click(e):
     """Handles click on the Start button."""
     global running
     logging.debug("Start button clicked")
@@ -157,7 +157,7 @@ def handle_start_click():
             console.print("Simulation Started.")
             logging.info("Start button clicked - Running set to True")
 
-def handle_stop_click():
+def handle_stop_click(e):
     """Handles click on the Stop button."""
     global running
     logging.debug("Stop button clicked")
@@ -170,7 +170,7 @@ def handle_stop_click():
             console.print("Simulation Stopped.")
             logging.info("Stop button clicked - Running set to False")
 
-def handle_step_click():
+def handle_step_click(e):
     """Handles click on the Step button."""
     global running, game_grid
     logging.debug("Step button clicked")
@@ -193,7 +193,7 @@ def handle_step_click():
             game_grid = next_grid # Update state after drawing changes
         console.print("Step completed.")
 
-def handle_random_click():
+def handle_random_click(e):
     """Handles click on the Randomize button."""
     global running
     logging.debug("Randomize button clicked")
@@ -210,7 +210,7 @@ def handle_random_click():
         draw_full_grid() # Draw the new randomized state
         console.print("Grid randomized.")
 
-def handle_clear_click():
+def handle_clear_click(e):
     """Handles click on the Clear button."""
     global running
     logging.debug("Clear button clicked")
@@ -227,20 +227,20 @@ def handle_clear_click():
         draw_full_grid() # Draw the new cleared state
         console.print("Grid cleared.")
 
-def handle_grid_click(x: int, y: int):
+def handle_grid_click(e):
     """Handles clicks on the Grid component."""
     global game_grid
     if not grid or not console or not game_grid: return
 
     with run_lock: # Prevent modification while simulation might be reading
-        if 0 <= y < len(game_grid) and 0 <= x < len(game_grid[0]):
+        if 0 <= e.y < len(game_grid) and 0 <= e.x < len(game_grid[0]):
             # Toggle the state of the clicked cell
-            game_grid[y][x] = 1 - game_grid[y][x]
-            color = LIVE_COLOR if game_grid[y][x] == 1 else DEAD_COLOR
-            grid.set_color(x, y, color)
-            console.print(f"Toggled cell ({x},{y}) to {'Live' if game_grid[y][x] == 1 else 'Dead'}")
+            game_grid[e.y][e.x] = 1 - game_grid[e.y][e.x]
+            color = LIVE_COLOR if game_grid[e.y][e.x] == 1 else DEAD_COLOR
+            grid.set_color(e.x, e.y, color)
+            console.print(f"Toggled cell ({e.x},{e.y}) to {'Live' if game_grid[e.y][e.x] == 1 else 'Dead'}")
         else:
-            console.print(f"WARN: Click outside grid bounds ({x},{y})")
+            console.print(f"WARN: Click outside grid bounds ({e.x},{e.y})")
 
 # ==================================
 # == Simulation Thread Logic      ==

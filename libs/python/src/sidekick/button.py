@@ -2,26 +2,28 @@
 
 Use the `sidekick.Button` class to add a standard clickable button to your
 Sidekick UI panel. Clicking the button in the UI triggers a callback function
-in your Python script.
+in your Python script, which receives a `ButtonClickEvent` object.
 
 Buttons can be placed inside layout containers like `Row` or `Column` by
 specifying the `parent` during initialization, or by adding them as children
-to a container's constructor.
+to a container's constructor. You can also provide an `instance_id` to uniquely
+identify the button.
 
 You can define the button's click behavior in several ways:
 1.  Using the `on_click` parameter in the constructor:
-    `button = sidekick.Button("Run", on_click=my_run_function)`
+    `button = sidekick.Button("Run", on_click=my_run_function, instance_id="run-btn")`
 2.  Using the `button.on_click(callback)` method after creation:
     `button = sidekick.Button("Submit")`
     `button.on_click(handle_submission)`
 3.  Using the `@button.click` decorator:
     `button = sidekick.Button("Decorated")`
     `@button.click`
-    `def decorated_handler(): print("Clicked!")`
+    `def decorated_handler(event: sidekick.ButtonClickEvent): print(f"Button '{event.instance_id}' clicked!")`
 """
 
 from . import logger
 from .base_component import BaseComponent
+from .events import ButtonClickEvent, ErrorEvent
 from typing import Optional, Callable, Dict, Any, Union
 
 class Button(BaseComponent):
@@ -30,17 +32,19 @@ class Button(BaseComponent):
     Creates a button with a text label. Use the `on_click` method, the
     `@button.click` decorator, or the `on_click` constructor parameter
     to define what happens in Python when the button is clicked in the UI.
+    The callback function will receive a `ButtonClickEvent` object.
 
     Attributes:
-        target_id (str): The unique identifier for this button instance.
+        instance_id (str): The unique identifier for this button instance.
         text (str): The text label currently displayed on the button.
     """
     def __init__(
         self,
         text: str = "Button",
+        instance_id: Optional[str] = None,
         parent: Optional[Union['BaseComponent', str]] = None,
-        on_click: Optional[Callable[[], None]] = None, # New parameter
-        on_error: Optional[Callable[[str], None]] = None, # For BaseComponent
+        on_click: Optional[Callable[[ButtonClickEvent], None]] = None,
+        on_error: Optional[Callable[[ErrorEvent], None]] = None,
     ):
         """Initializes the Button object and creates the UI element.
 
@@ -52,21 +56,24 @@ class Button(BaseComponent):
         Args:
             text (str): The initial text label displayed on the button.
                 Defaults to "Button".
+            instance_id (Optional[str]): An optional, user-defined unique identifier
+                for this button. If `None`, an ID will be auto-generated. Must be
+                unique if provided.
             parent (Optional[Union['BaseComponent', str]]): The parent container
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this button
                 should be placed. If `None` (the default), the button is added
                 to the main Sidekick panel area.
-            on_click (Optional[Callable[[], None]]): A function to call when
-                this button is clicked in the Sidekick UI. This is an alternative
-                to using the `my_button.on_click(callback)` method or the
-                `@my_button.click` decorator later. The function should
-                take no arguments. Defaults to `None`.
-            on_error (Optional[Callable[[str], None]]): A function to call if
+            on_click (Optional[Callable[[ButtonClickEvent], None]]): A function to call when
+                this button is clicked in the Sidekick UI. The function should
+                accept one `ButtonClickEvent` object as an argument.
+                Defaults to `None`.
+            on_error (Optional[Callable[[ErrorEvent], None]]): A function to call if
                 an error related to this specific button occurs in the Sidekick UI.
-                The function should take one string argument (the error message).
+                The function should take one `ErrorEvent` object as an argument.
                 Defaults to `None`.
 
         Raises:
+            ValueError: If the provided `instance_id` is invalid or a duplicate.
             SidekickConnectionError: If the library cannot connect to the
                 Sidekick UI panel.
             TypeError: If `parent` is an invalid type, or if `on_click` or
@@ -75,7 +82,7 @@ class Button(BaseComponent):
         self._text = str(text)
         # Callback function provided by the user via on_click or decorator.
         # Initialize here before super() in case super() somehow triggers an event.
-        self._click_callback: Optional[Callable[[], None]] = None
+        self._click_callback: Optional[Callable[[ButtonClickEvent], None]] = None
 
         # Prepare the payload for the 'spawn' command.
         # Keys must be camelCase per the protocol.
@@ -86,13 +93,13 @@ class Button(BaseComponent):
         super().__init__(
             component_type="button",
             payload=spawn_payload,
+            instance_id=instance_id, # Pass instance_id to BaseComponent
             parent=parent,
-            on_error=on_error # Pass to BaseComponent's __init__
+            on_error=on_error
         )
-        logger.info(f"Button '{self.target_id}' initialized with text '{self._text}'.")
+        logger.info(f"Button '{self.instance_id}' initialized with text '{self._text}'.") # Use self.instance_id
 
         # Register on_click callback if provided in the constructor.
-        # This uses the public self.on_click() method which includes type checking.
         if on_click is not None:
             self.on_click(on_click)
 
@@ -120,60 +127,67 @@ class Button(BaseComponent):
         }
         # Send the update command to the UI.
         self._send_update(payload)
-        logger.debug(f"Button '{self.target_id}' text set to '{new_text_str}'.")
+        logger.debug(f"Button '{self.instance_id}' text set to '{new_text_str}'.") # Use self.instance_id
 
-    def on_click(self, callback: Optional[Callable[[], None]]):
+    def on_click(self, callback: Optional[Callable[[ButtonClickEvent], None]]):
         """Registers a function to be called when this button is clicked.
 
         The provided callback function will be executed in your Python script
         when the user clicks this specific button in the Sidekick UI. The callback
-        function should not accept any arguments.
+        function will receive a `ButtonClickEvent` object, which contains the
+        `instance_id` of this button and the event `type` ("click").
 
         You can also set this callback directly when creating the button using
         the `on_click` parameter in its constructor.
 
         Args:
-            callback (Optional[Callable[[], None]]): The function to call on click.
-                It should take no arguments. Pass `None` to remove the current callback.
+            callback (Optional[Callable[[ButtonClickEvent], None]]): The function to call on click.
+                It should accept one `ButtonClickEvent` argument.
+                Pass `None` to remove the current callback.
 
         Raises:
             TypeError: If `callback` is not a callable function or `None`.
 
         Example:
-            >>> def my_action():
-            ...     print("Button was pressed!")
+            >>> from sidekick.events import ButtonClickEvent
+            >>>
+            >>> def my_action(event: ButtonClickEvent):
+            ...     print(f"Button '{event.instance_id}' was pressed!")
             ...
-            >>> my_btn = sidekick.Button("Do Action")
+            >>> my_btn = sidekick.Button("Do Action", instance_id="action-button")
             >>> my_btn.on_click(my_action)
             >>> # sidekick.run_forever() # Needed to process clicks
         """
         if callback is not None and not callable(callback):
             raise TypeError("The provided on_click callback must be a callable function or None.")
-        logger.info(f"Setting on_click callback for button '{self.target_id}'.")
+        logger.info(f"Setting on_click callback for button '{self.instance_id}'.") # Use self.instance_id
         self._click_callback = callback
 
-    def click(self, func: Callable[[], None]) -> Callable[[], None]:
+    def click(self, func: Callable[[ButtonClickEvent], None]) -> Callable[[ButtonClickEvent], None]:
         """Decorator to register a function to be called when this button is clicked.
 
         This provides an alternative, more Pythonic way to set the click handler
-        if you prefer decorators.
+        if you prefer decorators. The decorated function will receive a
+        `ButtonClickEvent` object as its argument.
 
         Args:
-            func (Callable[[], None]): The function to register as the click handler.
-                It should not accept any arguments.
+            func (Callable[[ButtonClickEvent], None]): The function to register as the click handler.
+                It should accept one `ButtonClickEvent` argument.
 
         Returns:
-            Callable[[], None]: The original function, allowing the decorator to be used directly.
+            Callable[[ButtonClickEvent], None]: The original function, allowing the decorator to be used directly.
 
         Raises:
             TypeError: If `func` is not a callable function.
 
         Example:
-            >>> my_button = sidekick.Button("Run Me")
+            >>> from sidekick.events import ButtonClickEvent
+            >>>
+            >>> my_button = sidekick.Button("Run Me", instance_id="decorated-btn")
             >>>
             >>> @my_button.click
-            ... def handle_button_press():
-            ...     print("Button was clicked!")
+            ... def handle_button_press(event: ButtonClickEvent):
+            ...     print(f"Button '{event.instance_id}' (decorated) was clicked!")
             ...     # Perform some action...
             ...
             >>> # sidekick.run_forever() # Needed to process clicks
@@ -186,23 +200,29 @@ class Button(BaseComponent):
 
         This method is called by the Sidekick connection manager when an event
         (like a "click") occurs on this button in the UI.
+        It constructs a `ButtonClickEvent` object and passes it to the registered callback.
         """
         msg_type = message.get("type")
         payload = message.get("payload")
 
         # Check if it's a click event targeted at this button instance.
         if msg_type == "event" and payload and payload.get("event") == "click":
-            logger.debug(f"Button '{self.target_id}' received click event.")
+            logger.debug(f"Button '{self.instance_id}' received click event.") # Use self.instance_id
             # If a user callback is registered, execute it.
             if self._click_callback:
                 try:
-                    self._click_callback() # Call the user's function
+                    # Construct the ButtonClickEvent object
+                    click_event = ButtonClickEvent(
+                        instance_id=self.instance_id,
+                        type="click"
+                    )
+                    self._click_callback(click_event) # Call the user's function
                 except Exception as e:
                     # Prevent errors in user callback from crashing the listener.
                     logger.exception(
-                        f"Error occurred inside Button '{self.target_id}' on_click callback: {e}"
+                        f"Error occurred inside Button '{self.instance_id}' on_click callback: {e}" # Use self.instance_id
                     )
-            # No specific data needs extraction from a simple button click payload.
+            # No specific data needs extraction from a simple button click payload for the event object itself.
 
         # Always call the base handler for potential 'error' messages.
         super()._internal_message_handler(message)
@@ -211,4 +231,4 @@ class Button(BaseComponent):
         """Internal: Resets button-specific callbacks when the component is removed."""
         super()._reset_specific_callbacks()
         self._click_callback = None
-        logger.debug(f"Button '{self.target_id}': Click callback reset.")
+        logger.debug(f"Button '{self.instance_id}': Click callback reset.") # Use self.instance_id

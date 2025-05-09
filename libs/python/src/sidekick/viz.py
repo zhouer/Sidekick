@@ -7,7 +7,8 @@ lists, dictionaries, and sets, as your script executes.
 
 The Viz panel can be placed inside layout containers like `Row` or `Column` by
 specifying the `parent` during initialization, or by adding it as a child
-to a container's constructor.
+to a container's constructor. You can also provide an `instance_id` to uniquely
+identify the Viz panel.
 
 Key Features:
 
@@ -28,14 +29,14 @@ Key Features:
 
 Basic Usage:
     >>> import sidekick
-    >>> viz = sidekick.Viz() # Created in the root container
+    >>> viz = sidekick.Viz(instance_id="main-data-viewer")
     >>> my_config = {"user": "Alice", "settings": {"theme": "dark", "level": 5}}
     >>> viz.show("App Config", my_config)
 
 Reactive Usage with a Parent Container:
     >>> import sidekick
     >>> my_column = sidekick.Column()
-    >>> viz_in_col = sidekick.Viz(parent=my_column)
+    >>> viz_in_col = sidekick.Viz(parent=my_column, instance_id="reactive-viz")
     >>> reactive_list = sidekick.ObservableValue([10, 20])
     >>> viz_in_col.show("Reactive List", reactive_list)
     >>> reactive_list.append(30) # Viz updates automatically
@@ -46,7 +47,8 @@ import functools
 from typing import Any, Dict, Optional, List, Union, Callable, Set, Tuple
 from . import logger
 from .base_component import BaseComponent
-from .observable_value import ObservableValue, UnsubscribeFunction # SubscriptionCallback not directly used here
+from .events import ErrorEvent
+from .observable_value import ObservableValue, UnsubscribeFunction
 
 # Constants for controlling the depth and item count in the representation.
 # These help prevent excessively large messages and UI overload.
@@ -316,12 +318,13 @@ class Viz(BaseComponent):
     The Viz panel can be nested within layout containers like `Row` or `Column`.
 
     Attributes:
-        target_id (str): The unique identifier for this Viz panel instance.
+        instance_id (str): The unique identifier for this Viz panel instance.
     """
     def __init__(
         self,
+        instance_id: Optional[str] = None,
         parent: Optional[Union['BaseComponent', str]] = None,
-        on_error: Optional[Callable[[str], None]] = None, # For BaseComponent
+        on_error: Optional[Callable[[ErrorEvent], None]] = None,
     ):
         """Initializes the Viz object and creates the UI panel.
 
@@ -332,17 +335,21 @@ class Viz(BaseComponent):
         visualization panel.
 
         Args:
+            instance_id (Optional[str]): An optional, user-defined unique identifier
+                for this Viz panel. If `None`, an ID will be auto-generated. Must be
+                unique if provided.
             parent (Optional[Union['BaseComponent', str]]): The parent container
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this Viz panel
                 should be placed. If `None` (the default), the Viz panel is added
                 to the main Sidekick panel area.
-            on_error (Optional[Callable[[str], None]]): A function to call if
+            on_error (Optional[Callable[[ErrorEvent], None]]): A function to call if
                 an error message related to this specific Viz panel (not necessarily
                 the variables it's displaying) occurs in the Sidekick UI. The
-                function should accept one string argument (the error message).
+                function should accept one `ErrorEvent` object as an argument.
                 Defaults to `None`.
 
         Raises:
+            ValueError: If the provided `instance_id` is invalid or a duplicate.
             SidekickConnectionError: If the library cannot connect to the
                 Sidekick UI panel.
             TypeError: If `parent` is an invalid type, or if `on_error` is
@@ -354,14 +361,15 @@ class Viz(BaseComponent):
         super().__init__(
             component_type="viz",
             payload=spawn_payload,
+            instance_id=instance_id,
             parent=parent,
-            on_error=on_error # Pass to BaseComponent's __init__
+            on_error=on_error
         )
         # Internal dictionary to keep track of variables shown in this Viz instance.
         # Key: variable_name (str)
         # Value: Dict{'value_or_observable': actual_value, 'unsubscribe': Optional[UnsubscribeFunction]}
         self._shown_variables: Dict[str, Dict[str, Any]] = {}
-        logger.info(f"Viz panel '{self.target_id}' initialized.")
+        logger.info(f"Viz panel '{self.instance_id}' initialized.") # Use self.instance_id
 
     def _handle_observable_update(self, variable_name: str, change_details: Dict[str, Any]):
         """Internal callback triggered by an ObservableValue when its wrapped data changes. (Internal).
@@ -385,7 +393,7 @@ class Viz(BaseComponent):
                 describing the change (e.g., 'type', 'path', 'value', 'key').
         """
         logger.debug(
-            f"Viz '{self.target_id}': Received observable update for "
+            f"Viz '{self.instance_id}': Received observable update for " # Use self.instance_id
             f"variable '{variable_name}'. Change details: {change_details}"
         )
         try:
@@ -412,7 +420,7 @@ class Viz(BaseComponent):
                 observable_instance = self._shown_variables.get(variable_name, {}).get('value_or_observable')
                 if isinstance(observable_instance, ObservableValue):
                     logger.debug(
-                        f"Viz '{self.target_id}': Handling root '{action_type}' for observable '{variable_name}'. "
+                        f"Viz '{self.instance_id}': Handling root '{action_type}' for observable '{variable_name}'. "
                         f"Regenerating full representation of its new state."
                     )
                     # Get the new full representation of the observable's content.
@@ -429,7 +437,7 @@ class Viz(BaseComponent):
                 else:
                     # This shouldn't happen if our internal state is consistent.
                     logger.warning(
-                        f"Viz '{self.target_id}': ObservableValue instance for '{variable_name}' "
+                        f"Viz '{self.instance_id}': ObservableValue instance for '{variable_name}' "
                         f"not found during root update processing. Skipping update."
                     )
                     return # Cannot proceed without the observable instance.
@@ -444,7 +452,7 @@ class Viz(BaseComponent):
         except Exception as e:
             # Log any errors during the processing of an observable update.
             logger.exception(
-                f"Viz '{self.target_id}': Error processing observable update for variable "
+                f"Viz '{self.instance_id}': Error processing observable update for variable " # Use self.instance_id
                 f"'{variable_name}'. Change details were: {change_details}. Error: {e}"
             )
 
@@ -491,7 +499,7 @@ class Viz(BaseComponent):
             previous_unsubscribe_func = previous_entry.get('unsubscribe')
             if previous_unsubscribe_func:
                  logger.debug(
-                    f"Viz '{self.target_id}': Variable '{name}' is being reshown. "
+                    f"Viz '{self.instance_id}': Variable '{name}' is being reshown. " # Use self.instance_id
                     f"Unsubscribing from its previous ObservableValue if any."
                  )
                  try:
@@ -499,7 +507,7 @@ class Viz(BaseComponent):
                  except Exception as e_unsub:
                      # Log error but continue, as we are replacing it anyway.
                      logger.error(
-                        f"Viz '{self.target_id}': Error during unsubscribe for previously shown "
+                        f"Viz '{self.instance_id}': Error during unsubscribe for previously shown " # Use self.instance_id
                         f"variable '{name}': {e_unsub}"
                      )
                  # Clear the old unsubscribe function from the entry.
@@ -513,13 +521,13 @@ class Viz(BaseComponent):
             try:
                 unsubscribe_func = value.subscribe(update_callback_with_name)
                 logger.info(
-                    f"Viz '{self.target_id}': Successfully subscribed to ObservableValue "
+                    f"Viz '{self.instance_id}': Successfully subscribed to ObservableValue " # Use self.instance_id
                     f"for variable '{name}'."
                 )
             except Exception as e_sub:
                  # If subscription fails, log it. The variable will be shown but won't be reactive.
                  logger.error(
-                    f"Viz '{self.target_id}': Failed to subscribe to ObservableValue "
+                    f"Viz '{self.instance_id}': Failed to subscribe to ObservableValue " # Use self.instance_id
                     f"for variable '{name}': {e_sub}. The variable will be displayed "
                     f"statically but will not auto-update."
                  )
@@ -537,7 +545,7 @@ class Viz(BaseComponent):
         except Exception as e_repr:
             # If representation generation fails, create an error representation.
             logger.exception(
-                f"Viz '{self.target_id}': Error generating initial representation for variable '{name}'. "
+                f"Viz '{self.instance_id}': Error generating initial representation for variable '{name}'. " # Use self.instance_id
                 f"Displaying an error message in Viz. Original error: {e_repr}"
             )
             representation = {
@@ -571,7 +579,7 @@ class Viz(BaseComponent):
             "options": options
         }
         self._send_update(set_payload)
-        logger.debug(f"Viz '{self.target_id}': Sent 'set' update to display/update variable '{name}'.")
+        logger.debug(f"Viz '{self.instance_id}': Sent 'set' update to display/update variable '{name}'.") # Use self.instance_id
 
     def remove_variable(self, name: str):
         """Removes a previously shown variable from this Viz panel display.
@@ -592,14 +600,14 @@ class Viz(BaseComponent):
             unsubscribe_func = entry_to_remove.get('unsubscribe')
             if unsubscribe_func:
                  logger.info(
-                    f"Viz '{self.target_id}': Unsubscribing from observable for variable "
+                    f"Viz '{self.instance_id}': Unsubscribing from observable for variable " # Use self.instance_id
                     f"'{name}' as it is being removed from display."
                  )
                  try:
                      unsubscribe_func() # Cleanly stop listening to the observable
                  except Exception as e_unsub:
                      logger.error(
-                        f"Viz '{self.target_id}': Error during unsubscribe for variable '{name}' "
+                        f"Viz '{self.instance_id}': Error during unsubscribe for variable '{name}' " # Use self.instance_id
                         f"on its removal: {e_unsub}"
                      )
 
@@ -610,10 +618,10 @@ class Viz(BaseComponent):
                 "options": {} # No specific options needed for removeVariable
             }
             self._send_update(remove_payload)
-            logger.info(f"Viz '{self.target_id}': Sent 'removeVariable' command for variable '{name}'.")
+            logger.info(f"Viz '{self.instance_id}': Sent 'removeVariable' command for variable '{name}'.") # Use self.instance_id
         else:
             logger.warning(
-                f"Viz '{self.target_id}': Attempted to remove variable '{name}', "
+                f"Viz '{self.instance_id}': Attempted to remove variable '{name}', " # Use self.instance_id
                 f"but it was not found in the list of currently shown variables. Ignoring."
             )
 
@@ -625,7 +633,7 @@ class Viz(BaseComponent):
         memory leaks or unwanted callbacks after the panel is gone.
         """
         logger.info(
-            f"Requesting removal of Viz panel '{self.target_id}'. "
+            f"Requesting removal of Viz panel '{self.instance_id}'. " # Use self.instance_id
             f"Unsubscribing from all {len(self._shown_variables)} tracked observable variables."
         )
         # Iterate over a copy of the keys because we are modifying the dictionary.
@@ -636,7 +644,7 @@ class Viz(BaseComponent):
                 unsubscribe_func = entry.get('unsubscribe')
                 if unsubscribe_func:
                      logger.debug(
-                        f"Viz '{self.target_id}': Unsubscribing from observable for variable '{name}' "
+                        f"Viz '{self.instance_id}': Unsubscribing from observable for variable '{name}' " # Use self.instance_id
                         f"during full panel removal."
                      )
                      try:
@@ -644,7 +652,7 @@ class Viz(BaseComponent):
                      except Exception as e:
                          # Log error but continue cleanup.
                          logger.error(
-                            f"Viz '{self.target_id}': Error unsubscribing from variable '{name}' "
+                            f"Viz '{self.instance_id}': Error unsubscribing from variable '{name}' " # Use self.instance_id
                             f"during full panel removal: {e}"
                          )
         # Ensure the dictionary is clear after iterating.
@@ -667,13 +675,13 @@ class Viz(BaseComponent):
         # ideally happened in the overridden remove() method.
         if self._shown_variables: # Check if not already cleared by self.remove()
             logger.debug(
-                f"Viz '{self.target_id}': _reset_specific_callbacks called. "
+                f"Viz '{self.instance_id}': _reset_specific_callbacks called. " # Use self.instance_id
                 f"Clearing _shown_variables (count: {len(self._shown_variables)}). "
                 f"Unsubscriptions should have occurred in Viz.remove()."
             )
             self._shown_variables.clear()
         else:
-            logger.debug(f"Viz '{self.target_id}': _shown_variables already clear in _reset_specific_callbacks.")
+            logger.debug(f"Viz '{self.instance_id}': _shown_variables already clear in _reset_specific_callbacks.") # Use self.instance_id
 
 
     # Viz component primarily sends data to the UI. It doesn't typically receive

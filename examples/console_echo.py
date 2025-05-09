@@ -1,10 +1,8 @@
 import sidekick
 from sidekick import Console
 
-c = Console(show_input=True)
+def echo(event):
+    c.print(event.value)
 
-def echo(text):
-    c.print(text)
-
-c.on_input_text(echo)
+c = Console(show_input=True, on_submit=echo)
 sidekick.run_forever()

@@ -6,7 +6,7 @@ components horizontally, one after the other, from left to right.
 Components are added to a `Row` in several ways:
 1.  By passing the `Row` instance as the `parent` argument when creating the
     child component:
-    `my_row = sidekick.Row()`
+    `my_row = sidekick.Row(instance_id="button-bar")`
     `button_in_row = sidekick.Button("Hi", parent=my_row)`
 2.  By calling the `row.add_child(component)` method after both the `Row` and
     the child component have been created:
@@ -19,11 +19,13 @@ Components are added to a `Row` in several ways:
     `my_row = sidekick.Row(button1, label1)`
 
 Rows themselves can be nested within other containers (like `Column` or another `Row`).
+You can also provide an `instance_id` to uniquely identify the Row.
 """
 
 from . import logger
 from .base_component import BaseComponent
-from typing import Optional, Dict, Any, Union, Callable, Tuple # Added Callable for on_error, Tuple for *children
+from .events import ErrorEvent
+from typing import Optional, Dict, Any, Union, Callable, Tuple
 
 class Row(BaseComponent):
     """Represents a Row layout container instance in the Sidekick UI.
@@ -32,20 +34,14 @@ class Row(BaseComponent):
     from left to right.
 
     Attributes:
-        target_id (str): The unique identifier for this row instance.
+        instance_id (str): The unique identifier for this row instance.
     """
     def __init__(
         self,
-        # Note: Positional-only arguments before '*' were introduced in Python 3.8.
-        # For broader compatibility, especially if targeting older Pythons
-        # where Pyodide might be used, we keep `parent` as a regular keyword arg.
-        # If we wanted `parent` to be positional-only, it would look like:
-        # parent: Optional[Union['BaseComponent', str]] = None, / ,
-        # *children: BaseComponent,
-        # on_error: Optional[Callable[[str], None]] = None,
-        *children: BaseComponent, # New: Accept variable number of child components
-        parent: Optional[Union['BaseComponent', str]] = None, # Kept as keyword for clarity
-        on_error: Optional[Callable[[str], None]] = None, # New: For BaseComponent
+        *children: BaseComponent,
+        instance_id: Optional[str] = None,
+        parent: Optional[Union['BaseComponent', str]] = None,
+        on_error: Optional[Callable[[ErrorEvent], None]] = None, # For BaseComponent
     ):
         """Initializes the Row layout container and creates the UI element.
 
@@ -53,7 +49,7 @@ class Row(BaseComponent):
         `my_row = sidekick.Row()`
         or with initial children:
         `button = sidekick.Button("OK")`
-        `my_row = sidekick.Row(button, parent=another_container)`
+        `my_row = sidekick.Row(button, parent=another_container, instance_id="action-row")`
 
         It sends a message to the Sidekick UI to display a new horizontal
         layout container.
@@ -64,21 +60,25 @@ class Row(BaseComponent):
                 as children to this row. These child components must already exist.
                 When `Row` is created, it will attempt to move each of these
                 children into itself.
+            instance_id (Optional[str]): An optional, user-defined unique identifier
+                for this Row. If `None`, an ID will be auto-generated. Must be
+                unique if provided.
             parent (Optional[Union['BaseComponent', str]]): The parent container
                 (e.g., a `sidekick.Column`) where this Row itself should be placed.
                 If `None` (the default), the Row is added to the main Sidekick
                 panel area.
-            on_error (Optional[Callable[[str], None]]): A function to call if
+            on_error (Optional[Callable[[ErrorEvent], None]]): A function to call if
                 an error message related to this specific Row container (not its
                 children) is sent back from the Sidekick UI. The function should
-                accept one string argument (the error message). Defaults to `None`.
+                accept one `ErrorEvent` object as an argument. Defaults to `None`.
 
         Raises:
+            ValueError: If the provided `instance_id` is invalid or a duplicate,
+                        or if any of `children` are not valid Sidekick components.
             SidekickConnectionError: If the library cannot connect to the
                 Sidekick UI panel.
             TypeError: If `parent` is an invalid type, or if `on_error` is
-                provided but is not a callable function. Or if any of `children`
-                are not valid Sidekick component instances.
+                provided but is not a callable function.
         """
         # Row spawn payload is currently empty according to the protocol.
         # Layout properties (like alignment or gap) might be added here in the future.
@@ -87,14 +87,15 @@ class Row(BaseComponent):
         super().__init__(
             component_type="row",
             payload=spawn_payload,
+            instance_id=instance_id,
             parent=parent,
             on_error=on_error
         )
-        logger.info(f"Row layout container '{self.target_id}' initialized.")
+        logger.info(f"Row layout container '{self.instance_id}' initialized.") # Use self.instance_id
 
         # Add any children provided directly in the constructor.
         if children:
-            logger.debug(f"Row '{self.target_id}': Adding {len(children)} children from constructor.")
+            logger.debug(f"Row '{self.instance_id}': Adding {len(children)} children from constructor.") # Use self.instance_id
             for child_idx, child in enumerate(children):
                 if isinstance(child, BaseComponent):
                     try:
@@ -104,16 +105,16 @@ class Row(BaseComponent):
                     except Exception as e_add:
                         # Log the error but continue processing other children.
                         # This prevents one bad child from stopping the whole row init.
-                        child_id_str = getattr(child, 'target_id', f"child at index {child_idx}")
+                        child_id_str = getattr(child, 'instance_id', f"child at index {child_idx}") # Use child's instance_id
                         logger.error(
-                            f"Row '{self.target_id}': Error adding child '{child_id_str}' "
+                            f"Row '{self.instance_id}': Error adding child '{child_id_str}' " # Use self.instance_id
                             f"from constructor. Error: {e_add}"
                         )
                         # Depending on strictness, you might choose to re-raise here.
                 else:
                     # Log a TypeError if a non-component was passed.
                     logger.error(
-                        f"Row '{self.target_id}': Invalid child type passed to constructor "
+                        f"Row '{self.instance_id}': Invalid child type passed to constructor " # Use self.instance_id
                         f"at index {child_idx}: {type(child).__name__}. Expected a Sidekick component."
                     )
                     # Raise a TypeError to stop if an invalid child type is provided.
@@ -147,7 +148,7 @@ class Row(BaseComponent):
             SidekickConnectionError: If sending the update command to the UI fails.
 
         Example:
-            >>> row_container = sidekick.Row()
+            >>> row_container = sidekick.Row(instance_id="my-toolbar")
             >>> my_button = sidekick.Button("Click Me") # Initially in root
             >>> my_label = sidekick.Label("Info")      # Initially in root
             >>>
@@ -164,27 +165,28 @@ class Row(BaseComponent):
 
         # The child component is responsible for sending the 'update' command about itself,
         # specifying the 'changeParent' action and targeting this Row instance
-        # (using its target_id) as the new parent.
+        # (using its instance_id) as the new parent.
         logger.debug(
-            f"Row '{self.target_id}': Requesting to move child component "
-            f"'{child_component.target_id}' (type: {child_component.component_type}) "
+            f"Row '{self.instance_id}': Requesting to move child component " # Use self.instance_id
+            f"'{child_component.instance_id}' (type: {child_component.component_type}) " # Use child's instance_id
             f"into this row."
         )
         try:
             # The payload structure for 'changeParent' is defined by the protocol.
-            # It needs the 'parent' ID and optionally 'insertBefore' for ordering.
+            # It needs the 'parent' ID (which is self.instance_id for this Row)
+            # and optionally 'insertBefore' for ordering.
             # For simple append, 'insertBefore' can be omitted.
             child_component._send_update({
                 "action": "changeParent",
                 "options": {
-                    "parent": self.target_id
+                    "parent": self.instance_id # This Row's instance_id
                     # 'insertBefore': null or omitted appends to the end by default.
                 }
             })
         except Exception as e:
             logger.error(
-                f"Row '{self.target_id}': Failed to send 'changeParent' update for "
-                f"child '{child_component.target_id}'. Error: {e}"
+                f"Row '{self.instance_id}': Failed to send 'changeParent' update for " # Use self.instance_id
+                f"child '{child_component.instance_id}'. Error: {e}" # Use child's instance_id
             )
             # Re-raise the original exception (e.g., SidekickConnectionError)
             # so the caller is aware of the failure.
@@ -195,6 +197,7 @@ class Row(BaseComponent):
     # Its primary role is to contain other components.
     # The base class's _internal_message_handler is sufficient for handling
     # potential 'error' messages related to the Row component itself.
+    # No need to override _internal_message_handler for specific "event" types.
 
     def _reset_specific_callbacks(self):
         """Internal: Resets row-specific callbacks (none currently).
@@ -204,4 +207,4 @@ class Row(BaseComponent):
         """
         super()._reset_specific_callbacks()
         # No specific callbacks unique to Row to reset at this time.
-        pass
+        logger.debug(f"Row '{self.instance_id}': No specific callbacks to reset.") # Use self.instance_id

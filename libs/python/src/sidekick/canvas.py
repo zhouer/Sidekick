@@ -7,7 +7,8 @@ build simple game graphics, or even produce basic animations controlled by your 
 
 The canvas can be placed inside layout containers like `Row` or `Column` by
 specifying the `parent` during initialization, or by adding it as a child
-to a container's constructor.
+to a container's constructor. You can also provide an `instance_id` to uniquely
+identify the canvas.
 
 Key Features:
 
@@ -24,25 +25,29 @@ Key Features:
     before displaying it all at once.
 *   **Interactivity:** Make your canvas respond to user clicks using the
     `on_click()` method or the `on_click` constructor parameter to register a
-    callback function.
+    callback function that receives a `CanvasClickEvent` object.
 
 Basic Usage:
     >>> import sidekick
-    >>> # Create a 300 pixel wide, 200 pixel tall canvas in the root container
-    >>> canvas = sidekick.Canvas(300, 200)
+    >>> # Create a 300 pixel wide, 200 pixel tall canvas
+    >>> canvas = sidekick.Canvas(300, 200, instance_id="main-drawing-area")
     >>> canvas.draw_line(10, 10, 290, 190, line_color='red')
 
 Interactive Usage with a Parent Container:
     >>> import sidekick
+    >>> from sidekick.events import CanvasClickEvent # Import the event type
+    >>>
     >>> my_layout_row = sidekick.Row()
     >>>
-    >>> def canvas_clicked(x_coord, y_coord):
-    ...     # Draw a small circle where the user clicked
-    ...     canvas_in_row.draw_circle(x_coord, y_coord, 5, fill_color='green')
+    >>> def canvas_clicked(event: CanvasClickEvent):
+    ...     print(f"Canvas '{event.instance_id}' clicked at ({event.x}, {event.y})")
+    ...     # Assume canvas_in_row is accessible
+    ...     canvas_in_row.draw_circle(event.x, event.y, 5, fill_color='green')
     ...
     >>> canvas_in_row = sidekick.Canvas(
-    ...     150, 100,
+    ...     width=150, height=100,
     ...     parent=my_layout_row,
+    ...     instance_id="interactive-canvas",
     ...     on_click=canvas_clicked
     ... )
     >>> canvas_in_row.draw_circle(75, 50, 40, fill_color='blue')
@@ -54,9 +59,9 @@ import math # Used in examples, good to keep imported
 from typing import Optional, Dict, Any, Callable, List, Tuple, ContextManager, Union
 
 from . import logger
-# from . import connection # Not directly used here, BaseComponent handles it
-from .errors import SidekickConnectionError # Used in Canvas.buffer() __exit__
+from .errors import SidekickConnectionError
 from .base_component import BaseComponent
+from .events import CanvasClickEvent, ErrorEvent
 
 # Type hint for a list of points used in polylines/polygons
 PointList = List[Tuple[int, int]]
@@ -159,7 +164,7 @@ class _CanvasBufferContextManager:
         # This might involve creating a new buffer in the UI if none are free.
         self._buffer_id = self._canvas._acquire_buffer_id()
         logger.debug(
-            f"Canvas '{self._canvas.target_id}': Entering buffer context, "
+            f"Canvas '{self._canvas.instance_id}': Entering buffer context, " # Use instance_id
             f"acquired offscreen buffer ID {self._buffer_id}."
         )
         # Create a proxy object that will direct all its drawing calls
@@ -181,7 +186,7 @@ class _CanvasBufferContextManager:
         if self._buffer_id is None:
             # This should ideally not happen if __enter__ succeeded.
             logger.error(
-                f"Canvas '{self._canvas.target_id}': Exiting buffer context, "
+                f"Canvas '{self._canvas.instance_id}': Exiting buffer context, " # Use instance_id
                 f"but _buffer_id is unexpectedly None! Cannot draw to screen."
             )
             return False # Indicate an issue, but don't suppress outer exceptions.
@@ -190,7 +195,7 @@ class _CanvasBufferContextManager:
             # Only draw the buffer to the screen if the 'with' block completed without errors.
             if exc_type is None:
                 logger.debug(
-                    f"Canvas '{self._canvas.target_id}': Exiting buffer context normally. "
+                    f"Canvas '{self._canvas.instance_id}': Exiting buffer context normally. " # Use instance_id
                     f"Drawing buffer {self._buffer_id} to screen (buffer ID {self._canvas.ONSCREEN_BUFFER_ID})."
                 )
                 self._canvas._send_draw_buffer(
@@ -201,21 +206,21 @@ class _CanvasBufferContextManager:
                 # If an exception occurred inside the 'with' block, the off-screen buffer
                 # might be in an inconsistent state. It's safer not to draw it.
                 logger.warning(
-                    f"Canvas '{self._canvas.target_id}': Exiting buffer context due to an exception "
+                    f"Canvas '{self._canvas.instance_id}': Exiting buffer context due to an exception " # Use instance_id
                     f"of type '{exc_type.__name__ if exc_type else 'Unknown'}'. "
                     f"Content of offscreen buffer {self._buffer_id} will NOT be drawn to the screen."
                 )
         except SidekickConnectionError as e:
              # Log connection errors during the buffer finalization.
              logger.error(
-                f"Canvas '{self._canvas.target_id}': Connection error during "
+                f"Canvas '{self._canvas.instance_id}': Connection error during " # Use instance_id
                 f"buffer __exit__ (drawing to screen): {e}"
             )
              # Let the original exception (if any from the 'with' block) propagate.
         except Exception as e_exit:
              # Catch any other unexpected errors during the drawing process.
              logger.exception(
-                f"Canvas '{self._canvas.target_id}': Unexpected error during "
+                f"Canvas '{self._canvas.instance_id}': Unexpected error during " # Use instance_id
                 f"buffer __exit__ (drawing to screen): {e_exit}"
             )
              # Let the original exception (if any) propagate.
@@ -237,7 +242,7 @@ class Canvas(BaseComponent):
     top-left corner. It can be nested within layout containers like `Row` or `Column`.
 
     Attributes:
-        target_id (str): The unique identifier for this canvas instance.
+        instance_id (str): The unique identifier for this canvas instance.
         width (int): The width of the canvas drawing area in pixels (read-only).
         height (int): The height of the canvas drawing area in pixels (read-only).
     """
@@ -248,9 +253,10 @@ class Canvas(BaseComponent):
         self,
         width: int,
         height: int,
+        instance_id: Optional[str] = None,
         parent: Optional[Union['BaseComponent', str]] = None,
-        on_click: Optional[Callable[[int, int], None]] = None, # New parameter
-        on_error: Optional[Callable[[str], None]] = None, # For BaseComponent
+        on_click: Optional[Callable[[CanvasClickEvent], None]] = None,
+        on_error: Optional[Callable[[ErrorEvent], None]] = None,
     ):
         """Initializes a new Canvas object and creates its UI element in Sidekick.
 
@@ -264,23 +270,26 @@ class Canvas(BaseComponent):
                 Must be a positive integer (e.g., > 0).
             height (int): The desired height of the canvas in pixels.
                 Must be a positive integer (e.g., > 0).
+            instance_id (Optional[str]): An optional, user-defined unique identifier
+                for this canvas. If `None`, an ID will be auto-generated. Must be
+                unique if provided.
             parent (Optional[Union['BaseComponent', str]]): The parent container
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this canvas
                 should be placed. If `None` (the default), the canvas is added
                 to the main Sidekick panel area.
-            on_click (Optional[Callable[[int, int], None]]): A function to call
-                when the user clicks on the canvas. This is an alternative to using
-                the `my_canvas.on_click(callback)` method later. The function
-                should accept two integer arguments: `x` (the x-coordinate of the
-                click relative to the canvas top-left) and `y` (the y-coordinate).
+            on_click (Optional[Callable[[CanvasClickEvent], None]]): A function to call
+                when the user clicks on the canvas. The function should accept one
+                `CanvasClickEvent` object as an argument, which contains `instance_id`,
+                `type`, `x` (click x-coordinate), and `y` (click y-coordinate).
                 Defaults to `None`.
-            on_error (Optional[Callable[[str], None]]): A function to call if
+            on_error (Optional[Callable[[ErrorEvent], None]]): A function to call if
                 an error related to this specific canvas occurs in the Sidekick UI.
-                The function should take one string argument (the error message).
+                The function should take one `ErrorEvent` object as an argument.
                 Defaults to `None`.
 
         Raises:
-            ValueError: If `width` or `height` are not positive integers.
+            ValueError: If `width` or `height` are not positive integers, or if the
+                        provided `instance_id` is invalid or a duplicate.
             SidekickConnectionError: If the library cannot connect to the
                 Sidekick UI panel.
             TypeError: If `parent` is an invalid type, or if `on_click` or
@@ -301,7 +310,7 @@ class Canvas(BaseComponent):
         # Initialize attributes before super() call.
         self._width = width
         self._height = height
-        self._click_callback: Optional[Callable[[int, int], None]] = None
+        self._click_callback: Optional[Callable[[CanvasClickEvent], None]] = None
         self._buffer_pool: Dict[int, bool] = {} # Stores {buffer_id: is_in_use}
         self._next_buffer_id: int = 1 # Start offscreen buffer IDs from 1 (0 is onscreen)
         self._buffer_lock = threading.Lock() # Protects access to _buffer_pool and _next_buffer_id
@@ -309,11 +318,12 @@ class Canvas(BaseComponent):
         super().__init__(
             component_type="canvas",
             payload=spawn_payload,
+            instance_id=instance_id, # Pass instance_id to BaseComponent
             parent=parent,
-            on_error=on_error # Pass to BaseComponent's __init__
+            on_error=on_error
         )
         logger.info(
-            f"Canvas '{self.target_id}' initialized "
+            f"Canvas '{self.instance_id}' initialized " # Use self.instance_id
             f"(size={self.width}x{self.height})."
         )
 
@@ -342,6 +352,7 @@ class Canvas(BaseComponent):
 
         This method is called by the Sidekick connection manager when an event
         (like a "click") occurs on this canvas in the UI.
+        It constructs a `CanvasClickEvent` object and passes it to the registered callback.
         """
         msg_type = message.get("type")
         payload = message.get("payload")
@@ -351,60 +362,69 @@ class Canvas(BaseComponent):
             if event_type == "click" and self._click_callback:
                 try:
                     # The UI sends 'x' and 'y' coordinates of the click.
-                    x = payload.get('x')
-                    y = payload.get('y')
+                    x_coord = payload.get('x')
+                    y_coord = payload.get('y')
                     # Validate that x and y are integers.
-                    if isinstance(x, int) and isinstance(y, int):
-                        self._click_callback(x, y)
+                    if isinstance(x_coord, int) and isinstance(y_coord, int):
+                        # Construct the CanvasClickEvent object
+                        click_event = CanvasClickEvent(
+                            instance_id=self.instance_id,
+                            type="click",
+                            x=x_coord,
+                            y=y_coord
+                        )
+                        self._click_callback(click_event)
                     else:
                          # This indicates a protocol mismatch or UI bug.
                          logger.warning(
-                            f"Canvas '{self.target_id}' received 'click' event "
+                            f"Canvas '{self.instance_id}' received 'click' event "
                             f"with missing/invalid coordinates: {payload}"
                          )
                 except Exception as e:
                     # Prevent errors in user callback from crashing the listener.
                     logger.exception(
-                        f"Error occurred inside Canvas '{self.target_id}' on_click callback: {e}"
+                        f"Error occurred inside Canvas '{self.instance_id}' on_click callback: {e}"
                     )
             elif event_type: # An event occurred but we don't have a handler or it's an unknown type
                  logger.debug(
-                    f"Canvas '{self.target_id}' received unhandled event type '{event_type}' "
+                    f"Canvas '{self.instance_id}' received unhandled event type '{event_type}' "
                     f"or no click callback registered for 'click'."
                  )
         # Always call the base handler for potential 'error' messages or other base handling.
         super()._internal_message_handler(message)
 
-    def on_click(self, callback: Optional[Callable[[int, int], None]]):
+    def on_click(self, callback: Optional[Callable[[CanvasClickEvent], None]]):
         """Registers a function to be called when the user clicks on the canvas.
 
         The provided callback function will be executed in your Python script.
-        It will receive two integer arguments: the `x` and `y` coordinates of the
-        click, relative to the top-left corner of the canvas.
+        It will receive a `CanvasClickEvent` object containing the `instance_id`
+        of this canvas, the event `type` ("click"), and the `x` and `y` coordinates
+        of the click, relative to the top-left corner of the canvas.
 
         You can also set this callback directly when creating the canvas using
         the `on_click` parameter in its constructor.
 
         Args:
-            callback (Optional[Callable[[int, int], None]]): The function to execute
-                when the canvas is clicked. It must accept two integer arguments:
-                `x` (column/horizontal coordinate) and `y` (row/vertical coordinate)
-                of the click. Pass `None` to remove a previously registered callback.
+            callback (Optional[Callable[[CanvasClickEvent], None]]): The function to execute
+                when the canvas is clicked. It must accept one `CanvasClickEvent` argument.
+                Pass `None` to remove a previously registered callback.
 
         Raises:
             TypeError: If `callback` is not a callable function or `None`.
 
         Example:
-            >>> def log_click_position(x_pos, y_pos):
-            ...     print(f"Canvas clicked at ({x_pos}, {y_pos})")
+            >>> from sidekick.events import CanvasClickEvent
+            >>>
+            >>> def log_click_position(event: CanvasClickEvent):
+            ...     print(f"Canvas '{event.instance_id}' clicked at ({event.x}, {event.y})")
             ...
-            >>> my_canvas = sidekick.Canvas(200, 100)
+            >>> my_canvas = sidekick.Canvas(200, 100, instance_id="drawing-pad")
             >>> my_canvas.on_click(log_click_position)
             >>> # sidekick.run_forever() # Needed to process clicks
         """
         if callback is not None and not callable(callback):
             raise TypeError("The provided on_click callback must be a callable function or None.")
-        logger.info(f"Setting on_click callback for canvas '{self.target_id}'.")
+        logger.info(f"Setting on_click callback for canvas '{self.instance_id}'.")
         self._click_callback = callback
 
     def buffer(self) -> ContextManager[_CanvasBufferProxy]:
@@ -453,7 +473,7 @@ class Canvas(BaseComponent):
                 if not is_in_use:
                     self._buffer_pool[buffer_id] = True # Mark as in-use
                     logger.debug(
-                        f"Canvas '{self.target_id}': Reusing offscreen buffer ID {buffer_id} from pool."
+                        f"Canvas '{self.instance_id}': Reusing offscreen buffer ID {buffer_id} from pool."
                     )
                     return buffer_id
 
@@ -462,7 +482,7 @@ class Canvas(BaseComponent):
             self._next_buffer_id += 1 # Increment for the next potential new buffer
 
             logger.debug(
-                f"Canvas '{self.target_id}': Creating new offscreen buffer with ID {new_id} in UI."
+                f"Canvas '{self.instance_id}': Creating new offscreen buffer with ID {new_id} in UI."
             )
             # Send a command to the UI to create this new offscreen buffer.
             self._send_canvas_update(
@@ -485,12 +505,12 @@ class Canvas(BaseComponent):
             if buffer_id in self._buffer_pool:
                 self._buffer_pool[buffer_id] = False # Mark as available
                 logger.debug(
-                    f"Canvas '{self.target_id}': Released offscreen buffer ID {buffer_id} back to pool."
+                    f"Canvas '{self.instance_id}': Released offscreen buffer ID {buffer_id} back to pool."
                 )
             else:
                 # This might happen if remove() was called concurrently or other logic errors.
                 logger.warning(
-                    f"Canvas '{self.target_id}': Attempted to release buffer ID {buffer_id}, "
+                    f"Canvas '{self.instance_id}': Attempted to release buffer ID {buffer_id}, "
                     f"but it was not found in the active pool. It might have been already destroyed."
                 )
 
@@ -549,7 +569,7 @@ class Canvas(BaseComponent):
         # Determine the target buffer ID. If None, use the onscreen buffer ID.
         target_buffer_id = buffer_id if buffer_id is not None else self.ONSCREEN_BUFFER_ID
         log_target = "visible canvas" if target_buffer_id == self.ONSCREEN_BUFFER_ID else f"buffer ID {target_buffer_id}"
-        logger.debug(f"Canvas '{self.target_id}': Sending 'clear' command for {log_target}.")
+        logger.debug(f"Canvas '{self.instance_id}': Sending 'clear' command for {log_target}.")
 
         options = {"bufferId": target_buffer_id} # camelCase
         self._send_canvas_update("clear", options)
@@ -853,9 +873,9 @@ class Canvas(BaseComponent):
 
     def _reset_specific_callbacks(self):
         """Internal: Resets canvas-specific callbacks when the component is removed."""
-        super()._reset_specific_callbacks() # Good practice if base had its own
+        super()._reset_specific_callbacks()
         self._click_callback = None
-        logger.debug(f"Canvas '{self.target_id}': Click callback reset.")
+        logger.debug(f"Canvas '{self.instance_id}': Click callback reset.")
 
     def remove(self):
         """Removes the canvas and its associated offscreen buffers from the Sidekick UI.
@@ -866,7 +886,7 @@ class Canvas(BaseComponent):
         resources in the Sidekick UI.
         """
         logger.info(
-            f"Requesting removal of canvas '{self.target_id}' and its associated offscreen buffers."
+            f"Requesting removal of canvas '{self.instance_id}' and its associated offscreen buffers."
         )
         # Lock the buffer pool while we iterate and send destroy commands.
         with self._buffer_lock:
@@ -879,7 +899,7 @@ class Canvas(BaseComponent):
             for buffer_id_to_remove in buffer_ids_to_destroy:
                  try:
                      logger.debug(
-                        f"Canvas '{self.target_id}': Sending 'destroyBuffer' for offscreen "
+                        f"Canvas '{self.instance_id}': Sending 'destroyBuffer' for offscreen "
                         f"buffer ID {buffer_id_to_remove} during canvas removal."
                      )
                      self._send_canvas_update(
@@ -889,12 +909,12 @@ class Canvas(BaseComponent):
                  except SidekickConnectionError as e:
                      # Log if destroying a buffer fails, but continue trying to remove the main canvas.
                      logger.warning(
-                        f"Canvas '{self.target_id}': Failed to send 'destroyBuffer' command for "
+                        f"Canvas '{self.instance_id}': Failed to send 'destroyBuffer' command for "
                         f"offscreen buffer {buffer_id_to_remove} during canvas removal: {e}"
                      )
                  except Exception as e_destroy:
                      logger.exception(
-                        f"Canvas '{self.target_id}': Unexpected error destroying offscreen "
+                        f"Canvas '{self.instance_id}': Unexpected error destroying offscreen "
                         f"buffer {buffer_id_to_remove} during canvas removal: {e_destroy}"
                      )
             # Clear the local buffer pool and reset the ID counter.

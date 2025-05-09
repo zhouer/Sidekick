@@ -233,7 +233,7 @@ interface ChangeParentUpdatePayload {
     *   **Payload:** `ConsoleEventPayload` - Reports user input submission.
     ```typescript
     interface ConsoleEventPayload {
-      event: "inputText";
+      event: "submit";
       value: string; // Required: The text string submitted.
     }
     ```

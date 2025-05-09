@@ -25,7 +25,7 @@ Perfect for **learners**, **educators**, **parents teaching coding**, and anyone
 
 3.  **Open Sidekick Panel:**
 
-    Use the command palette (`Ctrl+Shift+P`) and run `Sidekick: Show Panel`.
+    Use the command palette (`Ctrl+Shift+P` or `Cmd+Shift+P`) and run `Sidekick: Show Panel`.
 
 4.  **Run the sample code**:
 
@@ -37,10 +37,11 @@ Perfect for **learners**, **educators**, **parents teaching coding**, and anyone
     grid = sidekick.Grid(5, 5)
 
     # Define what happens on click
-    def handle_click(x, y):
+    def handle_click(event):
         colors = ["khaki", "lavender", "peachpuff", "pink", "plum", "powderblue"]
         random_color = random.choice(colors)
-        grid.set_color(x, y, random_color)
+        grid.set_color(event.x, event.y, random_color)
+        print(f"Grid '{event.instance_id}' cell ({event.x}, {event.y}) clicked, set to {random_color}")
 
     # Register the click handler
     grid.on_click(handle_click)
@@ -74,7 +75,7 @@ Perfect for **learners**, **educators**, **parents teaching coding**, and anyone
 2.  **[`Console`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.console)** - Text-Based Input and Output
     *   `Console(show_input=False)`: Create a console area.
     *   `print()`: Display output text.
-    *   `on_input_text()`: Handle user text submission (if `show_input=True`).
+    *   `on_submit()`: Handle user text submission (if `show_input=True`).
 
 3.  **[`Canvas`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.canvas)** - 2D Graphics and Animation
     *   `Canvas(width, height)`: Create a drawing canvas.
@@ -99,13 +100,12 @@ Perfect for **learners**, **educators**, **parents teaching coding**, and anyone
     *   `on_click()`, `@button.click`: Handle button clicks.
 
 7.  **[`Textbox`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.textbox)** - Single-Line Text Input
-    *   `Textbox(initial_value="", placeholder="")`: Create a text input field.
+    *   `Textbox()`: Create a text input field.
     *   `.value` property: Get or set the text content.
-    *   `.placeholder` property: Get or set the placeholder hint.
     *   `on_submit()`, `@textbox.submit`: Handle text submission (on Enter/blur).
 
 8.  **[`Markdown`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.markdown)** - Formatted Text Display
-    *   `Markdown(initial_source)`: Display text formatted with Markdown.
+    *   `Markdown()`: Display text formatted with Markdown.
     *   `.source` property: Get or set the Markdown source string.
 
 9.  **Layout Containers (`Row`, `Column`)**

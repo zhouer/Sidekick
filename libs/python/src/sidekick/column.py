@@ -6,7 +6,7 @@ components vertically, one below the other, from top to bottom.
 Components are added to a `Column` in several ways:
 1.  By passing the `Column` instance as the `parent` argument when creating the
     child component:
-    `my_col = sidekick.Column()`
+    `my_col = sidekick.Column(instance_id="main-layout")`
     `label_in_col = sidekick.Label("Title", parent=my_col)`
 2.  By calling the `column.add_child(component)` method after both the `Column`
     and the child component have been created:
@@ -20,11 +20,13 @@ Components are added to a `Column` in several ways:
 
 Columns themselves can be nested within other containers (like `Row` or another `Column`).
 The default top-level container in Sidekick also behaves like a Column.
+You can also provide an `instance_id` to uniquely identify the Column.
 """
 
 from . import logger
 from .base_component import BaseComponent
-from typing import Optional, Dict, Any, Union, Callable, Tuple # Added Callable for on_error, Tuple for *children
+from .events import ErrorEvent
+from typing import Optional, Dict, Any, Union, Callable, Tuple
 
 class Column(BaseComponent):
     """Represents a Column layout container instance in the Sidekick UI.
@@ -33,13 +35,14 @@ class Column(BaseComponent):
     one below the other.
 
     Attributes:
-        target_id (str): The unique identifier for this column instance.
+        instance_id (str): The unique identifier for this column instance.
     """
     def __init__(
         self,
-        *children: BaseComponent, # New: Accept variable number of child components
-        parent: Optional[Union['BaseComponent', str]] = None, # Kept as keyword for clarity
-        on_error: Optional[Callable[[str], None]] = None, # New: For BaseComponent
+        *children: BaseComponent,
+        instance_id: Optional[str] = None, # New: For BaseComponent
+        parent: Optional[Union['BaseComponent', str]] = None,
+        on_error: Optional[Callable[[ErrorEvent], None]] = None, # For BaseComponent
     ):
         """Initializes the Column layout container and creates the UI element.
 
@@ -47,7 +50,7 @@ class Column(BaseComponent):
         `my_column = sidekick.Column()`
         or with initial children:
         `label = sidekick.Label("Name:")`
-        `my_column = sidekick.Column(label, parent=another_container)`
+        `my_column = sidekick.Column(label, parent=another_container, instance_id="form-column")`
 
         It sends a message to the Sidekick UI to display a new vertical
         layout container.
@@ -58,21 +61,25 @@ class Column(BaseComponent):
                 added as children to this column. These child components must
                 already exist. When `Column` is created, it will attempt to
                 move each of these children into itself.
+            instance_id (Optional[str]): An optional, user-defined unique identifier
+                for this Column. If `None`, an ID will be auto-generated. Must be
+                unique if provided.
             parent (Optional[Union['BaseComponent', str]]): The parent container
                 (e.g., a `sidekick.Row`) where this Column itself should be placed.
                 If `None` (the default), the Column is added to the main Sidekick
                 panel area (which acts like a root column).
-            on_error (Optional[Callable[[str], None]]): A function to call if
+            on_error (Optional[Callable[[ErrorEvent], None]]): A function to call if
                 an error message related to this specific Column container (not its
                 children) is sent back from the Sidekick UI. The function should
-                accept one string argument (the error message). Defaults to `None`.
+                accept one `ErrorEvent` object as an argument. Defaults to `None`.
 
         Raises:
+            ValueError: If the provided `instance_id` is invalid or a duplicate,
+                        or if any of `children` are not valid Sidekick components.
             SidekickConnectionError: If the library cannot connect to the
                 Sidekick UI panel.
             TypeError: If `parent` is an invalid type, or if `on_error` is
-                provided but is not a callable function. Or if any of `children`
-                are not valid Sidekick component instances.
+                provided but is not a callable function.
         """
         # Column spawn payload is currently empty according to the protocol.
         # Layout properties (like alignment or gap) might be added here in the future.
@@ -81,14 +88,15 @@ class Column(BaseComponent):
         super().__init__(
             component_type="column",
             payload=spawn_payload,
+            instance_id=instance_id,
             parent=parent,
             on_error=on_error
         )
-        logger.info(f"Column layout container '{self.target_id}' initialized.")
+        logger.info(f"Column layout container '{self.instance_id}' initialized.") # Use self.instance_id
 
         # Add any children provided directly in the constructor.
         if children:
-            logger.debug(f"Column '{self.target_id}': Adding {len(children)} children from constructor.")
+            logger.debug(f"Column '{self.instance_id}': Adding {len(children)} children from constructor.") # Use self.instance_id
             for child_idx, child in enumerate(children):
                 if isinstance(child, BaseComponent):
                     try:
@@ -97,16 +105,16 @@ class Column(BaseComponent):
                         self.add_child(child)
                     except Exception as e_add:
                         # Log the error but continue processing other children.
-                        child_id_str = getattr(child, 'target_id', f"child at index {child_idx}")
+                        child_id_str = getattr(child, 'instance_id', f"child at index {child_idx}") # Use child's instance_id
                         logger.error(
-                            f"Column '{self.target_id}': Error adding child '{child_id_str}' "
+                            f"Column '{self.instance_id}': Error adding child '{child_id_str}' " # Use self.instance_id
                             f"from constructor. Error: {e_add}"
                         )
                         # Optionally re-raise if strictness is preferred.
                 else:
                     # Log a TypeError if a non-component was passed.
                     logger.error(
-                        f"Column '{self.target_id}': Invalid child type passed to constructor "
+                        f"Column '{self.instance_id}': Invalid child type passed to constructor " # Use self.instance_id
                         f"at index {child_idx}: {type(child).__name__}. Expected a Sidekick component."
                     )
                     # Raise a TypeError to stop if an invalid child type is provided.
@@ -139,7 +147,7 @@ class Column(BaseComponent):
             SidekickConnectionError: If sending the update command to the UI fails.
 
         Example:
-            >>> col_container = sidekick.Column()
+            >>> col_container = sidekick.Column(instance_id="content-area")
             >>> title_label = sidekick.Label("Settings") # Initially in root
             >>> activate_button = sidekick.Button("Activate") # Initially in root
             >>>
@@ -156,10 +164,10 @@ class Column(BaseComponent):
 
         # The child component is responsible for sending the 'update' command about itself,
         # specifying the 'changeParent' action and targeting this Column instance
-        # (using its target_id) as the new parent.
+        # (using its instance_id) as the new parent.
         logger.debug(
-            f"Column '{self.target_id}': Requesting to move child component "
-            f"'{child_component.target_id}' (type: {child_component.component_type}) "
+            f"Column '{self.instance_id}': Requesting to move child component " # Use self.instance_id
+            f"'{child_component.instance_id}' (type: {child_component.component_type}) " # Use child's instance_id
             f"into this column."
         )
         try:
@@ -167,14 +175,14 @@ class Column(BaseComponent):
             child_component._send_update({
                 "action": "changeParent",
                 "options": {
-                    "parent": self.target_id
+                    "parent": self.instance_id # This Column's instance_id
                     # 'insertBefore': null or omitted appends to the end by default.
                 }
             })
         except Exception as e:
             logger.error(
-                f"Column '{self.target_id}': Failed to send 'changeParent' update for "
-                f"child '{child_component.target_id}'. Error: {e}"
+                f"Column '{self.instance_id}': Failed to send 'changeParent' update for " # Use self.instance_id
+                f"child '{child_component.instance_id}'. Error: {e}" # Use child's instance_id
             )
             # Re-raise the original exception (e.g., SidekickConnectionError).
             raise e
@@ -192,4 +200,4 @@ class Column(BaseComponent):
         """
         super()._reset_specific_callbacks()
         # No specific callbacks unique to Column to reset at this time.
-        pass
+        logger.debug(f"Column '{self.instance_id}': No specific callbacks to reset.") # Use self.instance_id

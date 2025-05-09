@@ -88,6 +88,18 @@ from .errors import (
 # Use this with Viz for automatic UI updates on data changes.
 from .observable_value import ObservableValue
 
+# --- Event classes for structured callbacks ---
+# These provide typed event objects to user callback functions.
+from .events import (
+    BaseSidekickEvent,
+    ButtonClickEvent,
+    GridClickEvent,
+    CanvasClickEvent,
+    TextboxSubmitEvent,
+    ConsoleSubmitEvent,
+    ErrorEvent,
+)
+
 # --- Standard Component Classes ---
 # These are the building blocks for your Sidekick UI.
 from .grid import Grid                   # Interactive 2D grid of cells.
@@ -122,6 +134,15 @@ __all__ = [
 
     # Observable Value (for Viz reactivity)
     'ObservableValue',
+
+    # Event Classes
+    'BaseSidekickEvent',
+    'ButtonClickEvent',
+    'GridClickEvent',
+    'CanvasClickEvent',
+    'TextboxSubmitEvent',
+    'ConsoleSubmitEvent',
+    'ErrorEvent',
 
     # Components
     'Button',

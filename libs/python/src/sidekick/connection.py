@@ -59,6 +59,10 @@ from .errors import (
 # --- Import Channel Abstraction ---
 from .channel import CommunicationChannel, create_communication_channel
 
+# --- Import Event classes for docstring examples ---
+# (Not strictly needed for connection.py logic, but good for example accuracy)
+from .events import ConsoleSubmitEvent, ButtonClickEvent
+
 # --- Connection Status Enum ---
 class ConnectionStatus(Enum):
     """Represents the different states of the communication channel internally."""
@@ -78,8 +82,8 @@ _channel: Optional[CommunicationChannel] = None
 # A reentrant lock to protect access to shared state variables (status, channel object, handlers, etc.)
 # from race conditions between threads. RLock allows the same thread to acquire the lock multiple times.
 _connection_lock = threading.RLock()
-# Maps component instance IDs (e.g., "grid-1") to their specific message handler function
-# (usually the _internal_message_handler method of the component instance).
+# Maps component instance IDs (e.g., "my-custom-grid-id" or "grid-1") to their specific
+# message handler function (usually the _internal_message_handler method of the component instance).
 _message_handlers: Dict[str, Callable[[Dict[str, Any]], None]] = {}
 
 # A unique ID generated for this specific Python script ("Hero") instance run.
@@ -272,24 +276,25 @@ def _handle_incoming_message(message_data: Dict[str, Any]):
         # --- Handle Component Event/Error (Dispatch to Specific Instance) ---
         elif msg_type in ['event', 'error']:
             # These messages originate *from* a specific component instance in the UI.
-            # The 'src' field in the message identifies which instance.
-            instance_id = message_data.get('src')
+            # The 'src' field in the message identifies which instance (its instance_id).
+            instance_id_from_ui = message_data.get('src')
             # Check if we have a handler registered for this specific instance ID.
             with _connection_lock:
-                handler = _message_handlers.get(instance_id) if instance_id else None
+                handler = _message_handlers.get(instance_id_from_ui) if instance_id_from_ui else None
 
             if handler:
                 try:
-                    logger.debug(f"Invoking handler for instance '{instance_id}' (type: {msg_type}).")
+                    logger.debug(f"Invoking handler for instance '{instance_id_from_ui}' (type: {msg_type}).")
                     # Call the instance's registered handler (e.g., Grid._internal_message_handler).
+                    # This handler is responsible for creating a structured Event object if needed.
                     handler(message_data)
                 except Exception as e:
                     # Catch errors within the user's callback or the internal handler logic.
                     # Log the error but continue processing.
-                    logger.exception(f"Error executing handler for instance '{instance_id}': {e}")
-            elif instance_id:
+                    logger.exception(f"Error executing handler for instance '{instance_id_from_ui}': {e}")
+            elif instance_id_from_ui:
                 # Received a message for an instance we don't know (e.g., removed).
-                logger.debug(f"No handler registered for instance '{instance_id}' for message type '{msg_type}'. Ignoring.")
+                logger.debug(f"No handler registered for instance '{instance_id_from_ui}' for message type '{msg_type}'. Ignoring.")
             else:
                 # Malformed message missing the 'src' identifier.
                 logger.warning(f"Received '{msg_type}' message without required 'src' field: {message_data}")
@@ -522,7 +527,7 @@ def send_message(message_dict: Dict[str, Any]):
         message_dict (Dict[str, Any]): A Python dictionary representing the message.
             It must conform to the Sidekick communication protocol structure, including
             `component`, `type`, `target`/`src`, and a `payload` whose keys should generally
-            be `camelCase`.
+            be `camelCase`. The `target` field should contain the component's `instance_id`.
 
     Raises:
         SidekickConnectionRefusedError: If the connection isn't ready and fails during activation.
@@ -718,18 +723,24 @@ def run_forever():
 
     Example:
         >>> import sidekick
+        >>> # Assuming ConsoleSubmitEvent is imported or defined
+        >>> # from sidekick.events import ConsoleSubmitEvent
+        >>>
         >>> console = sidekick.Console(show_input=True)
-        >>> def handle_input(text):
-        ...     if text.lower() == 'quit':
+        >>> def handle_input(event: sidekick.ConsoleSubmitEvent): # Updated callback signature
+        ...     if event.value.lower() == 'quit':
         ...         console.print("Exiting...")
         ...         sidekick.shutdown() # Stop run_forever from callback
         ...     else:
-        ...         console.print(f"You typed: {text}")
+        ...         console.print(f"You typed: {event.value}")
         >>> console.on_submit(handle_input)
         >>> console.print("Enter text or type 'quit' to exit.")
         >>>
         >>> # Keep script running to listen for input
-        >>> sidekick.run_forever()
+        >>> try:
+        ...     sidekick.run_forever()
+        ... except sidekick.SidekickConnectionError as e:
+        ...     print(f"Connection error: {e}")
         >>> print("Script has finished.") # This line runs after run_forever exits
     """
     # 1. Ensure connection is established and ready before entering the loop.
@@ -814,12 +825,17 @@ def shutdown():
     `on_click` callback) to programmatically stop `run_forever()` and end the script.
 
     Example:
-        >>> def on_quit_button_click(control_id):
-        ...    print("Quit button clicked. Shutting down.")
+        >>> import sidekick
+        >>> # Assuming ButtonClickEvent is imported
+        >>> # from sidekick.events import ButtonClickEvent
+        >>>
+        >>> quit_button = sidekick.Button("Quit", instance_id="my-quit-btn")
+        >>> def on_quit_button_click(event: sidekick.ButtonClickEvent):
+        ...    print(f"Button '{event.instance_id}' clicked. Shutting down.")
         ...    sidekick.shutdown()
-        >>> controls.add_button("quit", "Quit")
-        >>> controls.on_click(on_quit_button_click)
-        >>> sidekick.run_forever()
+        >>> quit_button.on_click(on_quit_button_click)
+        >>>
+        >>> # sidekick.run_forever() # To keep the script alive for the button click
     """
     # Acquire lock briefly to check status and set the shutdown event.
     with _connection_lock:
@@ -852,18 +868,28 @@ def register_message_handler(instance_id: str, handler: Callable[[Dict[str, Any]
     The message handler uses this mapping to dispatch incoming 'event' and 'error'
     messages from the UI to the correct Python object.
 
+    If an `instance_id` is already registered, this function will raise a `ValueError`.
+
     Args:
-        instance_id (str): The unique ID of the component instance (e.g., "grid-1").
+        instance_id (str): The unique ID of the component instance (e.g., "my-grid" or "grid-1").
         handler (Callable): The function (usually an instance method) to call.
                             It must accept one argument: the message dictionary.
 
     Raises:
         TypeError: If the provided handler is not a callable function.
+        ValueError: If the `instance_id` is already registered, indicating a duplicate ID.
     """
     if not callable(handler):
         raise TypeError(f"Handler for instance '{instance_id}' must be callable.")
     # Acquire lock for safe modification of the shared handler dictionary.
     with _connection_lock:
+        # Check for duplicate instance_id before registration.
+        if instance_id in _message_handlers:
+            msg = (f"Cannot register handler: Instance ID '{instance_id}' is already in use. "
+                   f"Component instance IDs must be unique within a script run.")
+            logger.error(msg)
+            raise ValueError(msg) # This will stop component creation if ID is duplicated.
+
         # Only register if the connection isn't already fully shut down.
         # Allows registration even before the connection becomes CONNECTED_READY.
         if _connection_status != ConnectionStatus.DISCONNECTED or not _stop_event.is_set():
@@ -908,6 +934,9 @@ def register_global_message_handler(handler: Optional[Callable[[Dict[str, Any]],
         The structure and content of messages received here are subject to the
         internal Sidekick communication protocol and may change between versions.
         Relying on this for core application logic is generally discouraged.
+        The raw message dictionary received here does not automatically get transformed
+        into the structured event objects (like `ButtonClickEvent`) that component-specific
+        callbacks receive.
 
     Args:
         handler (Optional[Callable[[Dict[str, Any]], None]]): The function to call

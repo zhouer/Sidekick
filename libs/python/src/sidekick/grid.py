@@ -7,7 +7,8 @@ individual cell of the grid from your Python script.
 
 The grid can be placed inside layout containers like `Row` or `Column` by
 specifying the `parent` during initialization, or by adding it as a child
-to a container's constructor.
+to a container's constructor. You can also provide an `instance_id` to uniquely
+identify the grid.
 
 This component is particularly useful for:
 
@@ -15,7 +16,8 @@ This component is particularly useful for:
 *   **Simple Graphics:** Creating pixel art or basic pattern displays.
 *   **Interactive Elements:** Building simple interactive boards or simulations
     where the user can click on cells to trigger actions or provide input to
-    your Python script (using `on_click()` or the `on_click` constructor parameter).
+    your Python script (using `on_click()` or the `on_click` constructor parameter,
+    where the callback receives a `GridClickEvent` object).
 
 Coordinate System:
     Methods like `set_color`, `set_text`, `clear_cell`, and the `on_click` callback
@@ -28,22 +30,33 @@ Coordinate System:
 
 Basic Usage:
     >>> import sidekick
-    >>> my_grid = sidekick.Grid(num_columns=4, num_rows=3) # In root container
+    >>> my_grid = sidekick.Grid(num_columns=4, num_rows=3, instance_id="main-board")
     >>> my_grid.set_color(x=0, y=0, color='blue')
 
 Interactive Usage with a Parent Container:
     >>> import sidekick
+    >>> from sidekick.events import GridClickEvent # Import the event type
+    >>>
     >>> my_row = sidekick.Row()
     >>>
-    >>> def user_clicked_cell(x, y):
-    ...     grid_in_row.set_text(x, y, "Clicked!")
+    >>> def user_clicked_cell(event: GridClickEvent):
+    ...     print(f"Grid '{event.instance_id}' clicked at ({event.x}, {event.y})")
+    ...     # Assume grid_in_row is accessible or passed differently if needed
+    ...     grid_in_row.set_text(event.x, event.y, "Clicked!")
     ...
-    >>> grid_in_row = sidekick.Grid(5, 5, parent=my_row, on_click=user_clicked_cell)
+    >>> grid_in_row = sidekick.Grid(
+    ...     num_columns=5,
+    ...     num_rows=5,
+    ...     parent=my_row,
+    ...     instance_id="interactive-grid",
+    ...     on_click=user_clicked_cell
+    ... )
     >>> # sidekick.run_forever() # Keep script running to process clicks
 """
 
 from . import logger
 from .base_component import BaseComponent
+from .events import GridClickEvent, ErrorEvent
 from typing import Optional, Callable, Dict, Any, Union
 
 class Grid(BaseComponent):
@@ -54,7 +67,7 @@ class Grid(BaseComponent):
     nested within layout containers like `Row` or `Column`.
 
     Attributes:
-        target_id (str): The unique identifier for this grid instance.
+        instance_id (str): The unique identifier for this grid instance.
         num_columns (int): The number of columns this grid has (read-only).
         num_rows (int): The number of rows this grid has (read-only).
     """
@@ -62,9 +75,10 @@ class Grid(BaseComponent):
         self,
         num_columns: int,
         num_rows: int,
+        instance_id: Optional[str] = None,
         parent: Optional[Union['BaseComponent', str]] = None,
-        on_click: Optional[Callable[[int, int], None]] = None, # New parameter
-        on_error: Optional[Callable[[str], None]] = None, # For BaseComponent
+        on_click: Optional[Callable[[GridClickEvent], None]] = None,
+        on_error: Optional[Callable[[ErrorEvent], None]] = None,
     ):
         """Initializes the Grid object and creates the UI element.
 
@@ -78,23 +92,26 @@ class Grid(BaseComponent):
                 Must be a positive integer (e.g., > 0).
             num_rows (int): The number of rows the grid should have.
                 Must be a positive integer (e.g., > 0).
+            instance_id (Optional[str]): An optional, user-defined unique identifier
+                for this grid. If `None`, an ID will be auto-generated. Must be
+                unique if provided.
             parent (Optional[Union['BaseComponent', str]]): The parent container
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this grid
                 should be placed. If `None` (the default), the grid is added
                 to the main Sidekick panel area.
-            on_click (Optional[Callable[[int, int], None]]): A function to call
-                when the user clicks on any cell in this grid. This is an
-                alternative to using the `my_grid.on_click(callback)` method
-                later. The function should accept two integer arguments: `x` (the
-                column index of the clicked cell) and `y` (the row index).
-                Defaults to `None`.
-            on_error (Optional[Callable[[str], None]]): A function to call if
+            on_click (Optional[Callable[[GridClickEvent], None]]): A function to call
+                when the user clicks on any cell in this grid. The function should
+                accept one `GridClickEvent` object as an argument, which contains
+                `instance_id`, `type`, `x` (column index), and `y` (row index)
+                of the clicked cell. Defaults to `None`.
+            on_error (Optional[Callable[[ErrorEvent], None]]): A function to call if
                 an error related to this specific grid occurs in the Sidekick UI.
-                The function should take one string argument (the error message).
+                The function should take one `ErrorEvent` object as an argument.
                 Defaults to `None`.
 
         Raises:
-            ValueError: If `num_columns` or `num_rows` are not positive integers.
+            ValueError: If `num_columns` or `num_rows` are not positive integers,
+                        or if the provided `instance_id` is invalid or a duplicate.
             SidekickConnectionError: If the library cannot connect to the
                 Sidekick UI panel.
             TypeError: If `parent` is an invalid type, or if `on_click` or
@@ -115,16 +132,17 @@ class Grid(BaseComponent):
         # Initialize before super()
         self._num_columns = num_columns
         self._num_rows = num_rows
-        self._click_callback: Optional[Callable[[int, int], None]] = None
+        self._click_callback: Optional[Callable[[GridClickEvent], None]] = None
 
         super().__init__(
             component_type="grid",
             payload=spawn_payload,
+            instance_id=instance_id, # Pass instance_id to BaseComponent
             parent=parent,
-            on_error=on_error # Pass to BaseComponent's __init__
+            on_error=on_error
         )
         logger.info(
-            f"Grid '{self.target_id}' initialized "
+            f"Grid '{self.instance_id}' initialized " # Use self.instance_id
             f"(size={self.num_columns}x{self.num_rows})."
         )
 
@@ -153,6 +171,7 @@ class Grid(BaseComponent):
 
         This method is called by the Sidekick connection manager when an event
         (like a "click") occurs on a cell of this grid in the UI.
+        It constructs a `GridClickEvent` object and passes it to the registered callback.
         """
         msg_type = message.get("type")
         payload = message.get("payload")
@@ -162,61 +181,71 @@ class Grid(BaseComponent):
             if event_type == "click" and self._click_callback:
                 try:
                     # The UI sends the 'x' (column) and 'y' (row) of the click.
-                    x = payload.get('x')
-                    y = payload.get('y')
+                    x_coord = payload.get('x')
+                    y_coord = payload.get('y')
+
                     # Validate that x and y are indeed integers before calling callback.
-                    if isinstance(x, int) and isinstance(y, int):
-                        self._click_callback(x, y)
+                    if isinstance(x_coord, int) and isinstance(y_coord, int):
+                        # Construct the GridClickEvent object
+                        click_event = GridClickEvent(
+                            instance_id=self.instance_id, # Component's own ID
+                            type="click",
+                            x=x_coord,
+                            y=y_coord
+                        )
+                        self._click_callback(click_event)
                     else:
                          # This indicates a potential protocol mismatch or UI bug.
                          logger.warning(
-                            f"Grid '{self.target_id}' received 'click' event "
+                            f"Grid '{self.instance_id}' received 'click' event "
                             f"with missing or invalid coordinates: {payload}"
                          )
                 except Exception as e:
                     # Prevent errors in user callback from crashing the listener.
                     logger.exception(
-                        f"Error occurred inside Grid '{self.target_id}' on_click callback: {e}"
+                        f"Error occurred inside Grid '{self.instance_id}' on_click callback: {e}"
                     )
             elif event_type: # An event occurred but we don't have a handler or it's an unknown type
                  logger.debug(
-                    f"Grid '{self.target_id}' received unhandled event type '{event_type}' "
+                    f"Grid '{self.instance_id}' received unhandled event type '{event_type}' "
                     f"or no click callback registered for 'click'."
                  )
         # Always call the base handler for potential 'error' messages or other base handling.
         super()._internal_message_handler(message)
 
-    def on_click(self, callback: Optional[Callable[[int, int], None]]):
+    def on_click(self, callback: Optional[Callable[[GridClickEvent], None]]):
         """Registers a function to call when the user clicks on any cell in this grid.
 
         The provided callback function will be executed in your Python script.
-        It will receive two integer arguments: the `x` (column index) and `y`
+        It will receive a `GridClickEvent` object containing the `instance_id` of
+        this grid, the event `type` ("click"), and the `x` (column index) and `y`
         (row index) of the cell that was clicked. Coordinates are 0-indexed.
 
         You can also set this callback directly when creating the grid using
         the `on_click` parameter in its constructor.
 
         Args:
-            callback (Optional[Callable[[int, int], None]]): The function to call
-                when a cell is clicked. It must accept two integer arguments:
-                `x` (column) and `y` (row). Pass `None` to remove a previously
-                registered callback.
+            callback (Optional[Callable[[GridClickEvent], None]]): The function to call
+                when a cell is clicked. It must accept one `GridClickEvent` argument.
+                Pass `None` to remove a previously registered callback.
 
         Raises:
             TypeError: If `callback` is not a callable function or `None`.
 
         Example:
-            >>> def handle_grid_interaction(col_idx, row_idx):
-            ...     print(f"Cell ({col_idx}, {row_idx}) was clicked.")
-            ...     my_interactive_grid.set_color(col_idx, row_idx, "yellow")
+            >>> from sidekick.events import GridClickEvent
+            >>>
+            >>> def handle_grid_interaction(event: GridClickEvent):
+            ...     print(f"Grid '{event.instance_id}' cell ({event.x}, {event.y}) was clicked.")
+            ...     my_interactive_grid.set_color(event.x, event.y, "yellow")
             ...
-            >>> my_interactive_grid = sidekick.Grid(3, 3)
+            >>> my_interactive_grid = sidekick.Grid(3, 3, instance_id="game-board")
             >>> my_interactive_grid.on_click(handle_grid_interaction)
             >>> # sidekick.run_forever() # Needed to process clicks
         """
         if callback is not None and not callable(callback):
             raise TypeError("The provided on_click callback must be a callable function or None.")
-        logger.info(f"Setting on_click callback for grid '{self.target_id}'.")
+        logger.info(f"Setting on_click callback for grid '{self.instance_id}'.")
         self._click_callback = callback
 
     def set_color(self, x: int, y: int, color: Optional[str]):
@@ -237,12 +266,12 @@ class Grid(BaseComponent):
         """
         if not (0 <= x < self.num_columns):
              raise IndexError(
-                f"Grid '{self.target_id}': Column index x={x} is out of bounds "
+                f"Grid '{self.instance_id}': Column index x={x} is out of bounds "
                 f"(must be 0 <= x < {self.num_columns})."
             )
         if not (0 <= y < self.num_rows):
               raise IndexError(
-                f"Grid '{self.target_id}': Row index y={y} is out of bounds "
+                f"Grid '{self.instance_id}': Row index y={y} is out of bounds "
                 f"(must be 0 <= y < {self.num_rows})."
             )
 
@@ -251,7 +280,7 @@ class Grid(BaseComponent):
         options: Dict[str, Any] = {"x": x, "y": y, "color": color} # 'color' can be None
         update_payload = { "action": "setColor", "options": options }
         self._send_update(update_payload)
-        # logger.debug(f"Grid '{self.target_id}' set_color({x},{y}) to {color}") # Can be verbose
+        # logger.debug(f"Grid '{self.instance_id}' set_color({x},{y}) to {color}") # Can be verbose
 
     def set_text(self, x: int, y: int, text: Optional[str]):
         """Sets the text content displayed inside a specific cell.
@@ -272,12 +301,12 @@ class Grid(BaseComponent):
         """
         if not (0 <= x < self.num_columns):
              raise IndexError(
-                f"Grid '{self.target_id}': Column index x={x} is out of bounds "
+                f"Grid '{self.instance_id}': Column index x={x} is out of bounds "
                 f"(must be 0 <= x < {self.num_columns})."
             )
         if not (0 <= y < self.num_rows):
               raise IndexError(
-                f"Grid '{self.target_id}': Row index y={y} is out of bounds "
+                f"Grid '{self.instance_id}': Row index y={y} is out of bounds "
                 f"(must be 0 <= y < {self.num_rows})."
             )
 
@@ -287,7 +316,7 @@ class Grid(BaseComponent):
         options: Dict[str, Any] = {"x": x, "y": y, "text": text_to_send}
         update_payload = { "action": "setText", "options": options }
         self._send_update(update_payload)
-        # logger.debug(f"Grid '{self.target_id}' set_text({x},{y}) to '{text_to_send}'")
+        # logger.debug(f"Grid '{self.instance_id}' set_text({x},{y}) to '{text_to_send}'")
 
     def clear_cell(self, x: int, y: int):
         """Clears both the background color and text content of a specific cell.
@@ -306,12 +335,12 @@ class Grid(BaseComponent):
         """
         if not (0 <= x < self.num_columns):
              raise IndexError(
-                f"Grid '{self.target_id}': Column index x={x} is out of bounds "
+                f"Grid '{self.instance_id}': Column index x={x} is out of bounds "
                 f"(must be 0 <= x < {self.num_columns})."
             )
         if not (0 <= y < self.num_rows):
               raise IndexError(
-                f"Grid '{self.target_id}': Row index y={y} is out of bounds "
+                f"Grid '{self.instance_id}': Row index y={y} is out of bounds "
                 f"(must be 0 <= y < {self.num_rows})."
             )
 
@@ -319,7 +348,7 @@ class Grid(BaseComponent):
         options: Dict[str, Any] = {"x": x, "y": y} # No other options needed
         update_payload = { "action": "clearCell", "options": options }
         self._send_update(update_payload)
-        logger.debug(f"Grid '{self.target_id}' cleared cell ({x},{y}).")
+        logger.debug(f"Grid '{self.instance_id}' cleared cell ({x},{y}).")
 
     def clear(self):
         """Clears the *entire grid*, resetting all cells to their default state.
@@ -330,7 +359,7 @@ class Grid(BaseComponent):
         Raises:
             SidekickConnectionError: If sending the command to the UI fails.
         """
-        logger.info(f"Requesting clear for entire grid '{self.target_id}'.")
+        logger.info(f"Requesting clear for entire grid '{self.instance_id}'.")
         # Prepare payload for the 'clear' update action (targets the whole grid).
         clear_payload = { "action": "clear" } # No options needed for a full grid clear
         self._send_update(clear_payload)
@@ -339,4 +368,4 @@ class Grid(BaseComponent):
         """Internal: Resets grid-specific callbacks when the component is removed."""
         super()._reset_specific_callbacks()
         self._click_callback = None
-        logger.debug(f"Grid '{self.target_id}': Click callback reset.")
+        logger.debug(f"Grid '{self.instance_id}': Click callback reset.")

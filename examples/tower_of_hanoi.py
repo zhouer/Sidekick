@@ -67,7 +67,7 @@ class HanoiVisualizer:
         # Create the start/pause button
         self._start_pause_btn_text = "Start"
         self.start_pause_btn = Button(text=self._start_pause_btn_text, parent=self.row)
-        self.start_pause_btn.on_click(lambda: click_handler("start_pause"))
+        self.start_pause_btn.on_click(lambda e: click_handler("start_pause"))
 
         # Create the status console
         self.status_console = sidekick.Console(initial_text="--- Hanoi Log ---\n") # Initial title

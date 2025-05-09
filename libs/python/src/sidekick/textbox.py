@@ -3,26 +3,29 @@
 Use the `sidekick.Textbox` class to add a single-line text input field to your
 Sidekick UI panel. Users can type text into this field. When they press Enter
 or the field loses focus (on-blur), the entered text is sent back to your Python
-script, triggering a callback function you define.
+script, triggering a callback function you define, which receives a
+`TextboxSubmitEvent` object.
 
 Textboxes can be placed inside layout containers like `Row` or `Column` by
 specifying the `parent` during initialization, or by adding them as children
-to a container's constructor.
+to a container's constructor. You can also provide an `instance_id` to uniquely
+identify the textbox.
 
 You can define the textbox's submission behavior in several ways:
 1.  Using the `on_submit` parameter in the constructor:
-    `query_box = sidekick.Textbox(on_submit=handle_query)`
+    `query_box = sidekick.Textbox(on_submit=handle_query, instance_id="query-input")`
 2.  Using the `textbox.on_submit(callback)` method after creation:
     `name_input = sidekick.Textbox()`
     `name_input.on_submit(process_name)`
 3.  Using the `@textbox.submit` decorator:
     `code_input = sidekick.Textbox()`
     `@code_input.submit`
-    `def execute_code(code_str): print(f"Executing: {code_str}")`
+    `def execute_code(event: sidekick.TextboxSubmitEvent): print(f"Executing: {event.value}")`
 """
 
 from . import logger
 from .base_component import BaseComponent
+from .events import TextboxSubmitEvent, ErrorEvent
 from typing import Optional, Callable, Dict, Any, Union
 
 class Textbox(BaseComponent):
@@ -30,15 +33,16 @@ class Textbox(BaseComponent):
 
     Creates an input field where users can type text. Use the `on_submit`
     method, the `@textbox.submit` decorator, or the `on_submit` constructor
-    parameter to define a Python function that receives the text when the user
-    submits it (e.g., by pressing Enter or when the input field loses focus).
+    parameter to define a Python function that receives a `TextboxSubmitEvent`
+    (containing the submitted text) when the user submits it (e.g., by pressing
+    Enter or when the input field loses focus).
 
     The `value` property allows you to programmatically get or set the text
     currently displayed in the textbox. The `placeholder` property controls
     the hint text shown when the textbox is empty.
 
     Attributes:
-        target_id (str): The unique identifier for this textbox instance.
+        instance_id (str): The unique identifier for this textbox instance.
         value (str): The current text content of the textbox.
         placeholder (str): The placeholder text displayed when the box is empty.
     """
@@ -46,9 +50,10 @@ class Textbox(BaseComponent):
         self,
         initial_value: str = "",
         placeholder: str = "",
+        instance_id: Optional[str] = None,
         parent: Optional[Union['BaseComponent', str]] = None,
-        on_submit: Optional[Callable[[str], None]] = None, # New parameter
-        on_error: Optional[Callable[[str], None]] = None, # For BaseComponent
+        on_submit: Optional[Callable[[TextboxSubmitEvent], None]] = None,
+        on_error: Optional[Callable[[ErrorEvent], None]] = None,
     ):
         """Initializes the Textbox object and creates the UI element.
 
@@ -62,22 +67,25 @@ class Textbox(BaseComponent):
                 Defaults to "".
             placeholder (str): Hint text shown when the input field is empty.
                 Defaults to "".
+            instance_id (Optional[str]): An optional, user-defined unique identifier
+                for this textbox. If `None`, an ID will be auto-generated. Must be
+                unique if provided.
             parent (Optional[Union['BaseComponent', str]]): The parent container
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this textbox
                 should be placed. If `None` (the default), the textbox is added
                 to the main Sidekick panel area.
-            on_submit (Optional[Callable[[str], None]]): A function to call when
-                the user submits text from this textbox (e.g., by pressing Enter
-                or when the field loses focus). This is an alternative to using
-                the `my_textbox.on_submit(callback)` method or decorator later.
-                The function should accept one string argument (the submitted text).
+            on_submit (Optional[Callable[[TextboxSubmitEvent], None]]): A function to call when
+                the user submits text from this textbox. The function should
+                accept one `TextboxSubmitEvent` object as an argument, which
+                contains `instance_id`, `type`, and `value` (the submitted text).
                 Defaults to `None`.
-            on_error (Optional[Callable[[str], None]]): A function to call if
+            on_error (Optional[Callable[[ErrorEvent], None]]): A function to call if
                 an error related to this specific textbox occurs in the Sidekick UI.
-                The function should take one string argument (the error message).
+                The function should take one `ErrorEvent` object as an argument.
                 Defaults to `None`.
 
         Raises:
+            ValueError: If the provided `instance_id` is invalid or a duplicate.
             SidekickConnectionError: If the library cannot connect to the
                 Sidekick UI panel.
             TypeError: If `parent` is an invalid type, or if `on_submit` or
@@ -87,7 +95,7 @@ class Textbox(BaseComponent):
         self._placeholder = str(placeholder)
         # Callback function provided by the user via on_submit or decorator.
         # Initialize here.
-        self._submit_callback: Optional[Callable[[str], None]] = None
+        self._submit_callback: Optional[Callable[[TextboxSubmitEvent], None]] = None
 
         # Prepare the payload for the 'spawn' command.
         # Keys must be camelCase per the protocol.
@@ -102,16 +110,16 @@ class Textbox(BaseComponent):
         super().__init__(
             component_type="textbox",
             payload=spawn_payload,
+            instance_id=instance_id, # Pass instance_id to BaseComponent
             parent=parent,
-            on_error=on_error # Pass to BaseComponent's __init__
+            on_error=on_error
         )
         logger.info(
-            f"Textbox '{self.target_id}' initialized (value='{self._value}', "
+            f"Textbox '{self.instance_id}' initialized (value='{self._value}', " # Use self.instance_id
             f"placeholder='{self._placeholder}')."
         )
 
         # Register on_submit callback if provided in the constructor.
-        # This uses the public self.on_submit() method which includes type checking.
         if on_submit is not None:
             self.on_submit(on_submit)
 
@@ -121,7 +129,7 @@ class Textbox(BaseComponent):
 
         Reading this property returns the value stored locally in the Python object.
         This local value is updated whenever the user submits text from the UI
-        (triggering an `on_submit` event).
+        (triggering an `on_submit` event that carries a `TextboxSubmitEvent` with the new value).
 
         Setting this property (e.g., `my_textbox.value = "New text"`) updates
         the local value and also sends a command to update the text displayed
@@ -143,7 +151,7 @@ class Textbox(BaseComponent):
         }
         # Send the update command to the UI.
         self._send_update(payload)
-        logger.debug(f"Textbox '{self.target_id}' value set to '{new_val_str}'.")
+        logger.debug(f"Textbox '{self.instance_id}' value set to '{new_val_str}'.") # Use self.instance_id
 
     @property
     def placeholder(self) -> str:
@@ -167,61 +175,68 @@ class Textbox(BaseComponent):
         }
         # Send the update command to the UI.
         self._send_update(payload)
-        logger.debug(f"Textbox '{self.target_id}' placeholder set to '{new_ph_str}'.")
+        logger.debug(f"Textbox '{self.instance_id}' placeholder set to '{new_ph_str}'.") # Use self.instance_id
 
-    def on_submit(self, callback: Optional[Callable[[str], None]]):
+    def on_submit(self, callback: Optional[Callable[[TextboxSubmitEvent], None]]):
         """Registers a function to call when the user submits text from this textbox.
 
         The submission typically happens when the user presses Enter while the
         textbox has focus, or when the input field loses focus (on-blur event).
-        The provided callback function receives the submitted text.
+        The provided callback function will receive a `TextboxSubmitEvent` object,
+        which contains the `instance_id` of this textbox, the event `type` ("submit"),
+        and the `value` (the submitted text string).
 
         You can also set this callback directly when creating the textbox using
         the `on_submit` parameter in its constructor.
 
         Args:
-            callback (Optional[Callable[[str], None]]): The function to call on submit.
-                It must accept one argument: the string value submitted by the user.
+            callback (Optional[Callable[[TextboxSubmitEvent], None]]): The function to call on submit.
+                It must accept one `TextboxSubmitEvent` argument.
                 Pass `None` to remove the current callback.
 
         Raises:
             TypeError: If `callback` is not a callable function or `None`.
 
         Example:
-            >>> def process_input(text):
-            ...     print(f"User submitted: {text}")
+            >>> from sidekick.events import TextboxSubmitEvent
+            >>>
+            >>> def process_input(event: TextboxSubmitEvent):
+            ...     print(f"Textbox '{event.instance_id}' submitted: {event.value}")
             ...
-            >>> entry_field = sidekick.Textbox()
+            >>> entry_field = sidekick.Textbox(instance_id="user-entry")
             >>> entry_field.on_submit(process_input)
             >>> # sidekick.run_forever() # Needed to process submissions
         """
         if callback is not None and not callable(callback):
             raise TypeError("The provided on_submit callback must be a callable function or None.")
-        logger.info(f"Setting on_submit callback for textbox '{self.target_id}'.")
+        logger.info(f"Setting on_submit callback for textbox '{self.instance_id}'.") # Use self.instance_id
         self._submit_callback = callback
 
-    def submit(self, func: Callable[[str], None]) -> Callable[[str], None]:
+    def submit(self, func: Callable[[TextboxSubmitEvent], None]) -> Callable[[TextboxSubmitEvent], None]:
         """Decorator to register a function to call when the user submits text.
 
         This provides an alternative, more Pythonic syntax to `on_submit()`
-        if you prefer decorators.
+        if you prefer decorators. The decorated function will receive a
+        `TextboxSubmitEvent` object as its argument.
 
         Args:
-            func (Callable[[str], None]): The function to register as the submit handler.
-                It must accept one string argument (the submitted value).
+            func (Callable[[TextboxSubmitEvent], None]): The function to register as the submit handler.
+                It must accept one `TextboxSubmitEvent` argument.
 
         Returns:
-            Callable[[str], None]: The original function, allowing the decorator to be used directly.
+            Callable[[TextboxSubmitEvent], None]: The original function, allowing the decorator to be used directly.
 
         Raises:
             TypeError: If `func` is not a callable function.
 
         Example:
-            >>> name_input = sidekick.Textbox(placeholder="Enter name")
+            >>> from sidekick.events import TextboxSubmitEvent
+            >>>
+            >>> name_input = sidekick.Textbox(placeholder="Enter name", instance_id="name-field")
             >>>
             >>> @name_input.submit
-            ... def handle_name(submitted_name):
-            ...     print(f"Hello, {submitted_name}!")
+            ... def handle_name(event: TextboxSubmitEvent):
+            ...     print(f"Hello, {event.value} (from '{event.instance_id}')!")
             ...
             >>> # sidekick.run_forever() # Needed to process submissions
         """
@@ -233,6 +248,7 @@ class Textbox(BaseComponent):
 
         This method is called by the Sidekick connection manager when an event
         (like a "submit") occurs on this textbox in the UI.
+        It constructs a `TextboxSubmitEvent` object and passes it to the registered callback.
         """
         msg_type = message.get("type")
         payload = message.get("payload")
@@ -240,23 +256,32 @@ class Textbox(BaseComponent):
         # Check if it's a submit event targeted at this textbox instance.
         if msg_type == "event" and payload and payload.get("event") == "submit":
             # The UI sends the submitted text in the 'value' field of the payload.
-            submitted_value = payload.get("value", "") # Default to empty string if missing
-            logger.debug(f"Textbox '{self.target_id}' received submit event with value: '{submitted_value}'")
+            submitted_value_str = payload.get("value", "") # Default to empty string if missing
+            # Ensure it's a string, though protocol should guarantee it.
+            submitted_value_str = str(submitted_value_str)
+
+            logger.debug(
+                f"Textbox '{self.instance_id}' received submit event with value: '{submitted_value_str}'" # Use self.instance_id
+            )
 
             # Update the local _value to match what was submitted from the UI.
             # This ensures consistency if the user reads textbox.value after submission.
-            # Ensure it's stored as a string.
-            self._value = str(submitted_value)
+            self._value = submitted_value_str
 
             # If a user callback is registered, execute it with the submitted value.
             if self._submit_callback:
                 try:
-                    # Pass the locally updated (and validated as string) value.
-                    self._submit_callback(self._value)
+                    # Construct the TextboxSubmitEvent object
+                    submit_event = TextboxSubmitEvent(
+                        instance_id=self.instance_id,
+                        type="submit",
+                        value=self._value # Pass the locally updated (and validated as string) value
+                    )
+                    self._submit_callback(submit_event)
                 except Exception as e:
                     # Prevent errors in user callback from crashing the listener.
                     logger.exception(
-                        f"Error occurred inside Textbox '{self.target_id}' on_submit callback: {e}"
+                        f"Error occurred inside Textbox '{self.instance_id}' on_submit callback: {e}" # Use self.instance_id
                     )
 
         # Always call the base handler for potential 'error' messages.
@@ -266,4 +291,4 @@ class Textbox(BaseComponent):
         """Internal: Resets textbox-specific callbacks when the component is removed."""
         super()._reset_specific_callbacks()
         self._submit_callback = None
-        logger.debug(f"Textbox '{self.target_id}': Submit callback reset.")
+        logger.debug(f"Textbox '{self.instance_id}': Submit callback reset.") # Use self.instance_id

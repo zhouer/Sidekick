@@ -8,12 +8,14 @@ capabilities).
 
 Markdown components can be placed inside layout containers like `Row` or `Column`
 by specifying the `parent` during initialization, or by adding them as children
-to a container's constructor.
+to a container's constructor. You can also provide an `instance_id` to uniquely
+identify the Markdown component.
 """
 
 from . import logger
 from .base_component import BaseComponent
-from typing import Optional, Dict, Any, Union, Callable # Added Callable for on_error
+from .events import ErrorEvent
+from typing import Optional, Dict, Any, Union, Callable
 
 class Markdown(BaseComponent):
     """Represents a component that renders Markdown formatted text in the Sidekick UI.
@@ -24,23 +26,24 @@ class Markdown(BaseComponent):
     with a new Markdown string.
 
     Example:
-        `md_display = sidekick.Markdown("# Title\\nSome *italic* text.")`
+        `md_display = sidekick.Markdown("# Title\\nSome *italic* text.", instance_id="doc-viewer")`
         `md_display.source += "\\n- A list item"`
 
     Attributes:
-        target_id (str): The unique identifier for this Markdown instance.
+        instance_id (str): The unique identifier for this Markdown instance.
         source (str): The current Markdown source string being rendered.
     """
     def __init__(
         self,
         initial_source: str = "",
+        instance_id: Optional[str] = None,
         parent: Optional[Union['BaseComponent', str]] = None,
-        on_error: Optional[Callable[[str], None]] = None, # For BaseComponent
+        on_error: Optional[Callable[[ErrorEvent], None]] = None,
     ):
         """Initializes the Markdown object and creates the UI element.
 
         This function is called when you create a new Markdown component, for example:
-        `notes = sidekick.Markdown("## Meeting Notes\\n- Discuss X\\n- Review Y")`
+        `notes = sidekick.Markdown("## Meeting Notes\\n- Discuss X\\n- Review Y", instance_id="meeting-notes")`
 
         It sends a message to the Sidekick UI to display a new area for
         rendering Markdown content.
@@ -48,16 +51,20 @@ class Markdown(BaseComponent):
         Args:
             initial_source (str): The initial Markdown source string to render.
                 Defaults to an empty string.
+            instance_id (Optional[str]): An optional, user-defined unique identifier
+                for this Markdown component. If `None`, an ID will be auto-generated.
+                Must be unique if provided.
             parent (Optional[Union['BaseComponent', str]]): The parent container
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this Markdown
                 component should be placed. If `None` (the default), it's added
                 to the main Sidekick panel area.
-            on_error (Optional[Callable[[str], None]]): A function to call if
+            on_error (Optional[Callable[[ErrorEvent], None]]): A function to call if
                 an error message related to this specific Markdown component occurs
-                in the Sidekick UI. The function should accept one string argument
-                (the error message). Defaults to `None`.
+                in the Sidekick UI. The function should accept one `ErrorEvent` object
+                as an argument. Defaults to `None`.
 
         Raises:
+            ValueError: If the provided `instance_id` is invalid or a duplicate.
             SidekickConnectionError: If the library cannot connect to the
                 Sidekick UI panel.
             TypeError: If `parent` is an invalid type, or if `on_error` is
@@ -75,11 +82,12 @@ class Markdown(BaseComponent):
         super().__init__(
             component_type="markdown",
             payload=spawn_payload,
+            instance_id=instance_id, # Pass instance_id to BaseComponent
             parent=parent,
-            on_error=on_error # Pass to BaseComponent's __init__
+            on_error=on_error
         )
         logger.info(
-            f"Markdown '{self.target_id}' initialized with initial source "
+            f"Markdown '{self.instance_id}' initialized with initial source " # Use self.instance_id
             f"length {len(self._source)}."
         )
 
@@ -108,7 +116,7 @@ class Markdown(BaseComponent):
         # Send the update command to the UI.
         self._send_update(payload)
         logger.debug(
-            f"Markdown '{self.target_id}' source updated "
+            f"Markdown '{self.instance_id}' source updated " # Use self.instance_id
             f"(new length: {len(new_src_str)})."
         )
 
@@ -117,6 +125,7 @@ class Markdown(BaseComponent):
     # They don't send events like clicks back to Python.
     # The base _internal_message_handler is sufficient for handling
     # potential 'error' messages related to the Markdown component itself.
+    # No need to override _internal_message_handler for specific "event" types.
 
     def _reset_specific_callbacks(self):
         """Internal: Resets markdown-specific callbacks (none currently).
@@ -126,4 +135,4 @@ class Markdown(BaseComponent):
         """
         super()._reset_specific_callbacks()
         # No specific callbacks unique to Markdown to reset at this time.
-        logger.debug(f"Markdown '{self.target_id}': No specific callbacks to reset.")
+        logger.debug(f"Markdown '{self.instance_id}': No specific callbacks to reset.") # Use self.instance_id
