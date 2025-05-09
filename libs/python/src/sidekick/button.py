@@ -40,7 +40,7 @@ class Button(Component):
     """
     def __init__(
         self,
-        text: str = "Button",
+        text: str,
         instance_id: Optional[str] = None,
         parent: Optional[Union['Component', str]] = None,
         on_click: Optional[Callable[[ButtonClickEvent], None]] = None,
@@ -55,7 +55,6 @@ class Button(Component):
 
         Args:
             text (str): The initial text label displayed on the button.
-                Defaults to "Button".
             instance_id (Optional[str]): An optional, user-defined unique identifier
                 for this button. If `None`, an ID will be auto-generated. Must be
                 unique if provided.
