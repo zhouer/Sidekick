@@ -123,7 +123,6 @@ class Grid(Component):
              raise ValueError("Grid num_rows must be a positive integer.")
 
         # Prepare payload for the 'spawn' command.
-        # Keys must be camelCase per the protocol.
         spawn_payload: Dict[str, Any] = {
             "numColumns": num_columns,
             "numRows": num_rows
@@ -276,7 +275,6 @@ class Grid(Component):
             )
 
         # Prepare payload for the 'setColor' update action.
-        # Keys must be camelCase per the protocol.
         options: Dict[str, Any] = {"x": x, "y": y, "color": color} # 'color' can be None
         update_payload = { "action": "setColor", "options": options }
         self._send_update(update_payload)

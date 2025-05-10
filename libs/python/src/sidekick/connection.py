@@ -226,7 +226,7 @@ def _handle_incoming_message(message_data: Dict[str, Any]):
         # --- 2. Message Dispatch Logic ---
         component = message_data.get('component')
         msg_type = message_data.get('type')
-        payload = message_data.get('payload') # Note: Payload keys should be camelCase per protocol.
+        payload = message_data.get('payload')
 
         # --- Handle System Announce (Sidekick UI Ready?) ---
         if component == 'system' and msg_type == 'announce' and payload:
@@ -526,8 +526,8 @@ def send_message(message_dict: Dict[str, Any]):
     Args:
         message_dict (Dict[str, Any]): A Python dictionary representing the message.
             It must conform to the Sidekick communication protocol structure, including
-            `component`, `type`, `target`/`src`, and a `payload` whose keys should generally
-            be `camelCase`. The `target` field should contain the component's `instance_id`.
+            `component`, `type`, `target`/`src`, and a `payload`. The `target` field
+            should contain the component's `instance_id`.
 
     Raises:
         SidekickConnectionRefusedError: If the connection isn't ready and fails during activation.

@@ -124,9 +124,7 @@ class Component:
                 type expected by the Sidekick UI.
             payload (Optional[Dict[str, Any]]): A dictionary containing initial
                 configuration data for the UI component (e.g., grid dimensions,
-                initial text for a label). Keys within this dictionary should
-                generally conform to the `camelCase` convention required by the
-                Sidekick communication protocol. Defaults to None or an empty dictionary.
+                initial text for a label). Defaults to None or an empty dictionary.
             instance_id (Optional[str]): An optional, user-defined unique identifier
                 for this component instance. If provided, it must be a non-empty string
                 and must be unique among all Sidekick components created in the current
@@ -262,11 +260,10 @@ class Component:
         Args:
             message (Dict[str, Any]): The raw message dictionary received from
                 the Sidekick connection manager. Expected to follow the protocol
-                structure (keys: 'type', 'component', 'src', 'payload'). Payload keys
-                are expected to be `camelCase`.
+                structure (keys: 'type', 'component', 'src', 'payload').
         """
         msg_type = message.get("type")
-        payload = message.get("payload") # Payload should contain camelCase keys.
+        payload = message.get("payload")
 
         if msg_type == "error":
             error_message_str = "Unknown error message received from Sidekick UI."
@@ -353,15 +350,10 @@ class Component:
         It's used internally for "spawn" and "remove" commands. The component's
         `self.instance_id` is automatically used as the `"target"` field in the message.
 
-        Note:
-            Payload keys within `payload` should generally be `camelCase`. This method
-            does not perform case conversion; that responsibility lies with callers
-            (typically the `__init__` methods of component subclasses).
-
         Args:
             msg_type (str): The type of command (e.g., "spawn", "update", "remove").
             payload (Optional[Dict[str, Any]]): The data payload for the command.
-                Keys should already be in `camelCase`. Defaults to None.
+                Defaults to None.
 
         Raises:
             SidekickConnectionError (or subclass): If the connection is not ready
@@ -386,16 +378,9 @@ class Component:
         `grid.set_color(...)`). The component's `instance_id` is automatically included
         as the target.
 
-        Note:
-            The `payload` *must* include the component-specific `action` key
-            (e.g., "setColor", "setText") and any `options` sub-dictionary
-            with `camelCase` keys, as defined by the protocol for that action.
-            The responsibility for correct `camelCase` formatting of `action` and
-            `options` keys lies with the calling component method.
-
         Args:
             payload (Dict[str, Any]): The complete payload for the 'update' command,
-                including the `action` and its `options` (with camelCase keys).
+                including the `action` and its `options`.
 
         Raises:
             SidekickConnectionError (or subclass): If connection or send fails.

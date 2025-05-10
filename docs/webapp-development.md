@@ -118,7 +118,7 @@ webapp/
 *   **`*Logic.ts`:** Contains:
     *   `getInitialState`: Always required for spawning. Validates payload, returns initial state.
     *   `updateState`: **Only used if `imperativeUpdate` is false.** Pure function to calculate next state based on update payload. For imperative components, this function might simply return the `currentState` as it won't be called for standard updates.
-*   **`types.ts`:** Component-specific TS types. For imperative components, the `State` type likely becomes simpler (e.g., Canvas no longer needs `commandQueue`). Payload types must match the `camelCase` protocol.
+*   **`types.ts`:** Component-specific TS types. For imperative components, the `State` type likely becomes simpler (e.g., Canvas no longer needs `commandQueue`).
 *   **`*Component.css`:** Component-specific styles.
 
 ### 4.5. Canvas Component Implementation (`src/components/canvas/`) - Example Imperative Component

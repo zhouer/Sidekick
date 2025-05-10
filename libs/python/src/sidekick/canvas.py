@@ -301,7 +301,6 @@ class Canvas(Component):
             raise ValueError("Canvas height must be a positive integer.")
 
         # Prepare payload for the 'spawn' command.
-        # Keys must be camelCase per the protocol.
         spawn_payload: Dict[str, Any] = {
             "width": width,
             "height": height
@@ -487,7 +486,7 @@ class Canvas(Component):
             # Send a command to the UI to create this new offscreen buffer.
             self._send_canvas_update(
                 action="createBuffer",
-                options={"bufferId": new_id} # Key is 'bufferId' (camelCase)
+                options={"bufferId": new_id}
             )
             self._buffer_pool[new_id] = True # Add to pool and mark as in-use
             return new_id
@@ -527,8 +526,8 @@ class Canvas(Component):
         self._send_canvas_update(
             action="drawBuffer",
             options={
-                "sourceBufferId": source_buffer_id, # camelCase
-                "targetBufferId": target_buffer_id  # camelCase
+                "sourceBufferId": source_buffer_id,
+                "targetBufferId": target_buffer_id
             }
         )
 
@@ -540,8 +539,7 @@ class Canvas(Component):
 
         Args:
             action (str): The specific canvas action (e.g., "drawLine", "createBuffer").
-            options (Dict[str, Any]): A dictionary of options for that action,
-                with keys already in `camelCase` as required by the protocol.
+            options (Dict[str, Any]): A dictionary of options for that action.
         """
         update_payload = {
             "action": action,
@@ -571,7 +569,7 @@ class Canvas(Component):
         log_target = "visible canvas" if target_buffer_id == self.ONSCREEN_BUFFER_ID else f"buffer ID {target_buffer_id}"
         logger.debug(f"Canvas '{self.instance_id}': Sending 'clear' command for {log_target}.")
 
-        options = {"bufferId": target_buffer_id} # camelCase
+        options = {"bufferId": target_buffer_id}
         self._send_canvas_update("clear", options)
 
     def draw_line(self, x1: int, y1: int, x2: int, y2: int,
@@ -601,7 +599,7 @@ class Canvas(Component):
             SidekickConnectionError: If sending the command to the UI fails.
         """
         target_buffer_id = buffer_id if buffer_id is not None else self.ONSCREEN_BUFFER_ID
-        options: Dict[str, Any] = { # Ensure keys are camelCase for the protocol
+        options: Dict[str, Any] = {
             "bufferId": target_buffer_id,
             "x1": x1, "y1": y1, "x2": x2, "y2": y2
         }
@@ -645,7 +643,7 @@ class Canvas(Component):
         if width < 0: raise ValueError("Rectangle width cannot be negative.")
         if height < 0: raise ValueError("Rectangle height cannot be negative.")
 
-        options: Dict[str, Any] = { # camelCase keys
+        options: Dict[str, Any] = {
             "bufferId": target_buffer_id,
             "x": x, "y": y, "width": width, "height": height
         }
@@ -686,7 +684,7 @@ class Canvas(Component):
             raise ValueError("Circle radius must be a positive number.")
         radius_int = int(radius) # Ensure integer for protocol if needed
 
-        options: Dict[str, Any] = { # camelCase keys
+        options: Dict[str, Any] = {
             "bufferId": target_buffer_id,
             "cx": cx, "cy": cy, "radius": radius_int
         }
@@ -733,7 +731,7 @@ class Canvas(Component):
                 f"Expected a list of (x, y) tuples or lists containing numbers. Original error: {e}"
             ) from e
 
-        options: Dict[str, Any] = {"bufferId": target_buffer_id, "points": points_payload} # camelCase
+        options: Dict[str, Any] = {"bufferId": target_buffer_id, "points": points_payload}
         if line_color is not None: options["lineColor"] = line_color
         if line_width is not None:
             if isinstance(line_width, int) and line_width > 0:
@@ -771,7 +769,7 @@ class Canvas(Component):
         if not isinstance(points, list) or len(points) < 3:
             raise ValueError("draw_polygon requires a list of at least three (x, y) point tuples.")
         try:
-            points_payload = [{"x": int(p[0]), "y": int(p[1])} for p in points] # camelCase for payload
+            points_payload = [{"x": int(p[0]), "y": int(p[1])} for p in points]
         except (TypeError, IndexError, ValueError) as e:
              raise TypeError(
                 "Invalid data format in 'points' list for draw_polygon. "
@@ -818,7 +816,7 @@ class Canvas(Component):
         radius_x_int = int(radius_x)
         radius_y_int = int(radius_y)
 
-        options: Dict[str, Any] = { # camelCase keys
+        options: Dict[str, Any] = {
             "bufferId": target_buffer_id,
             "cx": cx, "cy": cy,
             "radiusX": radius_x_int,
@@ -858,7 +856,7 @@ class Canvas(Component):
             SidekickConnectionError: If sending command fails.
         """
         target_buffer_id = buffer_id if buffer_id is not None else self.ONSCREEN_BUFFER_ID
-        options: Dict[str, Any] = { # camelCase keys
+        options: Dict[str, Any] = {
             "bufferId": target_buffer_id,
             "x": x, "y": y,
             "text": str(text) # Ensure text is a string
@@ -904,7 +902,7 @@ class Canvas(Component):
                      )
                      self._send_canvas_update(
                          action="destroyBuffer",
-                         options={"bufferId": buffer_id_to_remove} # camelCase
+                         options={"bufferId": buffer_id_to_remove}
                      )
                  except SidekickConnectionError as e:
                      # Log if destroying a buffer fails, but continue trying to remove the main canvas.

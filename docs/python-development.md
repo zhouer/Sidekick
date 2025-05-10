@@ -128,7 +128,7 @@ This module orchestrates the communication channel and connection lifecycle.
             *   If not provided or invalid, `generate_unique_id(component_type)` is used.
             *   The final `instance_id` is stored as `self.instance_id`.
         *   Registers `_internal_message_handler` with `connection.register_message_handler(self.instance_id, ...)`, which also performs uniqueness validation for the `instance_id`.
-        *   Accepts optional `parent` (instance or ID string). If provided, adds `{"parent": parent_id}` to the `spawn` payload (using `camelCase`). If `parent` is `None`, the key is omitted, defaulting to `"root"` in the UI.
+        *   Accepts optional `parent` (instance or ID string). If provided, adds `{"parent": parent_id}` to the `spawn` payload. If `parent` is `None`, the key is omitted, defaulting to `"root"` in the UI.
         *   Accepts optional `on_error: Callable[[ErrorEvent], None]` callback and registers it using `self.on_error()`.
         *   Sends the `spawn` command via `_send_command()`. The `"target"` field in the message will be `self.instance_id`.
     *   **Subclass `__init__`:**
@@ -144,29 +144,21 @@ This module orchestrates the communication channel and connection lifecycle.
     *   `__init__` accepts `*children` arguments. It iterates through them and calls `self.add_child()` for each.
     *   `add_child(child_component)` method calls `child_component._send_update(...)` with an action `changeParent` and options `{"parent": self.instance_id}`. The child component sends the message about itself being moved.
 
-### 3.6. Protocol Compliance: `snake_case` to `camelCase` Conversion & Component ID
-
-*   Conversion from Pythonic `snake_case` API arguments to protocol-required `camelCase` keys within the JSON `payload` happens **within the public API methods and `__init__` of the specific component classes**.
-*   `connection.send_message` receives the fully constructed dictionary with `camelCase` keys and sends it as JSON.
-*   **Important Distinction:**
-    *   Python-side, components are identified by `self.instance_id`.
-    *   In the JSON messages sent to/from the UI, the component identifier keys remain `"target"` (Python -> UI) and `"src"` (UI -> Python) as per the [Communication Protocol](./protocol.md). `Component._send_command` handles mapping `self.instance_id` to the `"target"` field. `connection._handle_incoming_message` uses the value from the `"src"` field to find the Python component by its `instance_id`.
-
-### 3.7. Reactivity (`ObservableValue`, `Viz`)
+### 3.6. Reactivity (`ObservableValue`, `Viz`)
 
 *   **`ObservableValue`:** Wrapper for lists, dicts, sets. Intercepts mutation methods and calls `_notify()`.
 *   **`Viz.show()`:** If passed an `ObservableValue`, subscribes its `_handle_observable_update` method.
 *   **`Viz._handle_observable_update`:** Triggered by `ObservableValue._notify()`. Constructs granular `update` message payload and sends via `_send_update()`.
 *   **`_get_representation()`:** Internal recursive helper converting Python data to the JSON structure required by Viz UI.
 
-### 3.8. Canvas Double Buffering (`canvas.py`)
+### 3.7. Canvas Double Buffering (`canvas.py`)
 
 *   `Canvas.buffer()` returns a context manager (`_CanvasBufferContextManager`).
 *   Proxy methods (`buf.draw_*()`) automatically target an acquired offscreen buffer ID.
 *   `_CanvasBufferContextManager.__enter__` acquires buffer ID, clears the offscreen buffer.
 *   `_CanvasBufferContextManager.__exit__` sends `drawBuffer` (offscreen -> onscreen) command.
 
-### 3.9. Lifecycle & Synchronization Functions
+### 3.8. Lifecycle & Synchronization Functions
 
 *   **`run_forever()`:** Blocks main script thread after ensuring connection is ready (`activate_connection`). Waits on `_shutdown_event`.
 *   **`shutdown()`:** Initiates clean shutdown. Sets `_shutdown_event`, calls `close_connection(is_exception=False)`.

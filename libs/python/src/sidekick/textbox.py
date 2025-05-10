@@ -98,7 +98,6 @@ class Textbox(Component):
         self._submit_callback: Optional[Callable[[TextboxSubmitEvent], None]] = None
 
         # Prepare the payload for the 'spawn' command.
-        # Keys must be camelCase per the protocol.
         spawn_payload: Dict[str, Any] = {}
         # Only include keys in the payload if they have non-default (non-empty) values,
         # as per protocol examples, to keep messages concise.
@@ -144,7 +143,6 @@ class Textbox(Component):
         # Update local state first
         self._value = new_val_str
         # Prepare payload for the 'setValue' update action.
-        # Keys must be camelCase per the protocol.
         payload = {
             "action": "setValue",
             "options": {"value": new_val_str}

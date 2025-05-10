@@ -73,7 +73,6 @@ class Markdown(Component):
         self._source = str(source)
 
         # Prepare the payload for the 'spawn' command.
-        # Keys must be camelCase per the protocol.
         spawn_payload: Dict[str, Any] = {
             "initialSource": self._source # Protocol uses 'initialSource'
         }
@@ -107,7 +106,6 @@ class Markdown(Component):
         # Update local state first
         self._source = new_src_str
         # Prepare payload for the 'setSource' update action.
-        # Keys must be camelCase per the protocol.
         payload = {
             "action": "setSource",
             "options": {"source": new_src_str}

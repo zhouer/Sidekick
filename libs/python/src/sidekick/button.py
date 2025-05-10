@@ -84,7 +84,6 @@ class Button(Component):
         self._click_callback: Optional[Callable[[ButtonClickEvent], None]] = None
 
         # Prepare the payload for the 'spawn' command.
-        # Keys must be camelCase per the protocol.
         spawn_payload: Dict[str, Any] = {
             "text": self._text
         }
@@ -119,7 +118,6 @@ class Button(Component):
         # Update local state first
         self._text = new_text_str
         # Prepare payload for the 'setText' update action.
-        # Keys must be camelCase per the protocol.
         payload = {
             "action": "setText",
             "options": {"text": new_text_str}

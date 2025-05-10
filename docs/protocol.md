@@ -38,18 +38,12 @@ interface BaseMessage {
   target?: string;
   /** Source component instance ID (Required for Sidekick -> Hero feedback messages: event, error). */
   src?: string;
-  /** Contains message-type-specific data. Keys MUST use camelCase. Can be null or omitted if no data is needed. */
+  /** Contains message-type-specific data. Can be null or omitted if no data is needed. */
   payload?: object | null;
 }
 ```
 
-### 3.1 Payload `camelCase` Convention
-
 **ALL keys within the `payload` object, and any nested objects inside it (e.g., `options`, `config`, `valueRepresentation`), MUST use `camelCase` naming.**
-
-This convention ensures consistency between the JavaScript-based frontend/server and potentially other language libraries.
-Hero libraries (like `sidekick-py`) are responsible for converting their native conventions (e.g., `snake_case`) to `camelCase` before sending messages. Sidekick UI components expect to receive and send `camelCase` payloads.
-**Failure to adhere to this will likely cause messages to be ignored or result in errors.**
 
 ## 4. Connection Lifecycle & Peer Discovery (`system` Component)
 
@@ -206,7 +200,7 @@ interface ChangeParentUpdatePayload {
 *   **`update` (Hero -> Sidekick)**
     *   **Payload:** `CanvasUpdatePayload | ChangeParentUpdatePayload`
     ```typescript
-    // --- Style Options (camelCase) ---
+    // --- Style Options ---
     interface CommonStyleOptions { lineColor?: string; lineWidth?: number; }
     interface FillableStyleOptions extends CommonStyleOptions { fillColor?: string | null; }
     // --- Action-Specific Options ---

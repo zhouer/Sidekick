@@ -244,7 +244,6 @@ class Console(Component):
         """
         text_to_print = sep.join(map(str, args)) + end
         # Prepare payload for the 'append' update action.
-        # Keys must be camelCase per the protocol.
         payload = {
             "action": "append",
             "options": { "text": text_to_print }

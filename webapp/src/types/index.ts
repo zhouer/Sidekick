@@ -22,7 +22,7 @@ export interface HeroPeerInfo extends AnnouncePayload {
 interface BaseMessage {
     id: number; // Reserved
     component: string; // Target/Source component type
-    payload?: any; // Type-specific payload, MUST use camelCase keys
+    payload?: any; // Type-specific payload
 }
 
 // --- Messages Sent FROM Hero TO Sidekick ---
