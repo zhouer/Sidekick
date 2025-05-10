@@ -8,6 +8,7 @@ It defines the structure and meaning of messages exchanged between the **Hero** 
 Adherence to this protocol is **crucial** for interoperability between all components. Implementers of Hero libraries or Sidekick UI components **must** strictly follow this specification.
 
 The protocol enables:
+
 *   Peer Discovery & Status Management (`system` component)
 *   Global Operations (`global` component)
 *   Component Instance Control (creating, updating, removing UI elements, changing parent)
@@ -16,9 +17,8 @@ The protocol enables:
 ## 2. Transport Layer
 
 *   **Mechanism:**
-    *   WebSocket (Default): Used when Hero runs in a separate process (e.g., standard Python) and UI is in VS Code Webview or browser.
-    *   Direct JavaScript `postMessage` / event listeners: Used when Hero runs client-side (e.g., Pyodide in a Web Worker) and UI is in the main browser thread.
-*   **Default Endpoint (WebSocket):** `ws://localhost:5163` (Configurable via Hero library functions and corresponding VS Code extension settings).
+    *   **WebSocket (Default):** Used when Hero runs in a separate process (e.g., standard Python) and UI is in VS Code Webview or browser. Default Endpoint: `ws://localhost:5163`
+    *   **Direct JavaScript `postMessage` / event listeners:** Used when Hero runs client-side (e.g., Pyodide in a Web Worker) and UI is in the main browser thread.
 *   **Encoding:** Messages are encoded as JSON strings (UTF-8).
 *   **Ordering:** The transport mechanism (WebSocket or reliable `postMessage` handling) **guarantees** message delivery order between a single Hero client and a single Sidekick UI client. This eliminates the need for sequence numbers within the protocol messages themselves for ordering purposes.
 
@@ -81,6 +81,7 @@ interface SystemAnnounceMessage extends BaseMessage {
 ```
 
 **Connection Flow (WebSocket Example):**
+
 1.  **Connect:** Peer (Hero/Sidekick) establishes WebSocket connection to Server.
 2.  **Announce Online:** Peer immediately sends `system/announce` message with `status: "online"`.
 3.  **Broadcast (Server):** Server relays this `online` announcement to all *other* connected peers.
@@ -88,7 +89,9 @@ interface SystemAnnounceMessage extends BaseMessage {
 5.  **Ready State:** Peers use received announcements to track the status of others. Hero implementations **SHOULD** buffer non-`system` messages until they receive an `online` announce from at least one `sidekick` peer.
 6.  **Announce Offline (Graceful):** Before intentionally closing the connection, a Peer **SHOULD** send a `system/announce` message with `status: "offline"`. The Server relays this.
 7.  **Abnormal Disconnect (Server):** If a Peer disconnects without sending an offline announce, the Server detects the closure. It then generates an `offline` announce message on behalf of the disconnected Peer and broadcasts it to remaining Peers.
+
 **Connection Flow (Pyodide Example):**
+
 1.  **Initialize:** Sidekick UI initializes Pyodide Worker. Worker loads `sidekick-py`.
 2.  **Announce Online (Sidekick UI to Worker):** UI sends `system/announce` (`role: "sidekick"`, `status: "online"`) to the Worker.
 3.  **Hero Ready:** Worker's `sidekick-py` receives this, considers UI ready.
@@ -131,13 +134,16 @@ These message types facilitate the control of specific UI component instances an
 ## 7. Component-Specific Protocols
 
 All `spawn` payloads for visual components accept an optional `parent` field:
+
 ```typescript
 interface BaseSpawnPayload {
   /** Optional: The instance ID of the parent container component. If omitted, the component is added to the default top-level container (ID: "root"). */
   parent?: string;
 }
 ```
+
 The `update` message type includes a generic `changeParent` action for all components:
+
 ```typescript
 interface ChangeParentUpdatePayload {
   action: "changeParent";
@@ -203,6 +209,7 @@ interface ChangeParentUpdatePayload {
     // --- Style Options ---
     interface CommonStyleOptions { lineColor?: string; lineWidth?: number; }
     interface FillableStyleOptions extends CommonStyleOptions { fillColor?: string | null; }
+
     // --- Action-Specific Options ---
     interface CanvasBaseBufferOptions { bufferId?: number | null; } // 0 or omitted for onscreen.
     interface ClearOptions extends CanvasBaseBufferOptions {}
@@ -465,6 +472,7 @@ interface ChangeParentUpdatePayload {
 **Purpose:** Displays Python variables and data structures (like lists, dictionaries, sets, custom objects) in an interactive, collapsible tree view. Supports `ObservableValue` for automatic updates.
 
 **Core Data Structure:** `VizRepresentation`
+
 ```typescript
 interface VizRepresentation {
   type: string; // Python data type (e.g., "int", "list", "object (ClassName)"). Special: "truncated", "recursive_ref", "error".
