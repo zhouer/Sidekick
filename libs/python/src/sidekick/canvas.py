@@ -384,20 +384,20 @@ class Canvas(Component):
         super()._internal_message_handler(message)
 
     def on_click(self, callback: Optional[Callable[[CanvasClickEvent], None]]):
-        """Registers a function to be called when the user clicks on the canvas.
+        """Registers a function to call when the user clicks on this canvas.
 
         The provided callback function will be executed in your Python script.
-        It will receive a `CanvasClickEvent` object containing the `instance_id`
-        of this canvas, the event `type` ("click"), and the `x` and `y` coordinates
-        of the click, relative to the top-left corner of the canvas.
+        It will receive a `CanvasClickEvent` object containing the `instance_id` of
+        this canvas, the event `type` ("click"), and the `x` and `y` coordinates
+        of the click relative to the canvas's top-left corner.
 
         You can also set this callback directly when creating the canvas using
         the `on_click` parameter in its constructor.
 
         Args:
-            callback (Optional[Callable[[CanvasClickEvent], None]]): The function to execute
-                when the canvas is clicked. It must accept one `CanvasClickEvent` argument.
-                Pass `None` to remove a previously registered callback.
+            callback (Optional[Callable[[CanvasClickEvent], None]]): The function to call
+                when the canvas is clicked. It must accept one `CanvasClickEvent`
+                argument. Pass `None` to remove a previously registered callback.
 
         Raises:
             TypeError: If `callback` is not a callable function or `None`.
@@ -405,17 +405,50 @@ class Canvas(Component):
         Example:
             >>> from sidekick.events import CanvasClickEvent
             >>>
-            >>> def log_click_position(event: CanvasClickEvent):
-            ...     print(f"Canvas '{event.instance_id}' clicked at ({event.x}, {event.y})")
+            >>> def report_click(event: CanvasClickEvent):
+            ...     print(f"Canvas '{event.instance_id}' clicked at ({event.x}, {event.y}).")
+            ...     # my_drawing_area.draw_circle(event.x, event.y, 3, fill_color='red')
             ...
-            >>> my_canvas = sidekick.Canvas(200, 100, instance_id="drawing-pad")
-            >>> my_canvas.on_click(log_click_position)
+            >>> my_drawing_area = sidekick.Canvas(200, 150, instance_id="click-zone")
+            >>> my_drawing_area.on_click(report_click)
             >>> # sidekick.run_forever() # Needed to process clicks
         """
         if callback is not None and not callable(callback):
             raise TypeError("The provided on_click callback must be a callable function or None.")
-        logger.info(f"Setting on_click callback for canvas '{self.instance_id}'.")
+        logger.info(f"Setting on_click callback for canvas '{self.instance_id}'.") # Use self.instance_id
         self._click_callback = callback
+
+    def click(self, func: Callable[[CanvasClickEvent], None]) -> Callable[[CanvasClickEvent], None]:
+        """Decorator to register a function to call when this canvas is clicked.
+
+        This provides an alternative, more Pythonic way to set the click handler
+        if you prefer decorators. The decorated function will receive a
+        `CanvasClickEvent` object as its argument.
+
+        Args:
+            func (Callable[[CanvasClickEvent], None]): The function to register as the click handler.
+                It should accept one `CanvasClickEvent` argument.
+
+        Returns:
+            Callable[[CanvasClickEvent], None]: The original function, allowing the decorator to be used directly.
+
+        Raises:
+            TypeError: If `func` is not a callable function.
+
+        Example:
+            >>> from sidekick.events import CanvasClickEvent
+            >>>
+            >>> interactive_canvas = sidekick.Canvas(100, 100, instance_id="decorator-canvas")
+            >>>
+            >>> @interactive_canvas.click
+            ... def handle_canvas_interaction(event: CanvasClickEvent):
+            ...     print(f"Canvas '{event.instance_id}' clicked at ({event.x}, {event.y}) via decorator!")
+            ...     interactive_canvas.draw_rect(event.x - 2, event.y - 2, 4, 4, fill_color='green')
+            ...
+            >>> # sidekick.run_forever() # Needed to process clicks
+        """
+        self.on_click(func) # Register the function using the standard method
+        return func # Return the original function
 
     def buffer(self) -> ContextManager[_CanvasBufferProxy]:
         """Provides a context manager (`with` statement) for efficient double buffering.

@@ -247,6 +247,38 @@ class Grid(Component):
         logger.info(f"Setting on_click callback for grid '{self.instance_id}'.")
         self._click_callback = callback
 
+    def click(self, func: Callable[[GridClickEvent], None]) -> Callable[[GridClickEvent], None]:
+        """Decorator to register a function to call when a cell in this grid is clicked.
+
+        This provides an alternative, more Pythonic way to set the click handler
+        if you prefer decorators. The decorated function will receive a
+        `GridClickEvent` object as its argument.
+
+        Args:
+            func (Callable[[GridClickEvent], None]): The function to register as the click handler.
+                It should accept one `GridClickEvent` argument.
+
+        Returns:
+            Callable[[GridClickEvent], None]: The original function, allowing the decorator to be used directly.
+
+        Raises:
+            TypeError: If `func` is not a callable function.
+
+        Example:
+            >>> from sidekick.events import GridClickEvent
+            >>>
+            >>> my_board = sidekick.Grid(5, 5, instance_id="decorator-grid")
+            >>>
+            >>> @my_board.click
+            ... def highlight_cell(event: GridClickEvent):
+            ...     print(f"Grid '{event.instance_id}' cell ({event.x}, {event.y}) clicked via decorator!")
+            ...     my_board.set_color(event.x, event.y, "magenta")
+            ...
+            >>> # sidekick.run_forever() # Needed to process clicks
+        """
+        self.on_click(func) # Register the function using the standard method
+        return func # Return the original function
+
     def set_color(self, x: int, y: int, color: Optional[str]):
         """Sets the background color of a specific cell in the grid.
 

@@ -218,6 +218,37 @@ class Console(Component):
         logger.info(f"Setting on_submit callback for console '{self.instance_id}'.") # Use self.instance_id
         self._submit_callback = callback
 
+    def submit(self, func: Callable[[ConsoleSubmitEvent], None]) -> Callable[[ConsoleSubmitEvent], None]:
+        """Decorator to register a function to call when the user submits text from the console.
+
+        This provides an alternative, more Pythonic syntax to `on_submit()`
+        if you prefer decorators. The decorated function will receive a
+        `ConsoleSubmitEvent` object as its argument.
+
+        Args:
+            func (Callable[[ConsoleSubmitEvent], None]): The function to register as the submit handler.
+                It must accept one `ConsoleSubmitEvent` argument.
+
+        Returns:
+            Callable[[ConsoleSubmitEvent], None]: The original function, allowing the decorator to be used directly.
+
+        Raises:
+            TypeError: If `func` is not a callable function.
+
+        Example:
+            >>> from sidekick.events import ConsoleSubmitEvent
+            >>>
+            >>> command_line = sidekick.Console(show_input=True, instance_id="decorated-console")
+            >>>
+            >>> @command_line.submit
+            ... def execute_command(event: ConsoleSubmitEvent):
+            ...     command_line.print(f"Executing: {event.value} (from '{event.instance_id}')!")
+            ...
+            >>> # sidekick.run_forever() # Needed to process submissions
+        """
+        self.on_submit(func) # Register the function using the standard method
+        return func # Return the original function
+
     def print(self, *args: Any, sep: str = ' ', end: str = '\n'):
         """Prints messages to this console instance in the Sidekick UI.
 
