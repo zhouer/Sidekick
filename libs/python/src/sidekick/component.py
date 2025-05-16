@@ -33,10 +33,8 @@ Note:
     you'll instantiate its subclasses like `sidekick.Grid`, `sidekick.Console`, etc.
 """
 
-import logging # Changed from "from . import logger" to direct import
 from typing import Optional, Dict, Any, Callable, Union
 
-# Import ConnectionService's public API functions (which use the singleton)
 from . import logger
 from . import connection as sidekick_connection_module
 from .exceptions import SidekickConnectionError # Still relevant if send_message fails

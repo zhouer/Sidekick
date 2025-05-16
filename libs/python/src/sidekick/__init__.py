@@ -31,8 +31,6 @@ Happy visual coding!
 """
 
 import logging
-import asyncio # For Coroutine type hint and asyncio.Task
-from typing import Coroutine, Any # For submit_task type hint
 
 # --- Version ---
 from ._version import __version__
@@ -44,10 +42,6 @@ from ._version import __version__
 logger = logging.getLogger("sidekick")
 if not logger.hasHandlers():
     logger.addHandler(logging.NullHandler())
-# Example user configuration (in their script):
-# import logging
-# logging.basicConfig(level=logging.DEBUG) # Or logging.INFO for less verbosity
-
 
 # --- Core connection/configuration/lifecycle functions ---
 # These are the primary functions for managing the Sidekick service connection.
