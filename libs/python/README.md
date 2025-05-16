@@ -33,10 +33,11 @@ This library provides the Python interface for interacting with the [Sidekick Vi
     grid = sidekick.Grid(5, 5)
 
     # Define what happens on click
-    def handle_click(x, y):
+    def handle_click(event):
         colors = ["khaki", "lavender", "peachpuff", "pink", "plum", "powderblue"]
         random_color = random.choice(colors)
-        grid.set_color(x, y, random_color)
+        grid.set_color(event.x, event.y, random_color)
+        print(f"Grid '{event.instance_id}' cell ({event.x}, {event.y}) clicked, set to {random_color}")
 
     # Register the click handler
     grid.on_click(handle_click)

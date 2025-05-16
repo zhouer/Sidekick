@@ -1,970 +1,986 @@
-"""Manages the communication channel between your Python script and the Sidekick UI.
+"""Manages the high-level connection and communication service for Sidekick.
 
-This component acts as the central communication hub for the Sidekick library. It
-handles the technical details of establishing and maintaining a real-time
-connection with the Sidekick panel running in Visual Studio Code.
+This module provides the `ConnectionService` class, which orchestrates the
+communication between the Sidekick Python library and the Sidekick UI.
+It utilizes core components (`TaskManager`, `CommunicationManager`) from
+`sidekick.core` to handle low-level asynchronous operations and transport,
+while exposing a mostly synchronous API to the rest of the Sidekick library
+(e.g., individual Component classes).
 
-Key Responsibilities:
-
-*   **Connecting:** Automatically attempts to connect to the Sidekick server
-    (usually running within the VS Code extension) the first time your script
-    tries to interact with a Sidekick component (e.g., when you create `sidekick.Grid()`).
-    Upon successful connection and UI readiness, the Sidekick UI panel is **automatically cleared**.
-*   **Blocking Connection:** It **pauses** (blocks) your script during the initial
-    connection phase until it confirms that both the server is reached and the
-    Sidekick UI panel is loaded and ready to receive commands. This ensures your
-    commands don't get lost.
-*   **Sending Commands:** Provides the mechanism (`send_message`, used internally
-    by components like Grid, Console) to send instructions (like "set color", "print text")
-    to the Sidekick UI.
-*   **Receiving Events:** Handles incoming messages from the Sidekick UI (like button
-    clicks or text input) and routes them to the correct handler function in your
-    script (e.g., the function you provided to `grid.on_click`).
-*   **Error Handling:** Raises specific `SidekickConnectionError` exceptions if it
-    cannot connect, if the UI doesn't respond, or if the connection is lost later.
-*   **Lifecycle Management:** Handles clean shutdown procedures, ensuring resources
-    are released when your script finishes or when `sidekick.shutdown()` is called.
-    The Sidekick UI panel is **not cleared** on shutdown, preserving its state for
-    potential inspection or re-connection by a subsequent script run.
-
-Note:
-    You typically interact with this component indirectly through functions like
-    `sidekick.run_forever()` or `sidekick.shutdown()`, or simply by using the
-    visual component classes (`Grid`, `Console`, etc.). However, understanding its
-    role helps explain the library's behavior, especially regarding connection, UI clearing,
-    and event handling. The library does **not** automatically attempt to reconnect
-    if the connection is lost after being established.
+The `ConnectionService` is responsible for:
+- Managing the Sidekick-specific connection lifecycle: This includes initiating
+  the connection, handling the sequence of `system/announce` messages for peer
+  discovery (hero announcing itself, waiting for Sidekick UI to announce itself),
+  and managing graceful shutdown.
+- Sending an initial `global/clearAll` command to the UI panel upon successful
+  activation to ensure a clean state.
+- Queuing messages that are sent by components before the connection sequence
+  is fully completed, and then dispatching them once ready.
+- Serializing Python dictionary messages to JSON strings for transport and
+  deserializing incoming JSON strings back to dictionaries.
+- Dispatching incoming UI events (e.g., button clicks, grid interactions) and
+  error messages from specific UI components to the correct Python component
+  instance handlers.
+- Providing user-facing functions (exposed via `sidekick/__init__.py`) to
+  control the service, such as setting the target URL (`set_url`), explicitly
+  activating the connection (`activate_connection`), and shutting down the
+  service (`shutdown`).
+- Supporting different operational modes for CPython (typically blocking on
+  activation and using `run_forever`) and Pyodide (non-blocking activation
+  and using `run_forever_async`).
 """
 
+import asyncio
 import json
+import logging
 import threading
-import atexit # Used to automatically call shutdown() when the script exits normally
 import time
 import uuid
+from collections import deque # For _message_queue, a thread-safe double-ended queue
 from enum import Enum, auto
-from typing import Optional, Dict, Any, Callable, Set
+from typing import Dict, Any, Callable, Optional, Deque, Union, Coroutine
 
-# --- Import logger and Version ---
+from . import _version # For __version__ to include in hero announce messages
 from . import logger
-from ._version import __version__
-
-# --- Import Custom Exceptions ---
+from .core import (
+    get_task_manager,
+    get_communication_manager,
+    TaskManager,
+    CommunicationManager,
+    CoreConnectionStatus,
+    CoreConnectionError,
+    CoreConnectionRefusedError,
+    CoreConnectionTimeoutError, # Core transport timeout
+    CoreDisconnectedError,
+    CoreTaskSubmissionError,
+    CoreLoopNotRunningError,
+    is_pyodide # Utility to check the execution environment
+)
 from .errors import (
-    SidekickConnectionError,
-    SidekickConnectionRefusedError,
-    SidekickTimeoutError,
-    SidekickDisconnectedError
+    SidekickConnectionError,        # Base application-level connection error
+    SidekickConnectionRefusedError, # Application-level connection refused
+    SidekickTimeoutError,           # Application-level timeout (e.g., waiting for UI)
+    SidekickDisconnectedError,      # Application-level disconnection
+    SidekickError                   # General base for Sidekick application errors
 )
 
-# --- Import Channel Abstraction ---
-from .channel import CommunicationChannel, create_communication_channel
-
-# --- Import Event classes for docstring examples ---
-# (Not strictly needed for connection.py logic, but good for example accuracy)
-from .events import ConsoleSubmitEvent, ButtonClickEvent
-
-# --- Connection Status Enum ---
-class ConnectionStatus(Enum):
-    """Represents the different states of the communication channel internally."""
-    DISCONNECTED = auto()               # Not connected. Initial state, or after closing/error.
-    CONNECTING = auto()                 # Actively trying to establish the connection.
-    CONNECTED_WAITING_SIDEKICK = auto() # Connection established, waiting for UI panel 'ready' signal.
-    CONNECTED_READY = auto()            # Fully connected and confirmed UI panel is ready. Safe to send messages.
-
-# --- Configuration and State (Internal Variables) ---
-# These variables manage the connection details and current state.
-# They are considered internal implementation details.
-
-# Default WebSocket URL. Can be changed via sidekick.set_url().
-_ws_url: str = "ws://localhost:5163"
-# Holds the active communication channel once connected.
-_channel: Optional[CommunicationChannel] = None
-# A reentrant lock to protect access to shared state variables (status, channel object, handlers, etc.)
-# from race conditions between threads. RLock allows the same thread to acquire the lock multiple times.
-_connection_lock = threading.RLock()
-# Maps component instance IDs (e.g., "my-custom-grid-id" or "grid-1") to their specific
-# message handler function (usually the _internal_message_handler method of the component instance).
-_message_handlers: Dict[str, Callable[[Dict[str, Any]], None]] = {}
-
-# A unique ID generated for this specific Python script ("Hero") instance run.
-_peer_id: Optional[str] = None
-# Tracks the current status using the ConnectionStatus enum. Crucial for state management.
-_connection_status: ConnectionStatus = ConnectionStatus.DISCONNECTED
-# Stores the peer IDs of Sidekick UI instances that have announced they are online via system/announce.
-_sidekick_peers_online: Set[str] = set()
-# An optional global handler (for debugging/advanced use) that receives *all* messages.
-_global_message_handler: Optional[Callable[[Dict[str, Any]], None]] = None
-
-# --- Threading Events for Synchronization ---
-# These events are used to coordinate actions between the main script thread,
-# the background listener thread, and shutdown procedures.
-_stop_event = threading.Event()      # Signals the listener thread that it should stop running cleanly.
-_ready_event = threading.Event()     # Set by the listener when the full connection (including UI ready) is established.
-                                     # activate_connection() waits on this.
-_shutdown_event = threading.Event()  # Set by shutdown() or Ctrl+C to signal run_forever() to exit its wait loop.
 
 # --- Constants ---
-# Timeouts and intervals used for connection and communication reliability.
-_INITIAL_CONNECT_TIMEOUT = 5.0 # Max seconds to wait for websocket.create_connection() to succeed.
-_SIDEKICK_WAIT_TIMEOUT = 2.0   # Max seconds activate_connection() waits for the _ready_event after server connect.
-_LISTENER_RECV_TIMEOUT = 1.0   # How long ws.recv() waits in the listener loop before timing out.
-                               # Allows the loop to check _stop_event periodically without blocking indefinitely.
-# WebSocket Ping settings (using websocket-client's built-in ping):
-_PING_INTERVAL = 20            # Send a WebSocket PING frame every 20 seconds if no other messages are sent.
-_PING_TIMEOUT = 10             # Wait a maximum of 10 seconds for a PONG reply after sending a PING.
-                               # Helps detect unresponsive/dead connections sooner than TCP timeouts.
+_SIDEKICK_UI_WAIT_TIMEOUT_SECONDS = 5.0  # Time to wait for Sidekick UI "online" announce.
+_CONNECT_CORE_TRANSPORT_TIMEOUT_SECONDS = 10.0 # Time to wait for core transport (e.g. WebSocket) to confirm connection.
+_DEFAULT_WEBSOCKET_URL = "ws://localhost:5163" # Default URL for the Sidekick server.
+_MAX_MESSAGE_QUEUE_SIZE = 1000 # Safety limit for the outgoing message queue.
+_ACTIVATION_WAIT_POLL_INTERVAL_CPYTHON = 0.1 # Polling interval for CPython's blocking activate_connection CV.
+_ACTIVATION_FULL_TIMEOUT_SECONDS_CPYTHON = 15.0 # Overall timeout for CPython's blocking activate_connection.
 
-# --- Private Helper Functions (Internal Use Only) ---
 
-def _generate_peer_id() -> str:
-    """Generates or returns the unique ID for this Python script instance ('Hero'). Internal use."""
-    global _peer_id
-    # Generate only once per script execution.
-    if _peer_id is None:
-        # Create a unique ID using UUIDv4 for randomness.
-        _peer_id = f"hero-{uuid.uuid4().hex}"
-        logger.info(f"Generated Hero Peer ID: {_peer_id}")
-    return _peer_id
+class _ServiceStatus(Enum):
+    """Internal states for the ConnectionService lifecycle.
 
-def _send_raw(channel: CommunicationChannel, message_dict: Dict[str, Any]):
-    """Safely sends a dictionary message through the communication channel. Internal use.
-
-    Args:
-        channel: The active communication channel.
-        message_dict: The Python dictionary payload to send.
-
-    Raises:
-        SidekickDisconnectedError: If sending fails due to connection issues.
-        Exception: For other unexpected errors.
+    These states track the detailed progress of connection activation and
+    the overall operational status of the service.
     """
-    try:
-        logger.debug(f"Sending raw: {message_dict}")
-        # Send the message via the communication channel.
-        channel.send_message(message_dict)
-    except SidekickDisconnectedError as e:
-        # These errors indicate the connection is no longer viable.
-        logger.error(f"Channel send error: {e}. Connection likely lost.")
-        # Re-raise the error to signal disconnection to the caller.
-        raise
-    except Exception as e:
-        # Catch other potential errors.
-        logger.exception(f"Unexpected error sending message: {e}")
-        # Treat unexpected send errors as a disconnection as well.
-        raise SidekickDisconnectedError(f"Unexpected send error: {e}")
+    IDLE = auto()                           # Initial state, or after clean shutdown. Not yet activated.
+    ACTIVATING_SCHEDULED = auto()           # _async_activate_and_run_message_queue submitted to TaskManager.
+    CORE_CONNECTING = auto()                # CommunicationManager is attempting to connect its transport.
+    CORE_CONNECTED = auto()                 # Core transport (e.g., WebSocket) is connected.
+    WAITING_SIDEKICK_ANNOUNCE = auto()      # Hero 'online' announce sent, waiting for Sidekick UI 'online'.
+    ACTIVE = auto()                         # Fully active: Sidekick UI 'online' received, global/clearAll sent, message queue processed.
+    FAILED = auto()                         # Activation failed, or an unrecoverable error occurred.
+    SHUTTING_DOWN = auto()                  # Shutdown initiated by user or error.
+    SHUTDOWN_COMPLETE = auto()              # Shutdown finished, resources released.
 
-def _send_system_announce(status: str):
-    """Sends a 'system/announce' message to the server. Internal use.
 
-    Used to inform the server and other peers (like the UI) about this script's
-    online/offline status, role ('hero'), and version, following the protocol spec.
-
-    Args:
-        status (str): Either "online" or "offline".
+class ConnectionService:
     """
-    # Acquire lock for safe access to shared channel object.
-    with _connection_lock:
-        channel = _channel # Get the current channel object reference.
-        peer_id = _generate_peer_id() # Ensure we have our unique ID.
+    Orchestrates Sidekick communication and manages the service lifecycle.
+    This class is intended to be a singleton, accessed via `get_instance()`.
+    It handles the complexities of asynchronous communication and state
+    management, providing a simpler interface for other parts of the library.
+    """
 
-        # Only proceed if we have a seemingly valid, connected channel.
-        if channel and channel.is_connected() and peer_id:
-            # Construct the payload according to the protocol specification.
-            announce_payload = {
-                "peerId": peer_id,          # Our unique identifier.
-                "role": "hero",             # Identify as the Python script.
-                "status": status,           # 'online' or 'offline'.
-                "version": __version__,     # Report the library version.
-                "timestamp": int(time.time() * 1000) # Current Unix time in milliseconds.
-            }
-            # Construct the full message structure.
-            message = {
-                "id": 0, # Reserved, usually 0.
-                "component": "system",
-                "type": "announce",
-                "payload": announce_payload
-            }
+    _instance: Optional['ConnectionService'] = None
+    _instance_lock = threading.Lock() # Lock for singleton instance creation
+
+    def __init__(self):
+        """
+        Initializes the ConnectionService. This constructor should only be
+        called internally by `get_instance()` to enforce singleton behavior.
+        """
+        if ConnectionService._instance is not None: # pragma: no cover
+            raise RuntimeError("ConnectionService is a singleton. Use get_instance().")
+
+        self._task_manager: TaskManager = get_task_manager()
+        self._communication_manager: Optional[CommunicationManager] = None # Lazily initialized
+
+        self._service_status: _ServiceStatus = _ServiceStatus.IDLE
+        # Reentrant lock for _service_status and related state variables that might be
+        # accessed/modified from different contexts (main thread, TM's async thread).
+        self._status_lock = threading.RLock()
+
+        self._async_activate_task: Optional[asyncio.Task] = None # Holds the main async activation task
+        # Condition variable for CPython's activate_connection() to block synchronously
+        # It uses _status_lock.
+        self._activation_cv = threading.Condition(self._status_lock)
+
+        self._hero_peer_id: str = f"hero-py-{uuid.uuid4().hex}" # Unique ID for this Python client
+        self._websocket_url: str = _DEFAULT_WEBSOCKET_URL # Can be changed by set_target_url
+
+        # Asyncio Events for internal coordination within the async activation flow.
+        # Initialized to None; created by _create_asyncio_events_if_needed() within TM's loop context.
+        self._core_transport_connected_event: Optional[asyncio.Event] = None
+        self._sidekick_ui_online_event: Optional[asyncio.Event] = None
+        self._clearall_sent_and_queue_processed_event: Optional[asyncio.Event] = None
+
+        self._message_queue: Deque[Dict[str, Any]] = deque(maxlen=_MAX_MESSAGE_QUEUE_SIZE)
+        self._component_message_handlers: Dict[str, Callable[[Dict[str, Any]], None]] = {}
+        self._user_global_message_handler: Optional[Callable[[Dict[str, Any]], None]] = None
+        self._sidekick_peers_info: Dict[str, Dict[str, Any]] = {} # Tracks connected Sidekick UI peers
+
+        logger.info(f"ConnectionService initialized (Hero Peer ID: {self._hero_peer_id})")
+
+    @staticmethod
+    def get_instance() -> 'ConnectionService':
+        """Gets the singleton instance of the ConnectionService."""
+        if ConnectionService._instance is None:
+            with ConnectionService._instance_lock:
+                if ConnectionService._instance is None:
+                    ConnectionService._instance = ConnectionService()
+        return ConnectionService._instance
+
+    def _get_loop(self) -> asyncio.AbstractEventLoop:
+        """Convenience method to get the event loop from the TaskManager."""
+        self._task_manager.ensure_loop_running() # Ensures TM and its loop are ready
+        return self._task_manager.get_loop()
+
+    def _create_asyncio_events_if_needed(self) -> None:
+        """Creates internal asyncio.Event instances. Must be called from TM's loop."""
+        if not self._task_manager.is_loop_running(): # pragma: no cover
+            logger.critical("_create_asyncio_events_if_needed called but TM loop not running. This is a critical error.")
+            # This indicates a severe logic flaw if reached.
+            self._task_manager.ensure_loop_running() # Attempt to recover, though it may be too late.
+
+        # asyncio.Event() uses the currently running loop when called from within that loop.
+        if self._core_transport_connected_event is None:
+            self._core_transport_connected_event = asyncio.Event()
+        if self._sidekick_ui_online_event is None:
+            self._sidekick_ui_online_event = asyncio.Event()
+        if self._clearall_sent_and_queue_processed_event is None:
+            self._clearall_sent_and_queue_processed_event = asyncio.Event()
+
+    def set_target_url(self, url: str) -> None:
+        """Sets the target WebSocket URL for the connection.
+        Must be called *before* the first connection attempt.
+        """
+        if not isinstance(url, str) or not (url.startswith("ws://") or url.startswith("wss://")):
+            raise ValueError(f"Invalid WebSocket URL: {url}. Must start with 'ws://' or 'wss://'.")
+        with self._status_lock:
+            if self._communication_manager is not None and self._websocket_url != url and \
+               self._service_status not in [_ServiceStatus.IDLE, _ServiceStatus.SHUTDOWN_COMPLETE, _ServiceStatus.FAILED]:
+                logger.warning( # pragma: no cover
+                    f"Sidekick URL changed to '{url}' after communication manager was "
+                    f"initialized with '{self._websocket_url}' and service is not idle/failed. "
+                    "Change will take effect on next full (re)activation after shutdown."
+                )
+            self._websocket_url = url
+            logger.info(f"Sidekick target URL set to: {self._websocket_url}")
+
+    def _get_or_create_communication_manager(self) -> CommunicationManager:
+        """Lazily creates and configures the CommunicationManager. Must be called with _status_lock held."""
+        # Allow re-creation if CM previously existed but died and service state allows re-init.
+        if self._communication_manager is None or \
+           (self._communication_manager.get_current_status() in [CoreConnectionStatus.DISCONNECTED, CoreConnectionStatus.ERROR] and
+            self._service_status in [_ServiceStatus.IDLE, _ServiceStatus.FAILED, _ServiceStatus.SHUTDOWN_COMPLETE]):
+            logger.debug("CommunicationManager instance creating/re-creating...")
+            ws_cfg = {} # Future: Populate from a global config system for ping intervals, etc.
             try:
-                # Use the safe sending helper.
-                _send_raw(channel, message)
-                logger.info(f"Sent system announce: {status}")
-            except SidekickDisconnectedError as e:
-                # It's possible sending announce fails (e.g., during shutdown if connection
-                # drops simultaneously). Log a warning but don't crash the process.
-                logger.warning(f"Could not send system announce '{status}' (connection likely closing): {e}")
-            except Exception as e:
-                 logger.warning(f"Unexpected error sending system announce '{status}': {e}")
-        elif status == "offline":
-             # If we're trying to send 'offline' but are already disconnected, that's expected.
-             logger.debug("Cannot send offline announce, connection already closed or closing.")
-        else:
-             # If trying to send 'online' but not connected, that's an issue.
-             logger.warning(f"Cannot send system announce '{status}', channel is not connected.")
+                self._communication_manager = get_communication_manager(
+                    ws_url=self._websocket_url, ws_config=ws_cfg
+                )
+                # Register internal handlers to bridge CM events to ConnectionService logic
+                self._communication_manager.register_message_handler(self._handle_core_message)
+                self._communication_manager.register_status_change_handler(self._handle_core_status_change)
+                self._communication_manager.register_error_handler(self._handle_core_error)
+                logger.info("CommunicationManager instance created/recreated and handlers registered.")
+            except Exception as e_cm_create: # pragma: no cover
+                logger.exception(f"Fatal: Failed to create CommunicationManager: {e_cm_create}")
+                self._service_status = _ServiceStatus.FAILED # Critical failure
+                raise SidekickConnectionError(f"Could not initialize communication manager: {e_cm_create}", original_exception=e_cm_create)
 
-def _handle_incoming_message(message_data: Dict[str, Any]):
-    """Handles incoming messages from the communication channel.
+        if self._communication_manager is None: # Should be unreachable if above logic is correct # pragma: no cover
+            raise RuntimeError("CommunicationManager is unexpectedly None after creation attempt.")
+        return self._communication_manager
 
-    This function processes messages received from the channel and dispatches them
-    to the appropriate handlers. It specifically handles system/announce messages
-    to track UI readiness.
-
-    Args:
-        message_data (Dict[str, Any]): The parsed message data.
-    """
-    global _connection_status, _message_handlers, _sidekick_peers_online, _global_message_handler
-
-    try:
-        # --- 1. Call Global Handler (if registered) ---
-        # Used for debugging/advanced scenarios.
-        if _global_message_handler:
+    def _activation_done_callback(self, fut: asyncio.Task) -> None:
+        """Callback executed when the _async_activate_and_run_message_queue task finishes or fails."""
+        with self._status_lock:
             try:
-                # Pass the raw parsed message dictionary.
-                _global_message_handler(message_data)
-            except Exception as e:
-                # Log errors in the global handler but don't crash the handler.
-                logger.exception(f"Error in global message handler: {e}")
+                fut.result() # Re-raises exception if the async_activate task failed
+                logger.info(f"Async activation task completed. Service status upon completion: {self._service_status.name}")
+            except asyncio.CancelledError:
+                logger.info("Async activation task was cancelled (likely during shutdown).")
+                if self._service_status not in [_ServiceStatus.SHUTTING_DOWN, _ServiceStatus.SHUTDOWN_COMPLETE]:
+                    self._service_status = _ServiceStatus.FAILED
+            except (SidekickTimeoutError, SidekickConnectionError, SidekickDisconnectedError) as e_sk_known:
+                logger.error(f"Async activation failed with known Sidekick error: {type(e_sk_known).__name__}: {e_sk_known}")
+                if self._service_status != _ServiceStatus.FAILED: self._service_status = _ServiceStatus.FAILED
+            except Exception as e_unexpected: # pragma: no cover
+                logger.exception(f"Async activation task failed with unexpected error: {e_unexpected}")
+                if self._service_status != _ServiceStatus.FAILED: self._service_status = _ServiceStatus.FAILED
+            finally:
+                if not is_pyodide(): # CPython's blocking activate_connection waits on this CV
+                    self._activation_cv.notify_all()
 
-        # --- 2. Message Dispatch Logic ---
-        component = message_data.get('component')
-        msg_type = message_data.get('type')
-        payload = message_data.get('payload')
-
-        # --- Handle System Announce (Sidekick UI Ready?) ---
-        if component == 'system' and msg_type == 'announce' and payload:
-            peer_id = payload.get('peerId')
-            role = payload.get('role')
-            status = payload.get('status')
-
-            # Only process announcements from 'sidekick' peers (the UI).
-            if peer_id and role == 'sidekick':
-                if status == 'online':
-                    # A Sidekick UI panel just connected or announced readiness.
-                    # Check if this is the *first* Sidekick UI we've seen.
-                    with _connection_lock:
-                        was_empty = not _sidekick_peers_online
-                        # Add it to our set of known online UIs.
-                        _sidekick_peers_online.add(peer_id)
-
-                    logger.info(f"Sidekick peer online: {peer_id}")
-
-                    # CRITICAL: If this is the first UI and we were waiting...
-                    if was_empty and _connection_status == ConnectionStatus.CONNECTED_WAITING_SIDEKICK:
-                        logger.info(f"First Sidekick UI '{peer_id}' announced online. Connection is now READY.")
-                        # Transition the state to fully ready.
-                        _connection_status = ConnectionStatus.CONNECTED_READY
-                        # Always send a 'clearAll' command now that the UI is ready.
-                        logger.info("Connection ready, sending global/clearAll to clear UI.")
-                        try:
-                            # Can call clear_all directly now, connection assumed ready.
-                            clear_all()
-                        except SidekickConnectionError as e_clr:
-                            # Log if the clear fails, but don't stop the handler.
-                            logger.error(f"Failed to send clearAll on connect: {e_clr}")
-                        # IMPORTANT: Signal the main thread (waiting in activate_connection)
-                        # by setting the _ready_event. This unblocks the script.
-                        _ready_event.set()
-
-                elif status == 'offline':
-                    # A Sidekick UI panel disconnected or went offline.
-                    with _connection_lock:
-                        if peer_id in _sidekick_peers_online:
-                            _sidekick_peers_online.discard(peer_id)
-                            logger.info(f"Sidekick peer offline: {peer_id}")
-                            # Note: The connection status remains CONNECTED_READY even if all UIs leave.
-                            # A disconnect error will only occur if the underlying connection
-                            # breaks or if a subsequent send/receive operation fails.
-
-        # --- Handle Component Event/Error (Dispatch to Specific Instance) ---
-        elif msg_type in ['event', 'error']:
-            # These messages originate *from* a specific component instance in the UI.
-            # The 'src' field in the message identifies which instance (its instance_id).
-            instance_id_from_ui = message_data.get('src')
-            # Check if we have a handler registered for this specific instance ID.
-            with _connection_lock:
-                handler = _message_handlers.get(instance_id_from_ui) if instance_id_from_ui else None
-
-            if handler:
-                try:
-                    logger.debug(f"Invoking handler for instance '{instance_id_from_ui}' (type: {msg_type}).")
-                    # Call the instance's registered handler (e.g., Grid._internal_message_handler).
-                    # This handler is responsible for creating a structured Event object if needed.
-                    handler(message_data)
-                except Exception as e:
-                    # Catch errors within the user's callback or the internal handler logic.
-                    # Log the error but continue processing.
-                    logger.exception(f"Error executing handler for instance '{instance_id_from_ui}': {e}")
-            elif instance_id_from_ui:
-                # Received a message for an instance we don't know (e.g., removed).
-                logger.debug(f"No handler registered for instance '{instance_id_from_ui}' for message type '{msg_type}'. Ignoring.")
-            else:
-                # Malformed message missing the 'src' identifier.
-                logger.warning(f"Received '{msg_type}' message without required 'src' field: {message_data}")
-        else:
-            # Received a message type the handler doesn't handle directly (e.g., 'spawn' from UI).
-            logger.debug(f"Received unhandled message type: component='{component}', type='{msg_type}'")
-
-    except Exception as e:
-        # Catch any other unexpected error during message handling.
-        logger.exception(f"Unexpected error handling message: {e}")
-        # We don't want to crash the handler, so just log the error and continue.
-
-
-def _ensure_connection():
-    """Establishes the initial connection using the appropriate channel. Internal use.
-
-    Called only by `activate_connection` when the status is `DISCONNECTED`.
-    It creates the appropriate communication channel based on the environment
-    and connects to the Sidekick server.
-
-    Note:
-        This function assumes the caller (`activate_connection`) holds the `_connection_lock`.
-
-    Raises:
-        SidekickConnectionRefusedError: If the initial connection fails.
-    """
-    global _channel, _connection_status
-
-    # Safety check: Should only be called when DISCONNECTED.
-    if _connection_status != ConnectionStatus.DISCONNECTED:
-        # This indicates a potential logic error elsewhere.
-        logger.warning(f"_ensure_connection called unexpectedly while status is {_connection_status.name}")
-        return
-
-    logger.info(f"Attempting to connect to Sidekick server...")
-    # --- Prepare for New Connection Attempt ---
-    _connection_status = ConnectionStatus.CONNECTING # Update state
-    _sidekick_peers_online.clear() # Reset known UI peers for this new connection.
-    # Reset threading events to their initial (cleared) state.
-    _stop_event.clear()
-    _ready_event.clear()
-    _shutdown_event.clear()
-
-    # --- Create and Connect Channel ---
-    try:
-        # Create the appropriate communication channel based on the environment
-        _channel = create_communication_channel(_ws_url)
-
-        # Register a message handler for the channel
-        _channel.register_message_handler(_handle_incoming_message)
-
-        # Connect the channel
-        _channel.connect()
-        logger.info("Successfully connected to Sidekick server.")
-
-        # --- Connection Succeeded ---
-        # Immediately send our 'online' announcement to identify ourselves.
-        _send_system_announce("online")
-        # Update status: Connected, but waiting for UI panel confirmation.
-        _connection_status = ConnectionStatus.CONNECTED_WAITING_SIDEKICK
-
-    # --- Handle Connection Errors ---
-    except SidekickConnectionRefusedError as e:
-        # Catch specific errors indicating failure to connect.
-        logger.error(f"Failed to connect to Sidekick server: {e}")
-        # Clean up state: Mark as disconnected, clear channel object.
-        _channel = None
-        _connection_status = ConnectionStatus.DISCONNECTED
-        # Raise the error for activate_connection to catch and report to the user.
-        raise
-    except Exception as e:
-        # Catch any other unexpected errors during the connection process.
-        logger.exception(f"Unexpected error during Sidekick connection setup: {e}")
-        # Perform similar cleanup.
-        _channel = None
-        _connection_status = ConnectionStatus.DISCONNECTED
-        # Wrap the unexpected error in our specific connection error type.
-        raise SidekickConnectionRefusedError(_ws_url, e)
-
-
-# --- Public API Functions ---
-
-def set_url(url: str):
-    """Sets the URL where the Sidekick server is expected to be listening.
-
-    You **must** call this function *before* creating any Sidekick components
-    (like `sidekick.Grid()`) or calling any other Sidekick function that might
-    trigger a connection attempt (like `sidekick.clear_all()`). The library uses
-    the URL set here when it makes its first connection attempt.
-
-    Calling this after a connection attempt has already started (even if it failed)
-    will log a warning and have no effect, unless you explicitly call
-    `sidekick.shutdown()` first to completely reset the connection state.
-
-    Args:
-        url (str): The full WebSocket URL, which must start with "ws://" or "wss://".
-            The default value is "ws://localhost:5163".
-
-    Raises:
-        ValueError: If the provided URL does not start with "ws://" or "wss://".
-
-    Example:
-        >>> import sidekick
-        >>> # If the Sidekick server is running on a different machine or port
-        >>> try:
-        ...     sidekick.set_url("ws://192.168.1.100:5163")
-        ... except ValueError as e:
-        ...     print(e)
-        >>>
-        >>> # Now it's safe to create Sidekick components
-        >>> console = sidekick.Console()
-    """
-    global _ws_url
-    # Acquire lock for safe state checking and modification.
-    with _connection_lock:
-        # Only allow changing the URL if we are fully disconnected.
-        if _connection_status != ConnectionStatus.DISCONNECTED:
-            logger.warning("Cannot change Sidekick URL after a connection attempt "
-                           "has been made. Call sidekick.shutdown() first if you need to change the URL.")
-            return
-        # Basic validation for the URL format.
-        if not isinstance(url, str) or not url.startswith(("ws://", "wss://")):
-             msg = (f"Invalid WebSocket URL provided: '{url}'. It must be a string "
-                    f"starting with 'ws://' or 'wss://'. Keeping previous URL ('{_ws_url}').")
-             logger.error(msg)
-             raise ValueError(msg) # Raise error for invalid URL format
-        _ws_url = url
-        logger.info(f"Sidekick WebSocket URL set to: {_ws_url}")
-
-def activate_connection():
-    """Ensures the connection to Sidekick is established and fully ready. (Internal use).
-
-    This function is the gateway for all communication. It's called implicitly by
-    `send_message` (which is used by all component methods like `grid.set_color`) and
-    at the start of `run_forever`. You generally don't need to call it directly.
-
-    It performs the crucial steps of:
-
-    1. Checking the current connection status.
-    2. If disconnected, initiating the connection attempt (`_ensure_connection`).
-    3. **Blocking** execution if the connection is established but the UI panel hasn't
-       signaled readiness yet (waiting on `_ready_event`).
-    4. Returning only when the status is `CONNECTED_READY`.
-
-    Raises:
-        SidekickConnectionRefusedError: If the initial connection attempt fails.
-        SidekickTimeoutError: If the connection to the server succeeds, but the Sidekick
-                              UI panel doesn't signal readiness within the timeout period.
-        SidekickDisconnectedError: If the connection state becomes invalid or disconnected
-                                   during the activation process.
-    """
-    # Acquire lock to safely check status and potentially initiate connection.
-    with _connection_lock:
-        current_status = _connection_status
-        logger.debug(f"activate_connection called. Current status: {current_status.name}")
-
-        # If already fully ready, nothing more to do.
-        if current_status == ConnectionStatus.CONNECTED_READY:
-            logger.debug("Connection already READY.")
-            return
-
-        # If disconnected, need to start the connection process.
-        if current_status == ConnectionStatus.DISCONNECTED:
+    def _re_raise_activation_failure_if_any(self) -> None:
+        """Helper for CPython's blocking activate_connection.
+        If the async activation task failed, this re-raises its exception.
+        Assumes _status_lock may be held or this is called after task is done.
+        """
+        if self._async_activate_task and self._async_activate_task.done():
             try:
-                # _ensure_connection attempts connection, starts listener, sends announce.
-                # Raises SidekickConnectionRefusedError on immediate failure.
-                _ensure_connection()
-                # If successful, status becomes CONNECTED_WAITING_SIDEKICK.
-                # We now need to wait for the UI's signal outside the lock.
-                logger.debug("Initial connection attempt successful, proceed to wait for UI readiness.")
-            except SidekickConnectionError as e:
-                # If _ensure_connection failed, log and re-raise the specific error.
-                logger.error(f"Initial connection failed during activate_connection: {e}")
-                raise e
+                self._async_activate_task.result() # Re-raises stored exception
+            except asyncio.CancelledError: # pragma: no cover
+                raise SidekickConnectionError("Activation was cancelled (likely due to shutdown).") from None
+            except (SidekickTimeoutError, SidekickConnectionRefusedError, SidekickDisconnectedError, SidekickConnectionError) as e_known:
+                # Re-raise specific Sidekick errors directly
+                raise e_known
+            except Exception as e_unknown: # pragma: no cover
+                # Wrap other unexpected errors from the activation task
+                raise SidekickConnectionError(f"Activation failed due to an unexpected error: {e_unknown}", original_exception=e_unknown) from e_unknown
 
-        # If status is CONNECTING or CONNECTED_WAITING_SIDEKICK, fall through to the wait phase.
+    def activate_connection(self) -> None:
+        """Ensures the Sidekick service is connected and ready.
+        In CPython, this method blocks until activation is complete or fails.
+        In Pyodide, it initiates asynchronous activation and returns immediately.
+        """
+        with self._status_lock: # Main lock for coordinating activation attempts
+            current_s_status = self._service_status
+            logger.debug(f"activate_connection called. Current service status: {current_s_status.name}")
 
-    # --- Wait for READY state (Outside the main lock) ---
-    # Release the lock *before* waiting on the event. This is essential to allow
-    # the listener thread (which needs the lock to update the status and set the event)
-    # to make progress.
-    logger.debug(f"Waiting up to {_SIDEKICK_WAIT_TIMEOUT}s for Sidekick UI readiness signal (_ready_event)...")
+            if current_s_status == _ServiceStatus.ACTIVE:
+                logger.debug("Service already active. Activation not needed.")
+                return
 
-    # Block the current (main) thread until the listener thread calls _ready_event.set()
-    # OR the timeout (_SIDEKICK_WAIT_TIMEOUT) expires.
-    ready_signal_received = _ready_event.wait(timeout=_SIDEKICK_WAIT_TIMEOUT)
+            is_activation_task_currently_running = self._async_activate_task and not self._async_activate_task.done()
 
-    # --- Check Status *After* Waiting (Re-acquire lock) ---
-    # Re-acquire the lock to safely check the final connection status after the wait.
-    with _connection_lock:
-        # Case 1: Success! The event was set, and the status confirms we are ready.
-        if ready_signal_received and _connection_status == ConnectionStatus.CONNECTED_READY:
-            logger.debug("Sidekick connection is now confirmed READY.")
-            return # Connection activated successfully.
+            if is_activation_task_currently_running:
+                logger.debug("Activation is already in progress.")
+                if not is_pyodide(): # CPython needs to block and wait for the *current* activation
+                    logger.debug("CPython: activate_connection blocking for ongoing async activation...")
+                    # Wait until the current activation task (monitored by _activation_done_callback)
+                    # changes the status from intermediate states or completes.
+                    start_wait_time = self._get_loop().time() # time.monotonic() better if loop is certain
+                    while self._service_status not in [_ServiceStatus.ACTIVE, _ServiceStatus.FAILED, _ServiceStatus.SHUTDOWN_COMPLETE]:
+                        if not self._activation_cv.wait(timeout=_ACTIVATION_WAIT_POLL_INTERVAL_CPYTHON):
+                            # CV timed out, check overall timeout
+                            if (self._get_loop().time() - start_wait_time) > _ACTIVATION_FULL_TIMEOUT_SECONDS_CPYTHON: # pragma: no cover
+                                logger.error(f"activate_connection: CPython timed out after {_ACTIVATION_FULL_TIMEOUT_SECONDS_CPYTHON}s waiting for ongoing activation.")
+                                self._service_status = _ServiceStatus.FAILED # Force failed state
+                                if self._async_activate_task and not self._async_activate_task.done():
+                                    self._async_activate_task.cancel() # Attempt to cancel stuck task
+                                raise SidekickTimeoutError(f"Timeout waiting for Sidekick service activation ({_ACTIVATION_FULL_TIMEOUT_SECONDS_CPYTHON}s).")
+                        # Check if task finished while we were polling (CV might be missed in rare races)
+                        if self._async_activate_task and self._async_activate_task.done(): break
 
-        # Case 2: Timeout! The event was *not* set within the time limit.
-        elif not ready_signal_received:
-            timeout_reason = f"Timed out waiting for Sidekick UI readiness signal after {_SIDEKICK_WAIT_TIMEOUT}s"
-            logger.error(timeout_reason)
-            # Since the UI never responded, clean up the partially established connection.
-            # Trigger cleanup in a separate thread to avoid potential deadlocks.
-            threading.Thread(target=close_connection, args=(False, True, timeout_reason), daemon=True).start()
-            # Raise the specific timeout error for the user.
-            raise SidekickTimeoutError(_SIDEKICK_WAIT_TIMEOUT)
+                    # After waiting, if activation failed, re-raise the error
+                    if self._service_status == _ServiceStatus.FAILED:
+                        self._re_raise_activation_failure_if_any()
+                return # Pyodide returns (already running async), CPython returns after waiting for current activation
 
-        # Case 3: Inconsistency. The event *was* set, but the status is *not* READY.
-        # This is rare but could happen if the connection dropped immediately after the
-        # listener set the event but before this thread could re-acquire the lock and check.
-        else:
-            # ready_signal_received is True, but _connection_status is not CONNECTED_READY
-            disconnect_reason = f"Connection state inconsistent after wait: Ready event was set, but status is now {_connection_status.name}"
-            logger.error(f"Connection activation failed: {disconnect_reason}")
-            # If not already disconnected, trigger cleanup.
-            if _connection_status != ConnectionStatus.DISCONNECTED:
-                 threading.Thread(target=close_connection, args=(False, True, disconnect_reason), daemon=True).start()
-            # Raise a generic disconnected error.
-            raise SidekickDisconnectedError(disconnect_reason)
+            # If idle, shutdown_complete, or failed, we can attempt a new activation
+            if current_s_status in [_ServiceStatus.IDLE, _ServiceStatus.SHUTDOWN_COMPLETE, _ServiceStatus.FAILED]:
+                logger.info(f"Initiating Sidekick connection service activation (from status: {current_s_status.name})...")
+                self._service_status = _ServiceStatus.ACTIVATING_SCHEDULED
 
-def send_message(message_dict: Dict[str, Any]):
-    """Sends a command message (as a dictionary) to the Sidekick UI. (Internal use).
+                # Ensure any previous (e.g., failed) task is cleared before creating new one
+                if self._async_activate_task and not self._async_activate_task.done():
+                    self._async_activate_task.cancel() # pragma: no cover
+                self._async_activate_task = None # Clear ref to old task
 
-    This is the core function used by all Sidekick components (`Grid`, `Console`, etc.)
-    to send their specific commands (like 'setColor', 'append', 'add') to the UI panel.
-    You typically don't call this directly.
+                # Reset internal asyncio.Events for the new activation sequence
+                self._sidekick_ui_online_event = None
+                self._clearall_sent_and_queue_processed_event = None
+                self._core_transport_connected_event = None
 
-    It ensures the connection is ready via `activate_connection()` before attempting
-    to send the message through the communication channel.
+                self._task_manager.ensure_loop_running() # Crucial for CPython before submitting task
+                self._async_activate_task = self._task_manager.submit_task(
+                    self._async_activate_and_run_message_queue()
+                )
+                self._async_activate_task.add_done_callback(self._activation_done_callback)
 
-    Args:
-        message_dict (Dict[str, Any]): A Python dictionary representing the message.
-            It must conform to the Sidekick communication protocol structure, including
-            `component`, `type`, `target`/`src`, and a `payload`. The `target` field
-            should contain the component's `instance_id`.
+                if not is_pyodide(): # CPython blocks for this new activation
+                    logger.debug("CPython: activate_connection blocking for new async activation...")
+                    start_wait_time = self._get_loop().time()
+                    while self._service_status not in [_ServiceStatus.ACTIVE, _ServiceStatus.FAILED, _ServiceStatus.SHUTDOWN_COMPLETE]:
+                        if not self._activation_cv.wait(timeout=_ACTIVATION_WAIT_POLL_INTERVAL_CPYTHON):
+                             if (self._get_loop().time() - start_wait_time) > _ACTIVATION_FULL_TIMEOUT_SECONDS_CPYTHON: # pragma: no cover
+                                logger.error(f"activate_connection: CPython timed out after {_ACTIVATION_FULL_TIMEOUT_SECONDS_CPYTHON}s waiting for new activation.")
+                                self._service_status = _ServiceStatus.FAILED
+                                if self._async_activate_task and not self._async_activate_task.done():
+                                    self._async_activate_task.cancel()
+                                raise SidekickTimeoutError(f"Timeout waiting for Sidekick service activation ({_ACTIVATION_FULL_TIMEOUT_SECONDS_CPYTHON}s).")
+                        if self._async_activate_task and self._async_activate_task.done(): break
 
-    Raises:
-        SidekickConnectionRefusedError: If the connection isn't ready and fails during activation.
-        SidekickTimeoutError: If waiting for the UI times out during activation.
-        SidekickDisconnectedError: If the connection is lost *before* or *during* the send attempt.
-        TypeError: If `message_dict` is not a dictionary.
-        Exception: For other unexpected errors.
-    """
-    if not isinstance(message_dict, dict):
-        raise TypeError("message_dict must be a dictionary")
+                    if self._service_status == _ServiceStatus.FAILED:
+                        self._re_raise_activation_failure_if_any()
+                return
 
-    # 1. Ensure connection is fully ready. This blocks or raises errors if necessary.
-    activate_connection() # Raises SidekickConnectionError subclasses on failure.
+            # If in other intermediate states (e.g., CORE_CONNECTING but no task running), log warning.
+            # This implies an inconsistent state.
+            logger.warning(f"activate_connection called in unexpected intermediate state {current_s_status.name} without a running activation task. Not initiating new activation.") # pragma: no cover
 
-    # 2. Acquire lock for safe access to the channel object for sending.
-    with _connection_lock:
-        channel = _channel
-        # Double-check status *after* acquiring the lock, as a safety measure against
-        # rare race conditions where the connection might drop between activate_connection returning
-        # and this lock being acquired.
-        if _connection_status != ConnectionStatus.CONNECTED_READY or not channel or not channel.is_connected():
-            disconnect_reason = f"Connection became invalid ({_connection_status.name}) immediately before sending"
-            logger.error(disconnect_reason)
-            # If not already disconnected, trigger cleanup.
-            if _connection_status != ConnectionStatus.DISCONNECTED:
-                 threading.Thread(target=close_connection, args=(False, True, disconnect_reason), daemon=True).start()
-            raise SidekickDisconnectedError(disconnect_reason)
-
-        # 3. Attempt the send using the internal raw helper.
+    async def _async_activate_and_run_message_queue(self) -> None:
+        """Core asynchronous activation logic: connect, announce, clear, process queue."""
+        comm_manager: Optional[CommunicationManager] = None
         try:
-            # _send_raw handles sending and raises SidekickDisconnectedError on channel errors.
-            _send_raw(channel, message_dict)
-        except SidekickDisconnectedError as e:
-             # If _send_raw indicated a disconnection, log it and initiate cleanup.
-             logger.error(f"Send message failed due to disconnection: {e}")
-             # Trigger cleanup if not already disconnected.
-             if _connection_status != ConnectionStatus.DISCONNECTED:
-                  # Use a thread for cleanup to avoid potential deadlocks.
-                  threading.Thread(target=close_connection, args=(False, True, f"Send failed: {e}"), daemon=True).start()
-             # Re-raise the error to inform the caller (e.g., the Grid method).
-             raise
-        except Exception as e:
-             # Catch other unexpected errors during send.
-             disconnect_reason = f"Unexpected error during send: {e}"
-             logger.exception(disconnect_reason)
-             # Assume connection is compromised, trigger cleanup.
-             if _connection_status != ConnectionStatus.DISCONNECTED:
-                  threading.Thread(target=close_connection, args=(False, True, disconnect_reason), daemon=True).start()
-             # Wrap the error.
-             raise SidekickDisconnectedError(disconnect_reason)
+            with self._status_lock:
+                if self._service_status not in [
+                    _ServiceStatus.ACTIVATING_SCHEDULED, _ServiceStatus.FAILED,
+                    _ServiceStatus.IDLE, _ServiceStatus.SHUTDOWN_COMPLETE
+                ]: # pragma: no cover
+                    logger.warning(f"_async_activate_and_run_message_queue called in unexpected state: {self._service_status.name}. Aborting.")
+                    # Set FAILED to ensure any CPython waiter is unblocked with failure.
+                    if self._service_status != _ServiceStatus.FAILED: self._service_status = _ServiceStatus.FAILED
+                    return
 
-def clear_all():
-    """Sends a command to remove *all* visual elements from the Sidekick panel.
+                self._create_asyncio_events_if_needed() # Creates events on the current (TM's) loop
+                self._core_transport_connected_event.clear() # type: ignore[union-attr]
+                self._sidekick_ui_online_event.clear() # type: ignore[union-attr]
+                self._clearall_sent_and_queue_processed_event.clear() # type: ignore[union-attr]
+                self._sidekick_peers_info.clear()
 
-    This effectively resets the Sidekick UI, removing any Grids, Consoles, Viz panels,
-    Canvases, or Controls that were created by *this* running Python script instance.
+            logger.debug("_async_activate: Getting/Creating CommunicationManager.")
+            comm_manager = self._get_or_create_communication_manager()
 
-    Raises:
-        SidekickConnectionError (or subclass): If the connection is not ready or
-                                              if sending the command fails.
-    """
-    logger.info("Requesting global clearAll of Sidekick UI elements.")
-    # Construct the specific 'global/clearAll' message according to the protocol.
-    message = {
-        "id": 0,
-        "component": "global", # Target the global scope, not a specific component instance.
-        "type": "clearAll"
-    }
-    # Use the public send_message function, which handles readiness checks and errors.
-    send_message(message)
+            with self._status_lock: self._service_status = _ServiceStatus.CORE_CONNECTING
+            logger.debug("_async_activate: Initiating core transport connect via CM's connect_async().")
 
-def close_connection(log_info=True, is_exception=False, reason=""):
-    """Closes the communication channel and cleans up resources. (Internal use).
+            # Submit CM's connect_async as a task. We don't await this task directly here.
+            # Instead, we await self._core_transport_connected_event which is set by the status handler.
+            # This decouples waiting for connection from the direct await of connect_async,
+            # allowing status updates to occur more naturally if connect_async itself is complex.
+            connect_cm_task = self._task_manager.submit_task(comm_manager.connect_async())
 
-    This is the core cleanup function. It closes the communication channel,
-    sends a final 'offline' message (best-effort), and resets internal
-    state variables. The UI is not cleared on close/shutdown.
-
-    It's called automatically by `shutdown()` and the `atexit` handler for clean
-    exits, and also triggered internally by error handlers in `send_message`
-    if an unrecoverable error (`is_exception=True`) is detected.
-
-    **Users should typically call `sidekick.shutdown()` instead of this directly.**
-
-    Args:
-        log_info (bool): If True, logs status messages during the closure process.
-        is_exception (bool): If True, indicates this closure was triggered by an
-                             error condition (e.g., channel error, send failure).
-                             This may influence whether a final `SidekickDisconnectedError`
-                             is raised after cleanup, depending on whether a clean
-                             `shutdown()` was also requested concurrently.
-        reason (str): Optional description of why the connection is closing, used
-                      for logging and potentially included in error messages.
-    """
-    global _channel, _connection_status, _message_handlers, _sidekick_peers_online
-
-    disconnect_exception_to_raise: Optional[SidekickDisconnectedError] = None # Prepare potential exception
-
-    # Acquire lock for safe modification of shared state during cleanup.
-    with _connection_lock:
-        # Prevent redundant close operations if already disconnected.
-        if _connection_status == ConnectionStatus.DISCONNECTED:
-            if log_info: logger.debug("Connection already closed or closing.")
-            return
-
-        if log_info: logger.info(f"Closing Sidekick connection... (Exception: {is_exception}, Reason: '{reason}')")
-        initial_status = _connection_status # Remember status before changing it for logic below.
-
-        # --- 1. Signal to Stop ---
-        _stop_event.set() # Signal any waiting threads to stop.
-        _ready_event.clear() # Connection is no longer ready.
-
-        # --- 2. Update Internal State Immediately ---
-        _connection_status = ConnectionStatus.DISCONNECTED
-        _sidekick_peers_online.clear() # Stop tracking UI peers.
-
-        # --- 3. Best-Effort Cleanup Messages ---
-        # Attempt to send final 'offline' announce message if this is a clean shutdown
-        # and we were actually connected. This is best-effort. The UI is not cleared.
-        channel_temp = _channel # Get reference under lock
-        if not is_exception and channel_temp and channel_temp.is_connected() and initial_status != ConnectionStatus.CONNECTING:
-             # Send offline announce.
-             logger.debug("Attempting to send offline system announce (best-effort).")
-             try: _send_system_announce("offline")
-             # Ignore failures here as well.
-             except Exception: logger.warning("Failed to send offline announce during disconnect (ignored).")
-
-        # --- 4. Close the Channel ---
-        if channel_temp:
+            logger.debug(f"_async_activate: Waiting up to {_CONNECT_CORE_TRANSPORT_TIMEOUT_SECONDS}s for core transport to be confirmed connected via event...")
             try:
-                channel_temp.close()
-            except Exception as e:
-                 # Log errors during close but continue cleanup.
-                 logger.warning(f"Error occurred during channel close(): {e}")
-        # Clear the global reference to the channel object.
-        _channel = None
+                await asyncio.wait_for(self._core_transport_connected_event.wait(), timeout=_CONNECT_CORE_TRANSPORT_TIMEOUT_SECONDS) # type: ignore[union-attr]
+                logger.info("Core transport connection confirmed via _core_transport_connected_event.")
+                # Check if the connect_cm_task itself had an error, even if event was set (unlikely but defensive)
+                if connect_cm_task.done() and connect_cm_task.exception(): # pragma: no cover
+                    raise connect_cm_task.exception() # Propagate error from connect_cm_task
+            except asyncio.TimeoutError:
+                with self._status_lock:
+                    cm_stat = comm_manager.get_current_status() if comm_manager else "N/A"
+                    serv_stat = self._service_status
+                err_msg = (f"Timeout waiting for core transport connection confirmation event "
+                           f"(Service Status: {serv_stat.name}, CM Status: {cm_stat}). "
+                           f"The underlying connect_async may have also failed or timed out.")
+                logger.error(err_msg)
+                if not connect_cm_task.done(): connect_cm_task.cancel() # Cancel the CM connect task
+                raise SidekickConnectionError(err_msg) from None # Use a more general Sidekick error for this phase
 
-        # --- 5. Prepare Exception (if closure was due to an error) ---
-        # If this close was triggered by an error (is_exception=True), create the
-        # exception object now. We will raise it *after* releasing the lock,
-        # but only if a clean shutdown wasn't also requested.
-        if is_exception:
-            disconnect_exception_to_raise = SidekickDisconnectedError(reason or "Connection closed due to an error")
+            with self._status_lock: # Re-check service status after waiting for event
+                if self._service_status != _ServiceStatus.CORE_CONNECTED:
+                     if self._service_status != _ServiceStatus.FAILED: # Avoid redundant logging if already FAILED
+                         # This indicates event was set, but status is not CORE_CONNECTED (e.g., FAILED by callback)
+                         logger.error(f"Core transport event set, but service status is '{self._service_status.name}'. Expected CORE_CONNECTED.") # pragma: no cover
+                     # If FAILED, the exception would have been (or will be) propagated by connect_cm_task.
+                     # The done_callback of this _async_activate_task will handle the overall failure.
+                     return # Exit activation early
 
-    # --- 6. Clear Instance Message Handlers ---
-    # Do this outside the main lock.
-    if _message_handlers:
-        logger.debug(f"Clearing {len(_message_handlers)} instance message handlers.")
-        _message_handlers.clear()
+            # --- Hero Announce ---
+            hero_announce = {
+                "id": 0, "component": "system", "type": "announce",
+                "payload": {
+                    "peerId": self._hero_peer_id, "role": "hero", "status": "online",
+                    "version": _version.__version__, "timestamp": int(self._get_loop().time() * 1000)
+                }
+            }
+            logger.info(f"Sending Hero 'online' announce.")
+            await comm_manager.send_message_async(json.dumps(hero_announce))
 
-    if log_info: logger.info("Sidekick connection closed and resources cleaned up.")
+            # --- Wait for Sidekick UI Announce ---
+            with self._status_lock: self._service_status = _ServiceStatus.WAITING_SIDEKICK_ANNOUNCE
+            logger.info(f"Waiting up to {_SIDEKICK_UI_WAIT_TIMEOUT_SECONDS}s for Sidekick UI 'online' announce...")
+            try:
+                await asyncio.wait_for(self._sidekick_ui_online_event.wait(), timeout=_SIDEKICK_UI_WAIT_TIMEOUT_SECONDS) # type: ignore[union-attr]
+                logger.info("Sidekick UI 'online' announce received.")
+            except asyncio.TimeoutError:
+                err_msg = f"Timeout waiting for Sidekick UI 'online' announce after {_SIDEKICK_UI_WAIT_TIMEOUT_SECONDS}s."
+                logger.error(err_msg)
+                raise SidekickTimeoutError(err_msg, timeout_seconds=_SIDEKICK_UI_WAIT_TIMEOUT_SECONDS) from None
 
-    # --- 7. Raise Exception (if applicable) ---
-    # If this cleanup was triggered by an error (`is_exception` was True),
-    # check if a clean shutdown was *also* requested concurrently (e.g., via Ctrl+C
-    # setting _shutdown_event). If NOT requested, raise the disconnect error now
-    # to signal the problem to the main thread.
-    if disconnect_exception_to_raise:
-        if not _shutdown_event.is_set():
-            logger.error(f"Raising disconnect exception after cleanup: {disconnect_exception_to_raise}")
-            raise disconnect_exception_to_raise
+            # --- Send global/clearAll ---
+            clearall_msg = {"id": 0, "component": "global", "type": "clearAll"}
+            logger.info(f"Sending 'global/clearAll'.")
+            await comm_manager.send_message_async(json.dumps(clearall_msg))
+
+            # --- Process Message Queue and Set Active ---
+            logger.debug("Processing message queue (if any) before setting fully active...")
+            temp_queue_for_processing: Deque[Dict[str, Any]] = deque()
+            with self._status_lock: # Safely copy and clear queue
+                temp_queue_for_processing.extend(self._message_queue)
+                self._message_queue.clear()
+
+            if temp_queue_for_processing:
+                logger.info(f"Processing {len(temp_queue_for_processing)} queued messages.")
+                for i, msg_dict in enumerate(list(temp_queue_for_processing)): # Iterate copy for safety
+                    logger.debug(f"Sending queued message ({i+1}/{len(temp_queue_for_processing)}): type='{msg_dict.get('type', 'N/A')}'")
+                    try:
+                        await comm_manager.send_message_async(json.dumps(msg_dict))
+                    except CoreDisconnectedError as e_send_q: # pragma: no cover
+                        logger.error(f"Failed to send queued message due to disconnection: {e_send_q}. Re-queuing remaining and failing activation.")
+                        with self._status_lock: # Re-queue this and subsequent messages
+                            self._message_queue.appendleft(msg_dict) # Put current back
+                            # Re-queue the rest of temp_queue_for_processing that haven't been attempted
+                            remaining_to_requeue = list(temp_queue_for_processing)[i+1:]
+                            for item_to_requeue in reversed(remaining_to_requeue):
+                                self._message_queue.appendleft(item_to_requeue)
+                        raise # Propagate to main try-except of this function, will set FAILED
+
+            with self._status_lock: self._service_status = _ServiceStatus.ACTIVE
+            self._clearall_sent_and_queue_processed_event.set() # type: ignore[union-attr]
+            logger.info("ConnectionService is now ACTIVE. Activation sequence complete.")
+
+        except (CoreConnectionRefusedError, CoreConnectionTimeoutError, CoreDisconnectedError, CoreConnectionError) as e_core:
+            logger.error(f"Core communication error during activation: {type(e_core).__name__}: {e_core}")
+            with self._status_lock:
+                if self._service_status != _ServiceStatus.FAILED: self._service_status = _ServiceStatus.FAILED
+            # Wrap in appropriate SidekickError for the activation task's result
+            if isinstance(e_core, CoreConnectionRefusedError):
+                raise SidekickConnectionRefusedError(
+                    f"Failed to connect to Sidekick service at {getattr(e_core, 'url', self._websocket_url)}.",
+                    url=getattr(e_core, 'url', self._websocket_url), original_exception=e_core
+                ) from e_core
+            elif isinstance(e_core, CoreConnectionTimeoutError): # Core transport timeout
+                 raise SidekickConnectionError(
+                    f"Transport connection to Sidekick service timed out at {getattr(e_core, 'url', self._websocket_url)}.",
+                    original_exception=e_core
+                ) from e_core
+            else: # CoreDisconnectedError or other CoreConnectionError
+                raise SidekickDisconnectedError(
+                    f"Disconnected from Sidekick service during activation. Reason: {getattr(e_core, 'reason', str(e_core))}",
+                    reason=getattr(e_core, 'reason', None), original_exception=e_core
+                ) from e_core
+        except SidekickTimeoutError as e_ui_timeout: # Specifically from waiting for UI announce
+            logger.error(f"Sidekick UI timeout during activation: {e_ui_timeout}")
+            with self._status_lock:
+                 if self._service_status != _ServiceStatus.FAILED: self._service_status = _ServiceStatus.FAILED
+            raise # Re-raise SidekickTimeoutError as is
+        except Exception as e_unexpected: # pragma: no cover
+            logger.exception(f"Unexpected fatal error during async activation: {e_unexpected}")
+            with self._status_lock:
+                 if self._service_status != _ServiceStatus.FAILED: self._service_status = _ServiceStatus.FAILED
+            if comm_manager and comm_manager.is_connected(): # Try to clean up CM if it connected
+                try: await comm_manager.close_async()
+                except Exception: pass
+            raise SidekickConnectionError(f"Unexpected activation error: {e_unexpected}", original_exception=e_unexpected) from e_unexpected
+
+    def _send_hero_offline_if_needed(self) -> Optional[asyncio.Task]:
+        """
+        Sends a hero 'offline' announce message if the service is in an appropriate
+        state and the communication manager is connected.
+
+        This is typically called during the shutdown sequence as a best-effort
+        notification to the Sidekick server/UI.
+
+        Returns:
+            Optional[asyncio.Task]: The asyncio.Task for the send operation if it was
+                                    submitted, otherwise None.
+        """
+        task: Optional[asyncio.Task] = None
+        # Access _communication_manager carefully as it might be None'd or its state changing during shutdown
+        comm_manager_ref: Optional[CommunicationManager] = None
+        can_send = False
+
+        with self._status_lock:  # Ensure consistent read of CM and its status
+            comm_manager_ref = self._communication_manager
+            if comm_manager_ref and comm_manager_ref.is_connected() and \
+                    self._service_status not in [_ServiceStatus.SHUTDOWN_COMPLETE, _ServiceStatus.FAILED,
+                                                 _ServiceStatus.IDLE]:
+                # Only attempt to send if CM exists, is connected, and service isn't already fully down/never up.
+                can_send = True
+
+        if can_send and comm_manager_ref:  # comm_manager_ref should be non-None if can_send is True
+            hero_offline_announce = {
+                "id": 0, "component": "system", "type": "announce",
+                "payload": {
+                    "peerId": self._hero_peer_id, "role": "hero", "status": "offline",
+                    "version": _version.__version__,
+                    # Use time.time() for timestamp as loop might be shutting down for self._get_loop().time()
+                    "timestamp": int(time.time() * 1000)
+                }
+            }
+            logger.info(f"Sending Hero 'offline' announce during shutdown.")
+            try:
+                # Submit as a fire-and-forget task. If it fails, log but don't block shutdown.
+                task = self._task_manager.submit_task(
+                    comm_manager_ref.send_message_async(json.dumps(hero_offline_announce))
+                )
+            except (CoreTaskSubmissionError, CoreLoopNotRunningError, AttributeError) as e:  # pragma: no cover
+                # AttributeError if comm_manager_ref became None between check and use (highly unlikely with current locking)
+                logger.warning(f"Could not submit hero 'offline' announce task during shutdown: {e}")
         else:
-            # If a clean shutdown was requested, don't raise the error, just log it.
-            logger.warning(f"Suppressed disconnect exception because clean shutdown was also requested: {disconnect_exception_to_raise}")
+            logger.debug("Skipping send_hero_offline: CM not connected or service state inappropriate.")
 
+        return task
 
-def run_forever():
-    """Keeps your Python script running indefinitely to handle Sidekick UI events.
-
-    If your script needs to react to interactions in the Sidekick panel (like
-    button clicks, grid cell clicks, console input, etc.), it needs to stay
-    alive to listen for those events. Calling `sidekick.run_forever()` at the
-    end of your script achieves this.
-
-    It essentially pauses the main thread of your script in a loop, while the
-    background listener thread (managed internally) continues to receive messages
-    from Sidekick and trigger your registered callback functions (e.g., the
-    functions passed to `grid.on_click()` or `console.on_submit()`).
-
-    How to Stop `run_forever()`:
-
-    1. Press `Ctrl+C` in the terminal where your script is running.
-    2. Call `sidekick.shutdown()` from within one of your callback functions
-       (e.g., have a "Quit" button call `sidekick.shutdown` in its `on_click` handler).
-    3. If the connection to Sidekick breaks unexpectedly, `run_forever()` will
-       also stop (typically after a `SidekickDisconnectedError` is raised).
-
-    Raises:
-        SidekickConnectionError (or subclass): If the initial connection to Sidekick
-            cannot be established when `run_forever` starts. The script won't enter
-            the waiting loop if it can't connect first.
-
-    Example:
-        >>> import sidekick
-        >>> # Assuming ConsoleSubmitEvent is imported or defined
-        >>> # from sidekick.events import ConsoleSubmitEvent
-        >>>
-        >>> console = sidekick.Console(show_input=True)
-        >>> def handle_input(event: sidekick.ConsoleSubmitEvent): # Updated callback signature
-        ...     if event.value.lower() == 'quit':
-        ...         console.print("Exiting...")
-        ...         sidekick.shutdown() # Stop run_forever from callback
-        ...     else:
-        ...         console.print(f"You typed: {event.value}")
-        >>> console.on_submit(handle_input)
-        >>> console.print("Enter text or type 'quit' to exit.")
-        >>>
-        >>> # Keep script running to listen for input
-        >>> try:
-        ...     sidekick.run_forever()
-        ... except sidekick.SidekickConnectionError as e:
-        ...     print(f"Connection error: {e}")
-        >>> print("Script has finished.") # This line runs after run_forever exits
-    """
-    # 1. Ensure connection is established and ready before entering the loop.
-    #    This will block or raise connection errors if it fails.
-    try:
-        activate_connection()
-    except SidekickConnectionError as e:
-        logger.error(f"Cannot start run_forever: Initial connection failed: {e}")
-        # Re-raise the error; don't proceed if we can't connect.
-        raise e
-
-    logger.info("Sidekick entering run_forever mode. Press Ctrl+C or call sidekick.shutdown() to exit.")
-    _shutdown_event.clear() # Ensure the shutdown signal is clear before starting the loop.
-
-    try:
-        # --- Main Waiting Loop ---
-        # Loop indefinitely as long as the shutdown event hasn't been signaled.
-        while not _shutdown_event.is_set():
-            # Wait for the shutdown signal. The `wait()` method blocks until the
-            # event is set or the timeout expires. Using a timeout allows the loop
-            # to periodically check other conditions (like connection status) if needed.
-            # A timeout of 1 second is reasonable.
-            shutdown_signaled = _shutdown_event.wait(timeout=1.0)
-            if shutdown_signaled:
-                logger.debug("run_forever: Shutdown event detected.")
-                break # Exit the loop cleanly.
-
-            # Optional check: If the connection status changed (e.g., listener detected
-            # a disconnect), exit the loop early. The actual SidekickDisconnectedError
-            # is typically raised by the listener thread initiating close_connection,
-            # but this check helps exit the wait loop sooner.
-            with _connection_lock:
-                 if _connection_status != ConnectionStatus.CONNECTED_READY:
-                      logger.warning(f"run_forever: Connection status changed unexpectedly to {_connection_status.name}. Exiting loop.")
-                      break
-
-    except KeyboardInterrupt:
-        # User pressed Ctrl+C in the terminal.
-        logger.info("KeyboardInterrupt received, initiating Sidekick shutdown.")
-        # The `finally` block will handle calling shutdown().
-        pass # Absorb the KeyboardInterrupt here
-    except Exception as e:
-        # Catch any other unexpected error during the wait loop itself.
-        logger.exception(f"Unexpected error during run_forever wait loop: {e}")
-        # Let the `finally` block handle shutdown.
-        pass
-    finally:
-        # --- Cleanup ---
-        # This block executes regardless of how the loop was exited
-        # (shutdown signal, Ctrl+C, error, or connection status change).
-        # Check if a clean shutdown was *already* signaled (e.g., by a callback).
-        if not _shutdown_event.is_set():
-            # If not, it means we exited for another reason (Ctrl+C, error, disconnect).
-            # Initiate a clean shutdown now.
-            logger.debug("run_forever: Loop exited without explicit shutdown signal, initiating shutdown now.")
-            shutdown() # Call the standard shutdown procedure.
-        else:
-             # If shutdown was already signaled, just log that we're exiting cleanly.
-             logger.debug("run_forever: Exiting cleanly due to prior shutdown signal.")
-
-    logger.info("Sidekick run_forever mode finished.")
-
-
-def shutdown():
-    """Initiates a clean shutdown of the Sidekick connection and resources.
-
-    Call this function to gracefully disconnect from the Sidekick panel. It performs
-    the following actions:
-    - Signals `run_forever()` (if it's currently running) to stop its waiting loop.
-    - Attempts to send a final 'offline' announcement to the Sidekick server.
-    - The UI is *not* cleared on shutdown, preserving its state.
-    - Closes the underlying communication channel.
-    - Clears internal state and message handlers.
-
-    It's safe to call this function multiple times; subsequent calls after the
-    first successful shutdown will have no effect.
-
-    This function is also registered automatically via `atexit` to be called when
-    your Python script exits normally, ensuring cleanup happens if possible.
-
-    You might call this manually from an event handler (e.g., a "Quit" button's
-    `on_click` callback) to programmatically stop `run_forever()` and end the script.
-
-    Example:
-        >>> import sidekick
-        >>> # Assuming ButtonClickEvent is imported
-        >>> # from sidekick.events import ButtonClickEvent
-        >>>
-        >>> quit_button = sidekick.Button("Quit", instance_id="my-quit-btn")
-        >>> def on_quit_button_click(event: sidekick.ButtonClickEvent):
-        ...    print(f"Button '{event.instance_id}' clicked. Shutting down.")
-        ...    sidekick.shutdown()
-        >>> quit_button.on_click(on_quit_button_click)
-        >>>
-        >>> # sidekick.run_forever() # To keep the script alive for the button click
-    """
-    # Acquire lock briefly to check status and set the shutdown event.
-    with _connection_lock:
-        # Check if already disconnected or if shutdown is already in progress.
-        if _connection_status == ConnectionStatus.DISCONNECTED and _shutdown_event.is_set():
-            logger.debug("Shutdown already completed or in progress.")
+    def _handle_core_message(self, message_str: str) -> None:
+        """Callback for CommunicationManager: handles raw messages from transport."""
+        logger.debug(f"ConnectionService received core message: {message_str[:100]}{'...' if len(message_str) > 100 else ''}")
+        try:
+            message_dict = json.loads(message_str)
+        except json.JSONDecodeError: # pragma: no cover
+            logger.error(f"Failed to parse JSON from core message: {message_str[:200]}")
             return
 
-        logger.info("Sidekick shutdown requested.")
-        # Signal that a clean shutdown is intended.
-        # This tells run_forever() to exit and prevents close_connection from
-        # raising a disconnect error if called concurrently due to an error.
-        _shutdown_event.set()
+        if self._user_global_message_handler:
+            try:
+                self._user_global_message_handler(message_dict)
+            except Exception as e_global: # pragma: no cover
+                logger.exception(f"Error in user's global message handler: {e_global}")
 
-    # Initiate the closing process by calling the internal cleanup function.
-    # Do this *outside* the main lock to avoid potential deadlocks.
-    # Mark this as NOT being triggered by an exception (is_exception=False).
-    close_connection(log_info=True, is_exception=False, reason="Shutdown requested by user/script")
+        msg_component = message_dict.get("component")
+        msg_type = message_dict.get("type")
+        payload = message_dict.get("payload")
+
+        if msg_component == "system" and msg_type == "announce" and payload:
+            peer_id = payload.get("peerId")
+            role = payload.get("role")
+            status = payload.get("status")
+            version = payload.get("version")
+
+            if role == "sidekick":
+                if status == "online":
+                    logger.info(f"Received 'sidekick online' announce from peer: {peer_id} (version: {version})")
+                    with self._status_lock: self._sidekick_peers_info[peer_id] = payload # Store/update
+                    if self._sidekick_ui_online_event and not self._sidekick_ui_online_event.is_set():
+                        self._sidekick_ui_online_event.set()
+                elif status == "offline": # pragma: no cover
+                    logger.info(f"Received 'sidekick offline' announce from peer: {peer_id}")
+                    with self._status_lock: removed_peer = self._sidekick_peers_info.pop(peer_id, None)
+                    if removed_peer and not self._sidekick_peers_info:
+                        logger.info("All known Sidekick UIs are now offline.")
+                        if self._sidekick_ui_online_event: self._sidekick_ui_online_event.clear()
+        elif msg_type in ["event", "error"]:
+            instance_id = message_dict.get("src")
+            if instance_id:
+                handler = self._component_message_handlers.get(instance_id) # Access should be thread-safe if dicts are
+                if handler:
+                    try:
+                        logger.debug(f"Dispatching '{msg_type}' for component '{instance_id}' to its handler.")
+                        handler(message_dict) # Synchronous call as per plan
+                    except Exception as e_comp: # pragma: no cover
+                        logger.exception(f"Error in component handler for '{instance_id}': {e_comp}")
+                else: # pragma: no cover
+                    logger.debug(f"No component handler for instance_id '{instance_id}' for '{msg_type}' message.")
+            else: # pragma: no cover
+                logger.warning(f"Received '{msg_type}' message without 'src' (instance_id): {message_dict}")
+        else: # pragma: no cover
+            logger.debug(f"Received unhandled message structure from core: comp='{msg_component}', type='{msg_type}'")
+
+    def _handle_core_status_change(self, core_status: CoreConnectionStatus) -> None:
+        """Callback for CommunicationManager: handles core transport status changes."""
+        logger.info(f"ConnectionService processing core CM status change: {core_status.name}")
+        # This method is called by the CM, potentially from the TM's async thread.
+        # It needs to safely update _service_status and notify CPython waiters.
+        status_changed_by_this_call = False
+        original_service_status_for_log = self._service_status # Read before lock for logging if needed
+
+        with self._status_lock:
+            current_s_status = self._service_status # Get current status under lock
+
+            if core_status == CoreConnectionStatus.CONNECTED:
+                if current_s_status == _ServiceStatus.CORE_CONNECTING:
+                    self._service_status = _ServiceStatus.CORE_CONNECTED
+                    status_changed_by_this_call = True
+                    logger.info("Service status advanced to CORE_CONNECTED (transport layer active).")
+                    if self._core_transport_connected_event: # This event is awaited by _async_activate
+                        self._core_transport_connected_event.set()
+                # else: If core CM reports CONNECTED but service status is beyond CORE_CONNECTING,
+                # it might be a reconnect scenario (not handled yet) or redundant info.
+            elif core_status in [CoreConnectionStatus.DISCONNECTED, CoreConnectionStatus.ERROR]:
+                logger.warning(f"Core communication channel reported {core_status.name}.")
+                if self._core_transport_connected_event:
+                    self._core_transport_connected_event.clear() # Transport is down
+
+                # If not already in a terminal state, this is an unexpected failure.
+                if current_s_status not in [_ServiceStatus.SHUTTING_DOWN, _ServiceStatus.SHUTDOWN_COMPLETE, _ServiceStatus.IDLE]:
+                    if self._service_status != _ServiceStatus.FAILED: # Avoid redundant logging/state change
+                        self._service_status = _ServiceStatus.FAILED
+                        status_changed_by_this_call = True
+                        logger.error(f"Service status changed to FAILED due to core channel {core_status.name}.")
+
+                    # Clear other activation-gating events
+                    if self._sidekick_ui_online_event: self._sidekick_ui_online_event.clear()
+                    if self._clearall_sent_and_queue_processed_event: self._clearall_sent_and_queue_processed_event.clear()
+
+                    # If an activation task was in progress, this core failure should cause it to fail.
+                    # The task's done_callback will handle notifying CPython waiters.
+                    # If not in activation, this signals an active connection dropped.
+                    if not (self._async_activate_task and not self._async_activate_task.done()):
+                        # If not during an active activation, and CPython is waiting in activate_connection
+                        # (e.g. it was ACTIVE, then core dropped), notify it.
+                        if not is_pyodide() and status_changed_by_this_call : self._activation_cv.notify_all()
 
 
-# --- Registration/Utility Functions (Mostly Internal/Advanced) ---
-
-def register_message_handler(instance_id: str, handler: Callable[[Dict[str, Any]], None]):
-    """Registers a handler function for messages targeted at a specific component instance. (Internal).
-
-    This is called automatically by `Component.__init__` when a Sidekick component
-    (like `Grid`, `Console`) is created. It maps the component's unique `instance_id`
-    to its `_internal_message_handler` method.
-
-    The message handler uses this mapping to dispatch incoming 'event' and 'error'
-    messages from the UI to the correct Python object.
-
-    If an `instance_id` is already registered, this function will raise a `ValueError`.
-
-    Args:
-        instance_id (str): The unique ID of the component instance (e.g., "my-grid" or "grid-1").
-        handler (Callable): The function (usually an instance method) to call.
-                            It must accept one argument: the message dictionary.
-
-    Raises:
-        TypeError: If the provided handler is not a callable function.
-        ValueError: If the `instance_id` is already registered, indicating a duplicate ID.
-    """
-    if not callable(handler):
-        raise TypeError(f"Handler for instance '{instance_id}' must be callable.")
-    # Acquire lock for safe modification of the shared handler dictionary.
-    with _connection_lock:
-        # Check for duplicate instance_id before registration.
-        if instance_id in _message_handlers:
-            msg = (f"Cannot register handler: Instance ID '{instance_id}' is already in use. "
-                   f"Component instance IDs must be unique within a script run.")
-            logger.error(msg)
-            raise ValueError(msg) # This will stop component creation if ID is duplicated.
-
-        # Only register if the connection isn't already fully shut down.
-        # Allows registration even before the connection becomes CONNECTED_READY.
-        if _connection_status != ConnectionStatus.DISCONNECTED or not _stop_event.is_set():
-            logger.debug(f"Registering internal message handler for instance '{instance_id}'.")
-            _message_handlers[instance_id] = handler
-        else:
-            # Avoid registration if shutdown is complete or in progress.
-            logger.warning(f"Connection closed or closing, handler for '{instance_id}' not registered.")
+            if status_changed_by_this_call:
+                logger.debug(f"Service status transition: {original_service_status_for_log.name} -> {self._service_status.name} (due to core status: {core_status.name})")
 
 
-def unregister_message_handler(instance_id: str):
-    """Removes the message handler for a specific component instance. (Internal).
+    def _handle_core_error(self, exc: Exception) -> None: # pragma: no cover
+        """Callback for CommunicationManager: handles unexpected errors from CM's operations."""
+        logger.error(f"ConnectionService received critical core CM error: {type(exc).__name__}: {exc}")
+        status_changed_by_this_call = False
+        with self._status_lock:
+            if self._service_status not in [_ServiceStatus.SHUTTING_DOWN, _ServiceStatus.SHUTDOWN_COMPLETE, _ServiceStatus.IDLE]:
+                if self._service_status != _ServiceStatus.FAILED:
+                    self._service_status = _ServiceStatus.FAILED
+                    status_changed_by_this_call = True
+                    logger.error(f"Service status changed to FAILED due to core CM error: {exc}")
 
-    Called automatically by `Component.remove()` when a component is explicitly
-    removed, and also during the final `close_connection` cleanup to clear all handlers.
+                if self._core_transport_connected_event: self._core_transport_connected_event.clear()
+                if self._sidekick_ui_online_event: self._sidekick_ui_online_event.clear()
+                if self._clearall_sent_and_queue_processed_event: self._clearall_sent_and_queue_processed_event.clear()
 
-    Args:
-        instance_id (str): The ID of the component instance whose handler should be removed.
-    """
-    # Acquire lock for safe modification of the shared handler dictionary.
-    with _connection_lock:
-        # Use dict.pop() which safely removes the key if it exists, and does nothing otherwise.
-        # Store the popped value (the handler function) temporarily.
-        removed_handler = _message_handlers.pop(instance_id, None)
-        if removed_handler:
-            logger.debug(f"Unregistered internal message handler for instance '{instance_id}'.")
-        # else:
-            # No need to log if not found, as this is expected during cleanup or if remove() is called twice.
-            # logger.debug(f"No internal message handler found for instance '{instance_id}' to unregister.")
+                if not is_pyodide() and status_changed_by_this_call: self._activation_cv.notify_all()
 
 
-def register_global_message_handler(handler: Optional[Callable[[Dict[str, Any]], None]]):
-    """Registers a single function to receive *all* incoming messages from Sidekick.
+    def send_message(self, message_dict: Dict[str, Any]) -> None:
+        """Sends a Sidekick protocol message. Queues if service not fully active."""
+        # Determine if activation needs to be kicked off
+        with self._status_lock:
+            s_status = self._service_status
+            # Needs activation if completely idle, or if failed (CPython might retry implicitly)
+            needs_activation_kickoff = s_status in [_ServiceStatus.IDLE, _ServiceStatus.SHUTDOWN_COMPLETE] or \
+                                       (s_status == _ServiceStatus.FAILED and not is_pyodide())
 
-    **Advanced Usage / Debugging:** This function is primarily intended for debugging
-    the communication protocol or building very custom, low-level integrations.
-    The function you provide (`handler`) will be called by the listener thread for
-    *every* message received from the Sidekick server, *before* the message is
-    dispatched to any specific component instance handlers.
+        if needs_activation_kickoff:
+            try:
+                logger.debug(f"send_message: Kicking off activation from status {s_status.name}")
+                self.activate_connection() # This call handles its own logic for CPython blocking / Pyodide async
+            except SidekickConnectionError as e:
+                # This implies CPython's blocking activate_connection failed immediately.
+                logger.error(f"Implicit activation for send_message failed: {e}. Message not sent.")
+                raise # Propagate the error
 
-    Warning:
-        The structure and content of messages received here are subject to the
-        internal Sidekick communication protocol and may change between versions.
-        Relying on this for core application logic is generally discouraged.
-        The raw message dictionary received here does not automatically get transformed
-        into the structured event objects (like `ButtonClickEvent`) that component-specific
-        callbacks receive.
+        # Re-check status and access queue/event under lock
+        with self._status_lock:
+            is_ready_for_direct_send = self._clearall_sent_and_queue_processed_event and \
+                                       self._clearall_sent_and_queue_processed_event.is_set() and \
+                                       self._service_status == _ServiceStatus.ACTIVE
 
-    Args:
-        handler (Optional[Callable[[Dict[str, Any]], None]]): The function to call
-            with each raw message dictionary received from the communication channel.
-            It should accept one argument (the message dict). Pass `None` to remove any
-            currently registered global handler.
+            if not is_ready_for_direct_send:
+                if self._service_status in [_ServiceStatus.FAILED, _ServiceStatus.SHUTTING_DOWN, _ServiceStatus.SHUTDOWN_COMPLETE]:
+                    logger.error(f"Cannot send message, service status is {self._service_status.name}. Message dropped: {message_dict.get('type')}")
+                    raise SidekickDisconnectedError(f"Service not active (status: {self._service_status.name}). Cannot send.")
 
-    Raises:
-        TypeError: If the provided handler is not a callable function and not `None`.
-    """
-    global _global_message_handler
-    # Acquire lock for safe modification of the global handler reference.
-    with _connection_lock:
-        if handler is None:
-            # Remove the global handler.
-            if _global_message_handler is not None:
-                logger.info("Unregistering global message handler.")
-                _global_message_handler = None
-        elif callable(handler):
-            # Set the new global handler.
-            logger.info(f"Registering global message handler: {handler}")
-            _global_message_handler = handler
-        else:
-            # Raise error if the provided handler is invalid.
+                if len(self._message_queue) >= self._message_queue.maxlen: # type: ignore[arg-type]
+                    dropped_msg = self._message_queue.popleft() # pragma: no cover
+                    logger.error(f"Message queue full ({self._message_queue.maxlen}). Dropping oldest: type='{dropped_msg.get('type')}'")
+                self._message_queue.append(message_dict)
+                logger.debug(f"Message type='{message_dict.get('type', 'N/A')}' queued (qsize: {len(self._message_queue)}). Waiting for full activation.")
+                # If CPython, activate_connection would have blocked or failed.
+                # If Pyodide, activate_connection returned, and _async_activate_task is running.
+                return # Message has been queued.
+
+        # If execution reaches here, is_ready_for_direct_send was true.
+        comm_manager = self._communication_manager # Should be valid if service is ACTIVE
+        if not comm_manager or not comm_manager.is_connected(): # pragma: no cover
+            logger.critical("send_message: CRITICAL STATE - Service ACTIVE but CM unavailable/disconnected.")
+            with self._status_lock: # Re-queue and mark service as non-operational to force re-activation
+                self._message_queue.append(message_dict)
+                if self._clearall_sent_and_queue_processed_event: self._clearall_sent_and_queue_processed_event.clear()
+                self._service_status = _ServiceStatus.FAILED
+            raise SidekickDisconnectedError("Internal state inconsistency: Service active but CM not ready.")
+
+        logger.debug(f"Sending message directly: type='{message_dict.get('type', 'N/A')}' target='{message_dict.get('target', 'N/A')}'")
+        try:
+            json_str = json.dumps(message_dict)
+            # Fire-and-forget the send task. CM's send_message_async handles its own errors
+            # by updating status or calling error handler, which ConnectionService listens to.
+            self._task_manager.submit_task(comm_manager.send_message_async(json_str))
+        except json.JSONDecodeError as e_json: # pragma: no cover
+            logger.error(f"Failed to serialize message to JSON: {e_json}. Message: {message_dict}")
+            raise TypeError(f"Message content not JSON serializable: {e_json}") from e_json
+        except (CoreTaskSubmissionError, AttributeError) as e_submit: # pragma: no cover
+            # AttributeError if TM or CM is None unexpectedly.
+            logger.error(f"Failed to submit send_message_async task: {e_submit}. Re-queuing message.")
+            with self._status_lock:
+                self._message_queue.append(message_dict)
+                if self._clearall_sent_and_queue_processed_event: self._clearall_sent_and_queue_processed_event.clear()
+                if self._service_status == _ServiceStatus.ACTIVE: self._service_status = _ServiceStatus.CORE_CONNECTED # Rollback to a state that implies re-check
+            raise SidekickDisconnectedError(f"Failed to submit message send task: {e_submit}", original_exception=e_submit)
+
+
+    def register_component_message_handler(self, instance_id: str, handler: Callable[[Dict[str, Any]], None]) -> None:
+        """Registers a message handler for a specific component instance ID."""
+        if not isinstance(instance_id, str) or not instance_id:
+            raise ValueError("instance_id must be a non-empty string.")
+        if not callable(handler):
+            raise TypeError("handler must be a callable function.")
+        # _component_message_handlers is a standard dict, access should be GIL-protected.
+        # If contention becomes an issue, a lock specific to this dict could be used.
+        # For now, assuming GIL is sufficient for this relatively infrequent operation.
+        if instance_id in self._component_message_handlers: # pragma: no cover
+            # Overwriting a handler might be acceptable in some cases, but for now, strict.
+            logger.warning(f"Handler already registered for instance_id: {instance_id}. Overwriting.")
+            # raise ValueError(f"Handler already registered for instance_id: {instance_id}")
+        self._component_message_handlers[instance_id] = handler
+        logger.debug(f"Registered component message handler for instance_id: {instance_id}")
+
+    def unregister_component_message_handler(self, instance_id: str) -> None:
+        """Unregisters a message handler for a specific component instance ID."""
+        if self._component_message_handlers.pop(instance_id, None):
+            logger.debug(f"Unregistered component message handler for instance_id: {instance_id}")
+
+    def clear_all_ui_components(self) -> None:
+        """Sends a command to remove all components from the Sidekick UI."""
+        logger.info("Requesting ConnectionService to clear all UI components.")
+        self.send_message({"id": 0, "component": "global", "type": "clearAll"})
+
+    def shutdown_service(self) -> None:
+        """Initiates a graceful shutdown of the ConnectionService."""
+        offline_task_handle: Optional[asyncio.Task] = None
+        comm_close_task_handle: Optional[asyncio.Task] = None
+
+        with self._status_lock:
+            if self._service_status in [_ServiceStatus.SHUTTING_DOWN, _ServiceStatus.SHUTDOWN_COMPLETE]:
+                logger.debug(f"Shutdown already in progress or complete (status: {self._service_status.name}).")
+                return # Already shutting down or done.
+
+            logger.info(f"ConnectionService shutdown initiated. Current status: {self._service_status.name}")
+            self._service_status = _ServiceStatus.SHUTTING_DOWN
+
+            # 1. Cancel ongoing activation task, if any
+            if self._async_activate_task and not self._async_activate_task.done():
+                logger.debug("Cancelling active _async_activate_task during shutdown.")
+                self._async_activate_task.cancel()
+                # We don't await it here; TM's shutdown will handle its loop and tasks.
+
+            # 2. Clear outgoing message queue
+            if self._message_queue: # pragma: no cover
+                logger.info(f"Clearing {len(self._message_queue)} messages from queue due to shutdown.")
+                self._message_queue.clear()
+
+            # 3. Clear internal asyncio events
+            if self._core_transport_connected_event: self._core_transport_connected_event.clear()
+            if self._sidekick_ui_online_event: self._sidekick_ui_online_event.clear()
+            if self._clearall_sent_and_queue_processed_event: self._clearall_sent_and_queue_processed_event.clear()
+
+            # 4. Send hero 'offline' announce (best effort, fire-and-forget task)
+            offline_task_handle = self._send_hero_offline_if_needed()
+
+            # 5. Schedule CommunicationManager close (fire-and-forget task)
+            comm_manager_to_close = self._communication_manager
+            if comm_manager_to_close:
+                logger.debug("Scheduling CommunicationManager.close_async().")
+                try:
+                    comm_close_task_handle = self._task_manager.submit_task(comm_manager_to_close.close_async())
+                except (CoreTaskSubmissionError, CoreLoopNotRunningError) as e: # pragma: no cover
+                    logger.warning(f"Could not submit CM close task during shutdown: {e}")
+            # self._communication_manager will be set to None after TM shutdown signal
+
+        # 6. Signal TaskManager to shut down its loop (outside status_lock)
+        # This is crucial: it unblocks run_forever() or wait_for_shutdown_async()
+        # and allows the TM's loop thread to start its own cleanup.
+        logger.debug("Signaling TaskManager to shutdown (from ConnectionService.shutdown_service).")
+        self._task_manager.signal_shutdown()
+
+        # Optional: If we need to ensure offline/close tasks complete (makes shutdown_service async or blocking)
+        # For a synchronous shutdown_service, these tasks run in background.
+        # If this method were async:
+        # try:
+        #     if offline_task_handle: await asyncio.wait_for(offline_task_handle, timeout=1.0)
+        #     if comm_close_task_handle: await asyncio.wait_for(comm_close_task_handle, timeout=2.0)
+        # except asyncio.TimeoutError: logger.warning("Timeout waiting for offline/close tasks during shutdown.")
+        # except Exception: pass
+
+
+        with self._status_lock: # Final state updates under lock
+            self._component_message_handlers.clear()
+            self._user_global_message_handler = None
+            self._sidekick_peers_info.clear()
+            self._communication_manager = None # Dereference CM after its close is scheduled
+            self._service_status = _ServiceStatus.SHUTDOWN_COMPLETE
+            logger.info("ConnectionService shutdown sequence finalized.")
+            # Notify CPython waiters on activate_connection CV if they were stuck
+            if not is_pyodide():
+                self._activation_cv.notify_all()
+
+
+    def run_service_forever(self) -> None:
+        """Blocks and keeps the service running until shutdown. (CPython specific use)."""
+        if is_pyodide(): # pragma: no cover
+            logger.error("run_service_forever() is synchronous and not intended for Pyodide. Use run_service_forever_async().")
+            # Fallback: try to activate. Pyodide environment keeps worker alive.
+            try: self.activate_connection()
+            except SidekickError: pass
+            return
+
+        try:
+            self.activate_connection() # This blocks in CPython until ACTIVE or FAILED
+            with self._status_lock: service_is_active = (self._service_status == _ServiceStatus.ACTIVE)
+
+            if service_is_active:
+                logger.info("ConnectionService entering run_forever wait state (CPython).")
+                self._task_manager.wait_for_shutdown() # Blocks main thread here until TM signals
+            else: # pragma: no cover
+                logger.error(f"Service not active after activation attempt (status: {self._service_status.name}). Cannot run forever.")
+        except KeyboardInterrupt: # pragma: no cover
+            logger.info("KeyboardInterrupt in run_service_forever. Initiating shutdown.")
+        except SidekickConnectionError as e: # pragma: no cover
+            logger.error(f"Connection error in run_service_forever: {e}. Shutting down.")
+        except Exception as e: # pragma: no cover
+            logger.exception(f"Unexpected error in run_service_forever: {e}. Shutting down.")
+        finally:
+            # This 'finally' ensures shutdown_service is called if the 'try' block exits
+            # for any reason (e.g. KI, error, or if TM's wait_for_shutdown returns early).
+            with self._status_lock:
+                is_already_terminal = self._service_status in [_ServiceStatus.SHUTTING_DOWN, _ServiceStatus.SHUTDOWN_COMPLETE]
+
+            if not is_already_terminal:
+                logger.info("run_service_forever exiting. Initiating shutdown if not already in progress.")
+                self.shutdown_service()
+            logger.info("ConnectionService run_forever (CPython) finished.")
+
+
+    async def run_service_forever_async(self) -> None:
+        """Keeps the service running asynchronously until shutdown. (Pyodide/Async use)."""
+        try:
+            # In Pyodide/async, activate_connection() initiates async activation.
+            # We need to await the completion of that activation process here.
+            self.activate_connection()
+
+            current_activation_task_ref: Optional[asyncio.Task] = None
+            with self._status_lock: # Get the current activation task safely
+                current_activation_task_ref = self._async_activate_task
+
+            if current_activation_task_ref and not current_activation_task_ref.done():
+                logger.debug("run_service_forever_async: Awaiting completion of current activation task.")
+                try:
+                    await asyncio.wait_for(current_activation_task_ref, timeout=_ACTIVATION_FULL_TIMEOUT_SECONDS_CPYTHON)
+                except asyncio.TimeoutError: # pragma: no cover
+                    logger.error(f"run_service_forever_async: Timeout waiting for activation task to complete.")
+                    with self._status_lock: self._service_status = _ServiceStatus.FAILED
+                except asyncio.CancelledError: # pragma: no cover
+                    logger.info("run_service_forever_async: Activation task was cancelled during wait.")
+                # Exceptions from activation task are handled by its done_callback, just await completion.
+
+            with self._status_lock: service_is_active = (self._service_status == _ServiceStatus.ACTIVE)
+
+            if service_is_active:
+                logger.info("ConnectionService entering run_forever_async wait state.")
+                await self._task_manager.wait_for_shutdown_async() # Async wait for TM shutdown signal
+            else: # pragma: no cover
+                logger.warning(f"Service not active after async activation (status: {self._service_status.name}). Cannot run_forever_async effectively.")
+
+        except KeyboardInterrupt: # pragma: no cover
+            # KI might not be reliably caught in all async/Pyodide scenarios for the worker.
+            logger.info("KeyboardInterrupt (async context). Initiating shutdown.")
+        except SidekickConnectionError as e: # pragma: no cover
+            logger.error(f"Connection error in run_service_forever_async: {e}. Shutting down.")
+        except Exception as e: # pragma: no cover
+            logger.exception(f"Unexpected error in run_service_forever_async: {e}. Shutting down.")
+        finally:
+            with self._status_lock:
+                is_already_terminal = self._service_status in [_ServiceStatus.SHUTTING_DOWN, _ServiceStatus.SHUTDOWN_COMPLETE]
+            if not is_already_terminal:
+                logger.info("run_service_forever_async exiting. Initiating shutdown if not already in progress.")
+                self.shutdown_service() # Sync call, but TM signal_shutdown is key
+            logger.info("ConnectionService run_service_forever_async finished.")
+
+
+    def register_user_global_message_handler(self, handler: Optional[Callable[[Dict[str, Any]], None]]) -> None:
+        """Registers a user-defined global handler for all incoming messages."""
+        if handler is not None and not callable(handler): # pragma: no cover
             raise TypeError("Global message handler must be a callable function or None.")
+        # This can be set/cleared without heavy locking if access in _handle_core_message is careful.
+        # For simplicity, using status_lock for now if modifications are very rare.
+        # A dedicated lock for _user_global_message_handler might be overkill.
+        self._user_global_message_handler = handler
+        logger.info(f"User global message handler {'set' if handler else 'cleared'}.")
 
-# --- Automatic Cleanup on Exit ---
-# Register the public shutdown() function to be called automatically when the
-# Python interpreter exits normally (e.g., script finishes, sys.exit()).
-# This ensures a best-effort attempt to close the WebSocket, stop the listener,
-# and send an 'offline' announcement. The UI is not cleared.
-atexit.register(shutdown)
+    # Service-level error handler (not currently used, placeholder)
+    _error_handler_for_service: Optional[Callable[[Exception], None]] = None
+
+
+# --- Module-level public API functions using the ConnectionService Singleton ---
+
+_connection_service_singleton_init_lock = threading.Lock()
+_connection_service_singleton_instance: Optional[ConnectionService] = None
+
+def _get_service_instance() -> ConnectionService:
+    """Internal helper to get or create the singleton ConnectionService instance."""
+    global _connection_service_singleton_instance
+    if _connection_service_singleton_instance is None:
+        with _connection_service_singleton_init_lock:
+            if _connection_service_singleton_instance is None:
+                # Ensure the instance creation uses the class's own singleton logic
+                # if get_instance() is preferred over direct instantiation.
+                # Here, ConnectionService() constructor is private-like.
+                _connection_service_singleton_instance = ConnectionService()
+    return _connection_service_singleton_instance
+
+
+def set_url(url: str) -> None:
+    """Sets the target WebSocket URL for the Sidekick connection.
+    Must be called before any components are created or connection is activated.
+    """
+    _get_service_instance().set_target_url(url)
+
+def activate_connection() -> None:
+    """Ensures the Sidekick service is connected and ready.
+    In CPython, this blocks until the service is active or activation fails.
+    In Pyodide, this initiates asynchronous activation and returns immediately.
+    """
+    _get_service_instance().activate_connection()
+
+def send_message(message_dict: Dict[str, Any]) -> None:
+    """Sends a message dictionary (Sidekick protocol) to the Sidekick UI.
+    Will queue messages if the service is not yet fully active.
+    """
+    _get_service_instance().send_message(message_dict)
+
+def register_message_handler(instance_id: str, handler: Callable[[Dict[str, Any]], None]) -> None:
+    """Registers a message handler for a specific component instance ID.
+    Used by `Component` subclasses to receive events or errors from the UI.
+    """
+    _get_service_instance().register_component_message_handler(instance_id, handler)
+
+def unregister_message_handler(instance_id: str) -> None:
+    """Unregisters a message handler for a specific component instance ID."""
+    _get_service_instance().unregister_component_message_handler(instance_id)
+
+def clear_all() -> None:
+    """Sends a command to remove all components from the Sidekick UI."""
+    _get_service_instance().clear_all_ui_components()
+
+def shutdown() -> None:
+    """Initiates a clean shutdown of the Sidekick connection service."""
+    _get_service_instance().shutdown_service()
+
+def run_forever() -> None:
+    """Keeps the script running to handle UI events. (Primarily for CPython).
+    Blocks the main thread until `shutdown()` is called or an error occurs.
+    """
+    _get_service_instance().run_service_forever()
+
+async def run_forever_async() -> None:
+    """Keeps the script running asynchronously to handle UI events.
+    (Primarily for Pyodide or asyncio-based CPython applications).
+    Awaits until `shutdown()` is called or an error occurs.
+    """
+    await _get_service_instance().run_service_forever_async()
+
+def submit_task(coro: Coroutine[Any, Any, Any]) -> asyncio.Task: # Added from previous step
+    """Submits a user-defined coroutine to Sidekick's managed event loop.
+    Useful for running custom asyncio code alongside Sidekick components.
+    """
+    return _get_service_instance()._task_manager.submit_task(coro) # Delegate to TM
+
+def register_global_message_handler(handler: Optional[Callable[[Dict[str, Any]], None]]) -> None:
+    """Registers a global handler for *all* incoming messages from the UI.
+    Mainly for debugging or advanced use.
+    """
+    _get_service_instance().register_user_global_message_handler(handler)

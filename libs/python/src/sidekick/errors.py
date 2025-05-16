@@ -1,115 +1,137 @@
-"""Custom exceptions for the Sidekick library.
+"""Custom application-level exceptions for the Sidekick Python library.
 
-This module defines specific error types for connection problems, making it easier
-for users to catch and potentially handle different failure scenarios.
+This module defines specific error types that users of the Sidekick library
+might encounter, particularly those related to establishing and maintaining
+a connection to the Sidekick service (which includes the UI panel and its
+communication layer).
+
+These exceptions provide more context than generic Python errors and can help
+users understand and potentially handle different failure scenarios when
+interacting with Sidekick. They may wrap or be triggered by lower-level
+exceptions from the `sidekick.core` package.
 """
 
-class SidekickConnectionError(Exception):
-    """Base error for all Sidekick connection-related problems.
+from typing import Optional, Any
 
-    Catch this exception type if you want to handle any issue related to
-    establishing or maintaining the connection to the Sidekick panel.
+# Import core exceptions to potentially wrap them or for type checking if needed,
+# though direct wrapping might happen in ConnectionService.
+# from .core.exceptions import CoreConnectionError # Example if needed
 
-    Example:
-        >>> try:
-        ...     console = sidekick.Console() # Connection happens here
-        ...     console.print("Connected!")
-        ... except sidekick.SidekickConnectionError as e:
-        ...     print(f"Could not connect to Sidekick: {e}")
+class SidekickError(Exception):
+    """Base class for all application-level errors specific to the Sidekick library.
+
+    Catching this exception can be a way to handle any error explicitly raised
+    by the Sidekick library itself, distinguishing it from general Python errors
+    or errors from other libraries.
     """
     pass
 
-class SidekickConnectionRefusedError(SidekickConnectionError):
-    """Raised when the library fails to connect to the Sidekick server initially.
 
-    This usually means the Sidekick WebSocket server wasn't running or couldn't
-    be reached at the configured URL (`ws://localhost:5163` by default).
+class SidekickConnectionError(SidekickError):
+    """Base error for all Sidekick connection-related problems at the application level.
+
+    Catch this exception type if you want to handle any issue related to
+    establishing or maintaining the connection to the full Sidekick service,
+    including communication with the UI panel.
+
+    Example:
+        >>> import sidekick
+        >>> try:
+        ...     console = sidekick.Console() # Connection to Sidekick service happens here
+        ...     console.print("Connected to Sidekick!")
+        ... except sidekick.SidekickConnectionError as e:
+        ...     print(f"Could not use Sidekick: {e}")
+    """
+    def __init__(self, message: str, original_exception: Optional[BaseException] = None):
+        super().__init__(message)
+        self.original_exception = original_exception
+
+    def __str__(self) -> str:
+        """Provide a more informative string representation."""
+        parts = [super().__str__()]
+        if self.original_exception: # pragma: no cover
+            # This part is more for debugging, might not always be user-facing nicely
+            parts.append(
+                f"Underlying issue: {type(self.original_exception).__name__}: {self.original_exception}"
+            )
+        return ". ".join(parts)
+
+
+class SidekickConnectionRefusedError(SidekickConnectionError):
+    """Raised when the library fails to connect to the Sidekick service.
+
+    This usually means the Sidekick WebSocket server (typically run by the
+    VS Code extension) wasn't running or couldn't be reached at the
+    configured URL (e.g., "ws://localhost:5163" by default), or the
+    underlying connection attempt was actively refused.
 
     Common Causes:
-
-    1. The Sidekick panel isn't open and active in VS Code.
-    2. The Sidekick VS Code extension isn't running correctly or has encountered an error.
-    3. The WebSocket server couldn't start (e.g., the port is already in use by another
-       application). Check VS Code's "Sidekick Server" output channel for details.
-    4. A firewall is blocking the connection between your script and VS Code.
-    5. The URL was changed via `sidekick.set_url()` to an incorrect address.
+    1.  The Sidekick panel isn't open and active in VS Code.
+    2.  The Sidekick VS Code extension isn't running correctly or has
+        encountered an error starting its server.
+    3.  The WebSocket server couldn't start (e.g., the port is already in use).
+        Check VS Code's "Sidekick Server" output channel for details.
+    4.  A firewall is blocking the connection.
+    5.  An incorrect URL was configured via `sidekick.set_url()`.
 
     Attributes:
-        url (str): The WebSocket URL that the connection attempt was made to.
-        original_exception (Exception): The lower-level error that caused the failure
-            (e.g., `ConnectionRefusedError` from the OS, `TimeoutError` from the
-            `websocket` library).
+        url (Optional[str]): The WebSocket URL that the connection attempt was made to, if available.
     """
-    def __init__(self, url: str, original_exception: Exception):
+    def __init__(self, message: str, url: Optional[str] = None, original_exception: Optional[BaseException] = None):
+        super().__init__(message, original_exception=original_exception)
         self.url = url
-        self.original_exception = original_exception
-        # User-friendly error message suggesting common fixes.
-        super().__init__(
-            f"Failed to connect to Sidekick server at {url}. "
-            f"Reason: {original_exception}. "
-            f"Is the Sidekick panel open in VS Code? "
-            f"Check the URL, potential port conflicts (default 5163), and firewall settings."
-        )
+
+    # __str__ is inherited and will include original_exception if present.
+
 
 class SidekickTimeoutError(SidekickConnectionError):
-    """Raised when connection to the server succeeds, but the Sidekick UI panel doesn't respond.
+    """Raised when a Sidekick operation times out at the application level.
 
-    After successfully connecting to the WebSocket server (run by the VS Code extension),
-    the library waits a short time (a few seconds) for the Sidekick UI panel itself
-    (the web content inside the panel) to finish loading and send back a signal
-    confirming it's ready to receive commands. If this signal doesn't arrive
-    within the timeout period, this error is raised.
+    A common scenario for this error is when the connection to the Sidekick
+    server (WebSocket) succeeds, but the Sidekick UI panel itself doesn't
+    respond by announcing its readiness (e.g., via a "system/announce" message)
+    within an expected timeframe.
 
     Common Causes:
-
-    1. The Sidekick panel is open in VS Code, but it hasn't finished loading its
-       HTML/JavaScript content yet (e.g., due to slow system performance or
-       network issues if loading remote resources, though usually local).
-    2. There's an error within the Sidekick UI panel's JavaScript code preventing
-       it from initializing correctly. Check the Webview Developer Tools in VS Code
-       (Command Palette -> "Developer: Open Webview Developer Tools") for errors.
+    1.  The Sidekick panel is open in VS Code, but its web content (HTML/JS)
+        hasn't finished loading or initializing (e.g., due to slow system
+        performance or an internal UI error).
+    2.  An error within the Sidekick UI panel's JavaScript code is preventing
+        it from signaling readiness. Check the Webview Developer Tools in VS Code
+        (Command Palette -> "Developer: Open Webview Developer Tools") for errors.
 
     Attributes:
-        timeout (float): The number of seconds the library waited for the UI response.
+        timeout_seconds (Optional[float]): The duration of the timeout in seconds, if specified.
     """
-    def __init__(self, timeout: float):
-        self.timeout = timeout
-        # User-friendly message explaining the timeout.
-        super().__init__(
-            f"Connected to the Sidekick server, but timed out after {timeout:.1f} seconds "
-            f"waiting for the Sidekick UI panel itself to signal it's ready. "
-            f"Is the panel visible and fully loaded in VS Code? Check Webview Developer Tools for errors."
-        )
+    def __init__(self, message: str, timeout_seconds: Optional[float] = None, original_exception: Optional[BaseException] = None):
+        super().__init__(message, original_exception=original_exception)
+        self.timeout_seconds = timeout_seconds
+
 
 class SidekickDisconnectedError(SidekickConnectionError):
-    """Raised when the connection is lost *after* it was successfully established.
+    """Raised when the connection to the Sidekick service is lost *after* it
+    was successfully established and active.
 
-    This indicates that communication was working previously, but the connection
+    This indicates that communication was previously working, but the connection
     broke unexpectedly. This can happen if you try to send a command or if the
-    background listener thread detects the disconnection.
+    background communication layer detects the disconnection.
 
     Common Causes:
-
-    1. The Sidekick panel was closed in VS Code while your script was still running.
-    2. The Sidekick VS Code extension crashed, was disabled, or VS Code was closed.
-    3. A network interruption occurred between the Python script and VS Code (less
-       common for local connections but possible).
-    4. An internal error occurred while trying to send or receive a message over
-       the established connection.
+    1.  The Sidekick panel was closed in VS Code while your script was running.
+    2.  The Sidekick VS Code extension crashed, was disabled, or VS Code itself was closed.
+    3.  A network interruption occurred (less common for local connections).
+    4.  An unrecoverable internal error occurred in the communication channel.
 
     **Important:** The library will **not** automatically try to reconnect if this
-    error occurs. Any further attempts to use Sidekick components (like `grid.set_color()`)
-    will also fail until the script is potentially restarted and a new connection
-    is established.
+    error occurs.
 
     Attributes:
-        reason (str): A short description of why the disconnection occurred or was detected.
+        reason (Optional[str]): A short description of why the disconnection occurred
+                                or was detected, if available.
     """
-    def __init__(self, reason: str = "Connection lost"):
+    def __init__(self, message: str = "Connection to the Sidekick service was lost.", reason: Optional[str] = None, original_exception: Optional[BaseException] = None):
+        full_message = message
+        if reason:
+            full_message += f" Reason: {reason}"
+        super().__init__(full_message, original_exception=original_exception)
         self.reason = reason
-        # User-friendly message explaining the disconnection.
-        super().__init__(
-            f"Sidekick connection lost: {reason}. "
-            f"The connection was active but is now broken. "
-            f"The library will not automatically reconnect."
-        )

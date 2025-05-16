@@ -9,128 +9,121 @@ Sidekick helps you **see your code come alive**. Instead of just imagining what
 loops are doing or how data structures change, you can use this library to create
 visual representations and interactive elements directly within the Sidekick panel.
 
-What can you do with it?
-    *   Create interactive grids (`sidekick.Grid`).
-    *   Display text output and get user input (`sidekick.Console`).
-    *   Visualize variable changes automatically (`sidekick.Viz`, `sidekick.ObservableValue`).
-    *   Draw shapes, lines, and text (`sidekick.Canvas`).
-    *   Display static or dynamic text labels (`sidekick.Label`).
-    *   Add clickable buttons to trigger actions (`sidekick.Button`).
-    *   Get single-line text input from users (`sidekick.Textbox`).
-    *   Render formatted text using Markdown (`sidekick.Markdown`).
-    *   Arrange components horizontally or vertically (`sidekick.Row`, `sidekick.Column`).
-
-These visual components update in real-time as your Python code executes, making it
-easier to understand, debug, demonstrate, and share programming concepts and simple applications.
+Key functionalities include creating interactive visual components, managing their
+layout, handling UI events, and visualizing data structures in real-time.
+The library is designed to be beginner-friendly with a synchronous-style API,
+while also supporting asynchronous operations for more advanced use cases,
+especially in Pyodide environments.
 
 Getting Started:
     1.  **Install:** `pip install sidekick-py`. Ensure the Sidekick VS Code
-        extension is installed OR you are running in a compatible web environment (like Pyodide).
+        extension is installed OR you are running in a compatible web environment.
     2.  **Open Panel (VS Code):** Use `Ctrl+Shift+P`, search for `Sidekick: Show Panel`.
     3.  **Import:** Start your script with `import sidekick`.
-    4.  **Create Components:** Instantiate components, e.g., `label = sidekick.Label("Hello!")`.
-        Connection happens automatically on first component creation.
-    5.  **Specify Layout:**
-        *   Use the `parent` parameter: `button = sidekick.Button("OK", parent=my_row)`
-        *   Use container methods: `my_row.add_child(button)`
-        *   Pass children to container constructors: `my_row = sidekick.Row(button1, label1)`
-    6.  **Set Callbacks:** Define component behavior using:
-        *   Constructor parameters: `btn = sidekick.Button("Run", on_click=run_func)`
-        *   Methods: `btn.on_click(run_func)`
-        *   Decorators: `@btn.click\ndef run_func(): ...`
-    7.  **Interact:** Update components via properties/methods, e.g., `label.text = "World"`.
-    8.  **Keep Alive (for interactivity):** Use `sidekick.run_forever()` at the end
-        of your script if you need to handle UI events (clicks, submits). Stop with
-        Ctrl+C or call `sidekick.shutdown()` from a callback.
+    4.  **Create Components:** E.g., `label = sidekick.Label("Hello!")`.
+        The connection to the Sidekick service activates implicitly on first use.
+    5.  **Handle Interactivity:** Use `sidekick.run_forever()` (for CPython) or
+        `await sidekick.run_forever_async()` (for Pyodide/async) at the end of
+        your script if you need to process UI events like button clicks.
+        Stop with Ctrl+C or by calling `sidekick.shutdown()` from a callback.
 
 Happy visual coding!
 """
 
 import logging
+import asyncio # For Coroutine type hint and asyncio.Task
+from typing import Coroutine, Any # For submit_task type hint
 
 # --- Version ---
 from ._version import __version__
 
 # --- Logging Setup ---
-# Set up a logger named "sidekick". By default, it has a NullHandler,
-# meaning log messages won't be output unless the user configures
-# logging in their own script (e.g., using logging.basicConfig).
+# Configure a logger for the 'sidekick' package.
+# By default, it uses a NullHandler, so applications using this library
+# must configure their own logging if they wish to see Sidekick logs.
 logger = logging.getLogger("sidekick")
 if not logger.hasHandlers():
     logger.addHandler(logging.NullHandler())
 # Example user configuration (in their script):
 # import logging
-# logging.basicConfig(level=logging.DEBUG) # Or logging.INFO
-# --- End Logging Setup ---
+# logging.basicConfig(level=logging.DEBUG) # Or logging.INFO for less verbosity
 
 
 # --- Core connection/configuration/lifecycle functions ---
-# These functions control the overall connection and state.
+# These are the primary functions for managing the Sidekick service connection.
+# They are wrappers around the ConnectionService singleton.
 from .connection import (
     set_url,                      # Set the WebSocket server URL before connecting.
-    # activate_connection,        # Internal use, ensures connection is ready.
+    activate_connection,          # Explicitly activate the connection (usually implicit).
     clear_all,                    # Remove all components from the Sidekick UI.
-    register_global_message_handler, # Advanced: Handle *all* incoming messages.
-    run_forever,                  # Keep the script running to handle UI events.
-    shutdown,                     # Gracefully close the connection.
+    register_global_message_handler, # Advanced: Handle *all* incoming raw messages.
+    run_forever,                  # Keep the script running (blocks main thread in CPython).
+    run_forever_async,            # Keep the script running (awaits in async context).
+    shutdown,                     # Gracefully close the connection to Sidekick.
+    submit_task                   # Submit a user coroutine to Sidekick's event loop.
 )
+# Note: `send_message`, `register_message_handler`, `unregister_message_handler`
+# from connection.py are primarily for internal use by Component and not re-exported here.
 
-# --- Import custom exception classes ---
-# These help users catch specific connection problems.
+# --- Import custom application-level exception classes ---
+# Users can catch these to handle Sidekick-specific errors.
 from .errors import (
-    SidekickConnectionError,        # Base class for connection issues.
-    SidekickConnectionRefusedError, # Failed initial connection attempt.
-    SidekickTimeoutError,           # UI didn't signal readiness in time.
-    SidekickDisconnectedError,      # Connection lost after being established.
+    SidekickError,                  # Base class for all Sidekick application errors.
+    SidekickConnectionError,        # Base class for Sidekick connection issues.
+    SidekickConnectionRefusedError, # Failed initial connection attempt to Sidekick service.
+    SidekickTimeoutError,           # Operation timed out (e.g., waiting for UI readiness).
+    SidekickDisconnectedError,      # Connection to Sidekick service lost after establishment.
 )
 
-# --- Core observable class for reactive UI updates ---
-# Use this with Viz for automatic UI updates on data changes.
+# --- Core observable class for reactive UI updates with Viz ---
 from .observable_value import ObservableValue
 
-# --- Event classes for structured callbacks ---
-# These provide typed event objects to user callback functions.
+# --- Event classes for structured callbacks from UI components ---
 from .events import (
-    BaseSidekickEvent,
-    ButtonClickEvent,
-    GridClickEvent,
-    CanvasClickEvent,
-    TextboxSubmitEvent,
-    ConsoleSubmitEvent,
-    ErrorEvent,
+    BaseSidekickEvent,    # Base class for all Sidekick UI events.
+    ButtonClickEvent,     # Event for Button clicks.
+    GridClickEvent,       # Event for Grid cell clicks.
+    CanvasClickEvent,     # Event for Canvas clicks.
+    TextboxSubmitEvent,   # Event for Textbox submissions.
+    ConsoleSubmitEvent,   # Event for Console input submissions.
+    ErrorEvent,           # Event for errors reported by a UI component.
 )
 
-# --- Standard Component Classes ---
-# These are the building blocks for your Sidekick UI.
-from .grid import Grid                   # Interactive 2D grid of cells.
-from .console import Console             # Text output and optional input.
-from .viz import Viz                     # Visualize Python variables.
-from .canvas import Canvas               # 2D drawing surface.
-from .label import Label                 # Simple text display.
-from .button import Button               # Clickable button.
-from .textbox import Textbox             # Single-line text input.
-from .markdown import Markdown           # Render Markdown formatted text.
+# --- Standard Component Classes (UI building blocks) ---
+from .grid import Grid
+from .console import Console
+from .viz import Viz
+from .canvas import Canvas
+from .label import Label
+from .button import Button
+from .textbox import Textbox
+from .markdown import Markdown
 
-# --- Layout Container Classes ---
-# Use these to arrange other components.
-from .row import Row                     # Arranges children horizontally.
-from .column import Column               # Arranges children vertically.
+# --- Layout Container Classes (for arranging components) ---
+from .row import Row
+from .column import Column
 
 
 # --- __all__ Definition ---
-# This explicitly defines the public API of the 'sidekick' package
-# when using `from sidekick import *`. It helps keep the namespace clean
-# and provides clarity on what users are intended to interact with directly.
+# Explicitly defines the public API of the 'sidekick' package
+# for `from sidekick import *`. It's good practice, though direct imports
+# (e.g., `from sidekick import Button`) are generally preferred.
 __all__ = [
     # Version
     '__version__',
 
+    # Logger (for users who might want to configure it)
+    'logger',
+
     # Config/Connection/Lifecycle
     'set_url',
+    'activate_connection',
     'clear_all',
     'register_global_message_handler',
     'run_forever',
+    'run_forever_async', # New
     'shutdown',
+    'submit_task',       # New
 
     # Observable Value (for Viz reactivity)
     'ObservableValue',
@@ -158,16 +151,10 @@ __all__ = [
     'Row',
     'Column',
 
-    # Logger (allow users to access/configure if needed)
-    'logger',
-
-    # Errors
+    # Error Classes
+    'SidekickError',
     'SidekickConnectionError',
     'SidekickConnectionRefusedError',
     'SidekickTimeoutError',
     'SidekickDisconnectedError',
-
-    # Note: Does not include internal implementation details like Component,
-    # connection module functions (except the public ones listed above),
-    # utility functions, or specific channel implementations.
 ]
