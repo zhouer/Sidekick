@@ -67,7 +67,7 @@ from .connection import (
 
 # --- Import custom application-level exception classes ---
 # Users can catch these to handle Sidekick-specific errors.
-from .errors import (
+from .exceptions import (
     SidekickError,                  # Base class for all Sidekick application errors.
     SidekickConnectionError,        # Base class for Sidekick connection issues.
     SidekickConnectionRefusedError, # Failed initial connection attempt to Sidekick service.

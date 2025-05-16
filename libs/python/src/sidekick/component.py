@@ -39,7 +39,7 @@ from typing import Optional, Dict, Any, Callable, Union
 # Import ConnectionService's public API functions (which use the singleton)
 from . import logger
 from . import connection as sidekick_connection_module
-from .errors import SidekickConnectionError # Still relevant if send_message fails
+from .exceptions import SidekickConnectionError # Still relevant if send_message fails
 from .utils import generate_unique_id
 from .events import ErrorEvent
 

@@ -56,7 +56,7 @@ from .core import (
     CoreLoopNotRunningError,
     is_pyodide # Utility to check the execution environment
 )
-from .errors import (
+from .exceptions import (
     SidekickConnectionError,        # Base application-level connection error
     SidekickConnectionRefusedError, # Application-level connection refused
     SidekickTimeoutError,           # Application-level timeout (e.g., waiting for UI)

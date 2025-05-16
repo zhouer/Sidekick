@@ -59,7 +59,6 @@ import math # Used in examples, good to keep imported
 from typing import Optional, Dict, Any, Callable, List, Tuple, ContextManager, Union
 
 from . import logger
-from .errors import SidekickConnectionError
 from .component import Component
 from .events import CanvasClickEvent, ErrorEvent
 
@@ -210,13 +209,6 @@ class _CanvasBufferContextManager:
                     f"of type '{exc_type.__name__ if exc_type else 'Unknown'}'. "
                     f"Content of offscreen buffer {self._buffer_id} will NOT be drawn to the screen."
                 )
-        except SidekickConnectionError as e:
-             # Log connection errors during the buffer finalization.
-             logger.error(
-                f"Canvas '{self._canvas.instance_id}': Connection error during " # Use instance_id
-                f"buffer __exit__ (drawing to screen): {e}"
-            )
-             # Let the original exception (if any from the 'with' block) propagate.
         except Exception as e_exit:
              # Catch any other unexpected errors during the drawing process.
              logger.exception(
@@ -903,12 +895,6 @@ class Canvas(Component):
                      self._send_canvas_update(
                          action="destroyBuffer",
                          options={"bufferId": buffer_id_to_remove}
-                     )
-                 except SidekickConnectionError as e:
-                     # Log if destroying a buffer fails, but continue trying to remove the main canvas.
-                     logger.warning(
-                        f"Canvas '{self.instance_id}': Failed to send 'destroyBuffer' command for "
-                        f"offscreen buffer {buffer_id_to_remove} during canvas removal: {e}"
                      )
                  except Exception as e_destroy:
                      logger.exception(
