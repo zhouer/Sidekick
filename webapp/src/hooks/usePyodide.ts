@@ -105,7 +105,7 @@ export function usePyodide(
     setError(null);
 
     // Create a new worker
-    const worker = new Worker(new URL('../workers/pyodideWorker.js', import.meta.url), { type: 'module' });
+    const worker = new Worker(new URL('../workers/pyodideWorker.js', import.meta.url));
     workerRef.current = worker;
 
     // Handle messages from the worker

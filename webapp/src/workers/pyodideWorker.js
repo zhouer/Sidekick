@@ -1,5 +1,6 @@
 // Web worker for running Python code with Pyodide
-import { loadPyodide } from 'pyodide';
+
+importScripts('https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js');
 
 // Worker state
 let pyodide = null;
@@ -37,13 +38,17 @@ async function initializePyodide() {
 
     // Load Pyodide
     pyodide = await loadPyodide({
-      indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.23.4/full/'
+      indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/'
     });
 
     console.log('[pyodideWorker] initializePyodide: Pyodide loaded');
 
     // Install required packages
-    await pyodide.loadPackagesFromImports('import json, asyncio');
+    await pyodide.loadPackage('micropip');
+    await pyodide.runPythonAsync(`
+      import micropip
+      await micropip.install('sidekick-py')
+    `);
 
     console.log('[pyodideWorker] initializePyodide: Required packages installed');
     pyodideReady = true;
@@ -68,7 +73,7 @@ async function fetchScript() {
 
   try {
     console.log(`[pyodideWorker] fetchScript: Fetching script: ${scriptPath}`);
-    const response = await fetch('/' + scriptPath);
+    const response = await fetch(scriptPath);
 
     if (!response.ok) {
       throw new Error(`Failed to fetch script: ${response.status} ${response.statusText}`);
