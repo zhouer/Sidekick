@@ -427,11 +427,11 @@ class HanoiController:
             elif self.solve_state == SolveState.PAUSED:
                 self.resume_solve()
 
-    def handle_control_input(self, value: str):
+    def handle_control_input(self, event: sidekick.TextboxSubmitEvent):
         """Handles disk number input and reset."""
         try:
             # Validate input first before attempting to stop the solver
-            num_disks_input = int(value)
+            num_disks_input = int(event.value)
             if num_disks_input <= 0:
                 self.visualizer.update_status("Number of disks must be positive.")
                 return
@@ -453,7 +453,7 @@ class HanoiController:
             # Now safe to initialize the game with new disk count
             self.initialize_game(num_disks_input) # Handles validation inside
         except ValueError:
-            self.visualizer.update_status(f"Invalid input: '{value}'. Please enter a number.")
+            self.visualizer.update_status(f"Invalid input: '{event.value}'. Please enter a number.")
         except Exception as e:
             self.visualizer.update_status(f"Error setting disks: {e}")
             sidekick.logger.exception("Error handling disk input")

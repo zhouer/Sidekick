@@ -15,20 +15,25 @@ const TextboxComponent = forwardRef<ComponentHandle | null, TextboxComponentProp
         // This allows immediate user feedback while typing.
         // It's synchronized with `state.currentValue` from Python.
         const [inputValue, setInputValue] = useState(state.currentValue);
+        // Track if the input has been modified since the last sync with state.currentValue
+        const [isModified, setIsModified] = useState(false);
 
         // Effect to update local inputValue when state.currentValue (from Python) changes
         useEffect(() => {
             setInputValue(state.currentValue);
+            setIsModified(false);
         }, [state.currentValue]);
 
         const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
             setInputValue(event.target.value);
+            setIsModified(true);
             // 'on_change' is not supported yet, so no message sent here
         };
 
         const handleSubmit = useCallback(() => {
-            // Only send the event if the value has actually changed
-            if (onInteraction && inputValue !== state.currentValue) {
+            // Send the event if the value has changed or if the input has been modified
+            // This ensures we send an event even if the user changes the text back to the initial value
+            if (onInteraction && (inputValue !== state.currentValue || isModified)) {
                 const eventMessage: TextboxSubmitEvent = {
                     id: 0,
                     component: 'textbox',
@@ -39,8 +44,9 @@ const TextboxComponent = forwardRef<ComponentHandle | null, TextboxComponentProp
                 onInteraction(eventMessage);
                 // The Python side will receive this event and update its record.
                 // If Python then sends a 'setValue' update, the useEffect above will sync.
+                setIsModified(false);
             }
-        }, [id, inputValue, onInteraction, state.currentValue]);
+        }, [id, inputValue, onInteraction, state.currentValue, isModified]);
 
         const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
             if (event.key === 'Enter') {
