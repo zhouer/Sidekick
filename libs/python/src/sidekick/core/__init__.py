@@ -26,7 +26,7 @@ from .status import CoreConnectionStatus
 
 # --- Core Exceptions ---
 from .exceptions import (
-    CoreSidekickError,
+    CoreBaseError,
     CoreConnectionError,
     CoreConnectionEstablishmentError,
     CoreConnectionRefusedError,
@@ -58,7 +58,7 @@ __all__ = [
     'CoreConnectionStatus',
 
     # Exceptions
-    'CoreSidekickError',
+    'CoreBaseError',
     'CoreConnectionError',
     'CoreConnectionEstablishmentError',
     'CoreConnectionRefusedError',

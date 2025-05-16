@@ -14,7 +14,7 @@ from typing import Optional, Any
 
 # --- Base Core Exception ---
 
-class CoreSidekickError(Exception):
+class CoreBaseError(Exception):
     """Base class for all core errors within the Sidekick library infrastructure.
 
     Catching this exception can be a way to handle any error originating from
@@ -26,7 +26,7 @@ class CoreSidekickError(Exception):
 
 # --- Core CommunicationManager Exceptions ---
 
-class CoreConnectionError(CoreSidekickError):
+class CoreConnectionError(CoreBaseError):
     """Base class for errors related to the core communication channel.
 
     This exception is raised for issues encountered by a `CommunicationManager`
@@ -114,7 +114,7 @@ class CoreDisconnectedError(CoreConnectionError):
 
 # --- Core TaskManager Exceptions ---
 
-class CoreTaskManagerError(CoreSidekickError):
+class CoreTaskManagerError(CoreBaseError):
     """Base class for errors related to the core TaskManager.
 
     This exception is raised for issues encountered during the operation of the
