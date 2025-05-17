@@ -156,11 +156,6 @@ export function usePyodide(
 
     // Handle worker errors
     worker.onerror = (event) => {
-      if (event.message.includes('KeyboardInterrupt')) {
-        console.log('[usePyodide] Worker interrupted by user');
-        return;
-      }
-
       console.error('[usePyodide] Worker error:', event);
       setStatus('error');
       setError('Worker error: ' + event.message);
@@ -228,7 +223,20 @@ export function usePyodide(
     setStatus('stopping');
     sendAnnounceMessage('offline');
     workerRef.current.postMessage({ type: 'stop' });
-  }, [sendAnnounceMessage]);
+
+    // Set a timeout to terminate the worker if it doesn't respond within 3 seconds
+    const timeoutId = setTimeout(() => {
+      if (workerRef.current) {
+        console.log('[usePyodide] Worker did not respond to stop command within 3 seconds, terminating worker');
+        workerRef.current.terminate();
+        workerRef.current = null;
+        setStatus('terminated');
+      }
+    }, 3000);
+
+    // Store the timeout ID so it can be cleared if the worker responds
+    return () => clearTimeout(timeoutId);
+  }, [sendAnnounceMessage, status]);
 
   return {
     status,

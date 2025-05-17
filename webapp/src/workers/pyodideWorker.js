@@ -9,6 +9,8 @@ let scriptContent = null;
 let running = false;
 let pyodideReady = false;
 let sidekickMessageHandler = null;
+let interruptBuffer = undefined;
+let interrupted = false;
 
 // Send status to the main thread
 function sendStatus(status, error = null) {
@@ -42,6 +44,11 @@ async function initializePyodide() {
     });
 
     console.log('[pyodideWorker] initializePyodide: Pyodide loaded');
+
+    // Set the interrupt buffer
+    interruptBuffer = new SharedArrayBuffer(1);
+    interruptBuffer[0] = 0;
+    pyodide.setInterruptBuffer(interruptBuffer);
 
     // Install required packages
     await pyodide.loadPackage('micropip');
@@ -99,6 +106,7 @@ async function runScript() {
     sendStatus('running');
     console.log('[pyodideWorker] runScript: Running script');
     running = true;
+    interrupted = false;
 
     // Expose the functions to Python
     self.sendHeroMessage = sendHeroMessage;
@@ -107,13 +115,22 @@ async function runScript() {
     // Run the script
     await pyodide.runPythonAsync(scriptContent);
 
-    // If we reach here, the script completed successfully
-    console.log('[pyodideWorker] runScript: Script completed');
-    sendStatus('stopped');
-    running = false;
+    if (interrupted) {
+      console.log('[pyodideWorker] runScript: Script interrupted, exit gracefully');
+      sendStatus('terminated');
+    } else {
+      console.log('[pyodideWorker] runScript: Script completed');
+      sendStatus('stopped');
+    }
   } catch (error) {
-    console.error('[pyodideWorker] runScript: Error running script:', error);
-    sendStatus('error', error.toString());
+    if (interrupted) {
+      console.log('[pyodideWorker] runScript: Script interrupted, terminated by KeyboardInterrupt');
+      sendStatus('terminated');
+    } else {
+      console.error('[pyodideWorker] runScript: Error running script:', error);
+      sendStatus('error', error.toString());
+    }
+  } finally {
     running = false;
   }
 }
@@ -125,27 +142,9 @@ async function stopScript() {
     return;
   }
 
-  try {
-    console.log('[pyodideWorker] stopScript: Stopping script');
-
-    // Interrupt Python execution
-    if (pyodide) {
-      // Try to raise a KeyboardInterrupt exception
-      await pyodide.runPythonAsync(`
-        import signal
-        signal.raise_signal(signal.SIGINT)
-      `)
-    }
-  } catch (error) {
-    if (error.toString().includes('KeyboardInterrupt')) {
-      console.log('[pyodideWorker] stopScript: Script interrupted by user');
-      sendStatus('terminated');
-    } else {
-      console.error('[pyodideWorker] stopScript: Error stopping script:', error);
-      sendStatus('error', error.toString());
-    }
-    running = false;
-  }
+  console.log('[pyodideWorker] stopScript: Stopping script');
+  interruptBuffer[0] = 2;
+  interrupted = true;
 }
 
 // Handle messages from the main thread
@@ -194,12 +193,6 @@ self.onmessage = async (event) => {
 
 // Handle errors
 self.onerror = (error) => {
-  if (error.toString().includes('KeyboardInterrupt')) {
-    console.log('[pyodideWorker] self.onerror: Script interrupted by user');
-    sendStatus('terminated');
-    return;
-  }
-
   console.error('[pyodideWorker] self.onerror: Worker error:', error);
   sendStatus('error', error.toString());
 };
