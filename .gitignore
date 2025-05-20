@@ -12,6 +12,7 @@ dist
 dist-ssr
 *.local
 *.vsix
+.wrangler
 
 __pycache__
 *.egg-info
