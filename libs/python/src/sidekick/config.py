@@ -14,7 +14,7 @@ The primary components are:
 - Functions to manage a user-specified URL, which, if set, overrides the
   `DEFAULT_SERVERS` list.
 """
-from dataclasses import dataclass, field # field might be useful for default_factory later
+from dataclasses import dataclass
 from typing import List, Optional
 
 @dataclass

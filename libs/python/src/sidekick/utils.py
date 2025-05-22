@@ -10,7 +10,10 @@ Warning:
 """
 
 import random
-import string # Kept for potential future use if session ID becomes alphanumeric
+import os
+import json
+import platform
+from typing import Optional
 
 # A simple counter shared across the library instance to help generate unique IDs.
 _instance_counter = 0
@@ -45,33 +48,96 @@ def generate_unique_id(prefix: str) -> str:
     _instance_counter += 1
     return f"{prefix}-{_instance_counter}"
 
+PKG_NAME = "sidekick"
 SESSION_ID_LENGTH = 8
+SESSION_FILENAME = "session_info.json"
 
-def generate_session_id() -> str:
-    """Generates a random session ID.
-
-    Currently, this function produces an 8-digit number as a string.
-    This ID is used when connecting to remote Sidekick servers that require
-    a session identifier to distinguish between different user sessions.
-
-    Future enhancements might involve using alphanumeric characters for a larger
-    pool of possible IDs and increased randomness, but for now, an 8-digit
-    number is sufficient.
+def _generate_random_id() -> str:
+    """
+    Generates a random ID with the length specified by SESSION_ID_LENGTH.
 
     Returns:
-        str: A randomly generated 8-digit string representing the session ID.
-
-    Example:
-        >>> session_id = generate_session_id()
-        >>> print(session_id) # Output might be "12345678"
+        str: A random numeric ID as a string.
     """
-    # Define the range for an 8-digit number.
-    # Smallest 8-digit number is 10,000,000 (10^7).
-    # Largest 8-digit number is 99,999,999 (10^8 - 1).
     min_val = 10**(SESSION_ID_LENGTH - 1)
     max_val = (10**SESSION_ID_LENGTH) - 1
     return str(random.randint(min_val, max_val))
 
-    # Alternative for alphanumeric session ID (can be uncommented and used if needed):
-    # characters = string.ascii_letters + string.digits
-    # return ''.join(random.choice(characters) for _ in range(SESSION_ID_LENGTH))
+def _get_app_data_dir() -> Optional[str]:
+    """Gets the appropriate application data directory based on the OS.
+
+    Returns None if a standard directory cannot be determined.
+    """
+    system = platform.system()
+    base_dir = None
+    if system == "Windows":
+        base_dir = os.environ.get("APPDATA")
+        if not base_dir: # Fallback if APPDATA is not set
+            base_dir = os.path.expanduser("~\\AppData\\Local")
+    elif system == "Darwin": # macOS
+        base_dir = os.path.expanduser("~/Library/Application Support")
+    else: # Linux and other Unix-like
+        base_dir = os.environ.get("XDG_DATA_HOME")
+        if not base_dir: # Fallback if XDG_DATA_HOME is not set
+            base_dir = os.path.expanduser("~/.local/share")
+
+    if not base_dir:
+        # Fallback: if no standard directory could be determined.
+        # Signal to generate_session_id to not use persistent storage.
+        return None
+
+    app_data_dir = os.path.join(base_dir, PKG_NAME)
+    return app_data_dir
+
+def generate_session_id() -> str:
+    """
+    Generates a session ID.
+
+    It tries to load an existing session ID from a file in the user's
+    application data directory. If a standard directory cannot be determined,
+    or if the ID is not found, it generates a new ID.
+
+    If a standard app data directory isn't found, the generated ID is transient
+    and not saved to disk. Otherwise, it saves the new ID to disk and returns it.
+    """
+    app_data_dir = _get_app_data_dir()
+
+    # If app_data_dir is None, it means we should use a transient session ID
+    # and skip all file operations.
+    if app_data_dir is None:
+        return _generate_random_id()
+
+    # Try to load existing session ID
+    session_file_path = os.path.join(app_data_dir, SESSION_FILENAME)
+    if os.path.exists(session_file_path):
+        try:
+            with open(session_file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            session_id = data.get('session_id')
+
+            # Ensure session_id is not None
+            if session_id is not None:
+                return str(session_id) # Return as string
+        except (IOError, json.JSONDecodeError, TypeError, ValueError):
+            # Errors in reading/parsing are treated as if the file is invalid/absent.
+            # A new session ID will be generated.
+            pass
+
+    # Generate the new session ID
+    new_session_id = _generate_random_id()
+    session_data = {
+        'session_id': new_session_id
+    }
+
+    # Save the new session ID
+    try:
+        os.makedirs(app_data_dir, exist_ok=True)
+        with open(session_file_path, 'w', encoding='utf-8') as f:
+            json.dump(session_data, f)
+    except IOError:
+        # If saving fails, the app still gets a session ID for the current run.
+        # It just won't persist for the next run.
+        # Optionally, log this error if a logging facility is available.
+        pass
+
+    return new_session_id
