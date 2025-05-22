@@ -9,6 +9,9 @@ Warning:
     as they might change without notice in future versions.
 """
 
+import random
+import string # Kept for potential future use if session ID becomes alphanumeric
+
 # A simple counter shared across the library instance to help generate unique IDs.
 _instance_counter = 0
 
@@ -41,3 +44,34 @@ def generate_unique_id(prefix: str) -> str:
     global _instance_counter
     _instance_counter += 1
     return f"{prefix}-{_instance_counter}"
+
+SESSION_ID_LENGTH = 8
+
+def generate_session_id() -> str:
+    """Generates a random session ID.
+
+    Currently, this function produces an 8-digit number as a string.
+    This ID is used when connecting to remote Sidekick servers that require
+    a session identifier to distinguish between different user sessions.
+
+    Future enhancements might involve using alphanumeric characters for a larger
+    pool of possible IDs and increased randomness, but for now, an 8-digit
+    number is sufficient.
+
+    Returns:
+        str: A randomly generated 8-digit string representing the session ID.
+
+    Example:
+        >>> session_id = generate_session_id()
+        >>> print(session_id) # Output might be "12345678"
+    """
+    # Define the range for an 8-digit number.
+    # Smallest 8-digit number is 10,000,000 (10^7).
+    # Largest 8-digit number is 99,999,999 (10^8 - 1).
+    min_val = 10**(SESSION_ID_LENGTH - 1)
+    max_val = (10**SESSION_ID_LENGTH) - 1
+    return str(random.randint(min_val, max_val))
+
+    # Alternative for alphanumeric session ID (can be uncommented and used if needed):
+    # characters = string.ascii_letters + string.digits
+    # return ''.join(random.choice(characters) for _ in range(SESSION_ID_LENGTH))

@@ -133,7 +133,7 @@ webapp/
         *   Handles buffer creation/destruction by managing internal `offscreenCanvases` and `offscreenContexts` refs.
     *   **No longer uses `useEffect` to process a `commandQueue`**. Updates are handled synchronously within `processUpdate`.
     *   Calls the `onReady(id)` prop in its initialization `useEffect`.
-    *   Click handling remains the same, using `onInteraction`.
+    *   Click handling uses `onInteraction`.
 *   **`canvasLogic.ts`:**
     *   `getInitialState`: Returns state with `width`, `height`.
     *   `updateState`: Now essentially a no-op, returning `currentState`.

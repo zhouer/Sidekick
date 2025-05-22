@@ -50,7 +50,7 @@ from .communication_manager import (
 )
 
 # --- Factory Functions ---
-from .factories import get_task_manager, get_communication_manager
+from .factories import get_task_manager
 
 
 __all__ = [
@@ -82,5 +82,4 @@ __all__ = [
 
     # Factories
     'get_task_manager',
-    'get_communication_manager',
 ]

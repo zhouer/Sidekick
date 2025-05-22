@@ -3,7 +3,26 @@ import { v4 as uuidv4 } from 'uuid';
 import { SentMessage, SystemAnnounceMessage } from '../types';
 
 // --- Constants ---
-const WS_URL = __WS_URL__ || 'ws://localhost:5163'; // Default WebSocket server URL (injected by Vite)
+// Construct WebSocket URL with session ID if available from URL path
+const getWebSocketUrl = (): string => {
+    const baseUrl = __WS_URL__;
+
+    // Extract session ID from URL if available
+    const pathMatch = window.location.pathname.match(/\/session\/([^\/]+)/);
+    const sessionId = pathMatch ? pathMatch[1] : null;
+
+    if (sessionId) {
+        // Use URL API to properly handle URL construction
+        // This ensures correct handling regardless of whether baseUrl ends with a slash
+        const url = new URL(baseUrl);
+        url.searchParams.append('session', sessionId);
+        return url.toString();
+    }
+
+    return baseUrl;
+};
+
+const WS_URL = getWebSocketUrl(); // WebSocket server URL with session ID if available
 const RECONNECT_DELAY = 1000; // Initial reconnect delay in milliseconds (1 seconds)
 const MAX_RECONNECT_ATTEMPTS = 10; // Max attempts before giving up
 const RECONNECT_BACKOFF_FACTOR = 1.5; // Multiplier for exponential backoff

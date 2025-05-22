@@ -2,8 +2,7 @@
 
 Welcome to the Sidekick Python library! This is your starting point for
 connecting your Python code to the Sidekick visual coding buddy, which typically
-runs inside the Visual Studio Code editor or as a standalone web application
-using Pyodide.
+runs inside the Visual Studio Code editor or as a standalone web application.
 
 Sidekick helps you **see your code come alive**. Instead of just imagining what
 loops are doing or how data structures change, you can use this library to create
@@ -11,17 +10,25 @@ visual representations and interactive elements directly within the Sidekick pan
 
 Key functionalities include creating interactive visual components, managing their
 layout, handling UI events, and visualizing data structures in real-time.
-The library is designed to be beginner-friendly with a synchronous-style API,
-while also supporting asynchronous operations for more advanced use cases,
-especially in Pyodide environments.
+The library is designed to be beginner-friendly with a synchronous-style API
+for CPython users, while also supporting asynchronous operations for more
+advanced use cases, especially in Pyodide environments.
 
 Getting Started:
-    1.  **Install:** `pip install sidekick-py`. Ensure the Sidekick VS Code
-        extension is installed OR you are running in a compatible web environment.
-    2.  **Open Panel (VS Code):** Use `Ctrl+Shift+P`, search for `Sidekick: Show Panel`.
+    1.  **Install:** `pip install sidekick-py`.
+    2.  **Setup Sidekick UI:**
+        *   **VS Code (Recommended):** Install the "Sidekick - Your Visual Coding Buddy"
+            extension from the VS Code Marketplace (search for `sidekick-coding`).
+            Then, open the Sidekick panel using `Ctrl+Shift+P` (or `Cmd+Shift+P`
+            on macOS) and searching for `Sidekick: Show Panel`.
+        *   **Remote/Cloud:** If not using the VS Code extension, your script might
+            connect to a remote Sidekick server. If so, the library will print
+            a UI URL to open in your browser.
     3.  **Import:** Start your script with `import sidekick`.
     4.  **Create Components:** E.g., `label = sidekick.Label("Hello!")`.
-        The connection to the Sidekick service activates implicitly on first use.
+        The connection to a Sidekick service (local or remote) activates
+        implicitly when the first component is created or an explicit connection
+        function is called.
     5.  **Handle Interactivity:** Use `sidekick.run_forever()` (for CPython) or
         `await sidekick.run_forever_async()` (for Pyodide/async) at the end of
         your script if you need to process UI events like button clicks.
@@ -39,6 +46,12 @@ from ._version import __version__
 # Configure a logger for the 'sidekick' package.
 # By default, it uses a NullHandler, so applications using this library
 # must configure their own logging if they wish to see Sidekick logs.
+# Example application setup:
+# import logging
+# logging.basicConfig(level=logging.DEBUG) # Or another level
+# sidekick_logger = logging.getLogger("sidekick")
+# # Optionally set a specific level for sidekick logs:
+# # sidekick_logger.setLevel(logging.INFO)
 logger = logging.getLogger("sidekick")
 if not logger.hasHandlers():
     logger.addHandler(logging.NullHandler())
@@ -47,7 +60,7 @@ if not logger.hasHandlers():
 # These are the primary functions for managing the Sidekick service connection.
 # They are wrappers around the ConnectionService singleton.
 from .connection import (
-    set_url,                      # Set the WebSocket server URL before connecting.
+    set_url,                      # Set a specific WebSocket server URL, bypassing defaults.
     activate_connection,          # Explicitly activate the connection (usually implicit).
     clear_all,                    # Remove all components from the Sidekick UI.
     register_global_message_handler, # Advanced: Handle *all* incoming raw messages.
@@ -56,8 +69,7 @@ from .connection import (
     shutdown,                     # Gracefully close the connection to Sidekick.
     submit_task                   # Submit a user coroutine to Sidekick's event loop.
 )
-# Note: `send_message`, `register_message_handler`, `unregister_message_handler`
-# from connection.py are primarily for internal use by Component and not re-exported here.
+# Note: Internal methods like `send_message_internally` from connection.py are not re-exported.
 
 # --- Import custom application-level exception classes ---
 # Users can catch these to handle Sidekick-specific errors.
@@ -115,9 +127,9 @@ __all__ = [
     'clear_all',
     'register_global_message_handler',
     'run_forever',
-    'run_forever_async', # New
+    'run_forever_async',
     'shutdown',
-    'submit_task',       # New
+    'submit_task',
 
     # Observable Value (for Viz reactivity)
     'ObservableValue',

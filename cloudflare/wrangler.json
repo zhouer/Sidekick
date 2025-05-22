@@ -1,10 +1,10 @@
 {
-    "compatibility_date": "2025-05-19",
+    "compatibility_date": "2025-05-08",
     "main": "./index.js",
-    "name": "sidekick-ws",
+    "name": "ws-sidekick",
     "migrations": [
         {
-            "new_classes": ["Session"],
+            "new_sqlite_classes": ["Session"],
             "tag": "v1"
         }
     ],

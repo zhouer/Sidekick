@@ -1,29 +1,32 @@
 """Factory functions for creating core infrastructure components.
 
 This module provides centralized functions for instantiating core components
-like the TaskManager and CommunicationManager. These factories determine the
-appropriate concrete implementation based on the execution environment
-(e.g., CPython or Pyodide).
+like the TaskManager and specific types of CommunicationManagers.
+The TaskManager is provided as a singleton, while CommunicationManagers
+are created on demand.
 """
 
 import logging
-import threading
+import threading # For _task_manager_lock
 from typing import Optional, Dict, Any
 
 from .task_manager import TaskManager
 from .cpython_task_manager import CPythonTaskManager
 from .pyodide_task_manager import PyodideTaskManager
-from .communication_manager import CommunicationManager
-from .websocket_communication_manager import WebSocketCommunicationManager, _DEFAULT_PING_INTERVAL_SECONDS, _DEFAULT_PING_TIMEOUT_SECONDS
+from .communication_manager import CommunicationManager # Still needed for type hints if we had a generic create_cm
+from .websocket_communication_manager import (
+    WebSocketCommunicationManager,
+    _DEFAULT_PING_INTERVAL_SECONDS, # Expose for potential configuration via ws_config
+    _DEFAULT_PING_TIMEOUT_SECONDS   # Expose for potential configuration via ws_config
+)
 from .pyodide_communication_manager import PyodideCommunicationManager
-from .utils import is_pyodide
-from .status import CoreConnectionStatus # Though not directly used, good to have related imports visible
+from .utils import is_pyodide # Import is_pyodide for get_task_manager
 
 logger = logging.getLogger(__name__)
 
-# --- TaskManager Factory ---
+# --- TaskManager Factory (Singleton) ---
 _task_manager_instance: Optional[TaskManager] = None
-_task_manager_lock = threading.Lock() # Ensures thread-safe singleton creation
+_task_manager_lock = threading.Lock() # Ensures thread-safe singleton creation for TaskManager
 
 def get_task_manager() -> TaskManager:
     """Gets the singleton instance of the appropriate TaskManager.
@@ -45,85 +48,76 @@ def get_task_manager() -> TaskManager:
         with _task_manager_lock:
             if _task_manager_instance is None:
                 if is_pyodide():
-                    logger.info("Creating PyodideTaskManager instance.")
+                    logger.info("Creating PyodideTaskManager singleton instance.")
                     _task_manager_instance = PyodideTaskManager()
                 else:
-                    logger.info("Creating CPythonTaskManager instance.")
+                    logger.info("Creating CPythonTaskManager singleton instance.")
                     _task_manager_instance = CPythonTaskManager()
 
-                if _task_manager_instance is None: # Should not happen
+                if _task_manager_instance is None: # Should not be reached if logic is correct
                      err_msg = "Failed to create a TaskManager instance."
-                     logger.error(err_msg)
+                     logger.critical(err_msg) # More severe if this happens
                      raise RuntimeError(err_msg) # pragma: no cover
     return _task_manager_instance
 
 
-# --- CommunicationManager Factory ---
-_communication_manager_instance: Optional[CommunicationManager] = None
-_communication_manager_lock = threading.Lock() # Ensures thread-safe singleton creation
+# --- CommunicationManager Creation Functions ---
 
-# Default WebSocket URL, can be overridden by ConnectionService later via sidekick.set_url
-_DEFAULT_WEBSOCKET_URL = "ws://localhost:5163"
-
-
-def get_communication_manager(
-    ws_url: Optional[str] = None,
+def create_websocket_communication_manager(
+    url: str,
+    task_manager: TaskManager,
     ws_config: Optional[Dict[str, Any]] = None
-) -> CommunicationManager:
-    """Gets the singleton instance of the appropriate CommunicationManager.
+) -> WebSocketCommunicationManager:
+    """Creates and returns a new instance of WebSocketCommunicationManager.
 
-    This function determines the execution environment (CPython or Pyodide)
-    and returns a corresponding CommunicationManager implementation.
-    The instance is created only once (singleton pattern).
-
-    For CPython (WebSocket based):
-        - It requires a `TaskManager` instance (obtained internally).
-        - It uses the provided `ws_url` or a default if None.
-        - `ws_config` can provide additional parameters like `ping_interval`, `ping_timeout`.
-
-    For Pyodide:
-        - It requires a `TaskManager` instance.
-        - `ws_url` and `ws_config` are ignored.
+    This manager is responsible for handling WebSocket communication, typically
+    used in CPython environments.
 
     Args:
-        ws_url (Optional[str]): The WebSocket URL to use if running in a CPython
-            environment. If None, a default URL ("ws://localhost:5163") is used.
-            This argument is ignored in Pyodide environments.
-        ws_config (Optional[Dict[str, Any]]): A dictionary for WebSocket specific
-            configurations like 'ping_interval' and 'ping_timeout'.
-            Ignored in Pyodide.
+        url (str): The WebSocket URL to connect to (e.g., "ws://localhost:5163").
+        task_manager (TaskManager): The TaskManager instance that this
+            CommunicationManager will use for scheduling its asynchronous operations.
+        ws_config (Optional[Dict[str, Any]]): A dictionary for WebSocket-specific
+            configurations. Supported keys include:
+            - 'ping_interval' (float): Interval in seconds for sending pings.
+              Defaults to `_DEFAULT_PING_INTERVAL_SECONDS`.
+            - 'ping_timeout' (float): Timeout in seconds for pong responses.
+              Defaults to `_DEFAULT_PING_TIMEOUT_SECONDS`.
+            If `None` or keys are missing, default values are used.
 
     Returns:
-        CommunicationManager: The singleton CommunicationManager instance.
-
-    Raises:
-        RuntimeError: If a CommunicationManager instance cannot be created.
+        WebSocketCommunicationManager: A new instance configured for the given URL.
     """
-    global _communication_manager_instance
-    if _communication_manager_instance is None:
-        with _communication_manager_lock:
-            if _communication_manager_instance is None:
-                task_manager = get_task_manager() # Get the singleton TaskManager
+    effective_config = ws_config if ws_config is not None else {}
+    ping_interval = effective_config.get('ping_interval', _DEFAULT_PING_INTERVAL_SECONDS)
+    ping_timeout = effective_config.get('ping_timeout', _DEFAULT_PING_TIMEOUT_SECONDS)
 
-                if is_pyodide():
-                    logger.info("Creating PyodideCommunicationManager instance.")
-                    _communication_manager_instance = PyodideCommunicationManager(task_manager)
-                else:
-                    effective_url = ws_url if ws_url is not None else _DEFAULT_WEBSOCKET_URL
-                    config = ws_config if ws_config is not None else {}
-                    ping_interval = config.get('ping_interval', _DEFAULT_PING_INTERVAL_SECONDS)
-                    ping_timeout = config.get('ping_timeout', _DEFAULT_PING_TIMEOUT_SECONDS)
+    logger.info(
+        f"Creating new WebSocketCommunicationManager instance for URL: {url} "
+        f"(ping_interval={ping_interval}s, ping_timeout={ping_timeout}s)"
+    )
+    return WebSocketCommunicationManager(
+        url=url,
+        task_manager=task_manager,
+        ping_interval=ping_interval,
+        ping_timeout=ping_timeout
+    )
 
-                    logger.info(f"Creating WebSocketCommunicationManager instance for URL: {effective_url}")
-                    _communication_manager_instance = WebSocketCommunicationManager(
-                        url=effective_url,
-                        task_manager=task_manager,
-                        ping_interval=ping_interval,
-                        ping_timeout=ping_timeout
-                    )
+def create_pyodide_communication_manager(
+    task_manager: TaskManager
+) -> PyodideCommunicationManager:
+    """Creates and returns a new instance of PyodideCommunicationManager.
 
-                if _communication_manager_instance is None: # Should not happen
-                    err_msg = "Failed to create a CommunicationManager instance."
-                    logger.error(err_msg)
-                    raise RuntimeError(err_msg) # pragma: no cover
-    return _communication_manager_instance
+    This manager handles communication within a Pyodide environment, typically
+    by bridging messages between a Web Worker (where Python runs) and the main
+    browser thread (where the UI runs).
+
+    Args:
+        task_manager (TaskManager): The TaskManager instance (usually PyodideTaskManager)
+            that this CommunicationManager will use.
+
+    Returns:
+        PyodideCommunicationManager: A new instance.
+    """
+    logger.info("Creating new PyodideCommunicationManager instance.")
+    return PyodideCommunicationManager(task_manager=task_manager)

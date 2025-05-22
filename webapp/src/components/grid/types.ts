@@ -1,5 +1,4 @@
 // --- State ---
-// The structure of the state itself remains the same.
 export interface GridState {
     numColumns: number;
     numRows: number;
@@ -12,7 +11,6 @@ export interface GridState {
 }
 
 // --- Payloads ---
-// Spawn payload remains the same.
 export interface GridSpawnPayload {
     numColumns: number;
     numRows: number;
@@ -43,7 +41,7 @@ export type GridUpdatePayload =
     | { action: "clearCell"; options: ClearCellOptions }
     | { action: "clear" }; // No options needed for clear
 
-// Event payload remains the same.
+// Event payload
 export interface GridEventPayload {
     event: 'click';
     x: number;
