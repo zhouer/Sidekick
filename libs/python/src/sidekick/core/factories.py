@@ -13,12 +13,7 @@ from typing import Optional, Dict, Any
 from .task_manager import TaskManager
 from .cpython_task_manager import CPythonTaskManager
 from .pyodide_task_manager import PyodideTaskManager
-from .communication_manager import CommunicationManager # Still needed for type hints if we had a generic create_cm
-from .websocket_communication_manager import (
-    WebSocketCommunicationManager,
-    _DEFAULT_PING_INTERVAL_SECONDS, # Expose for potential configuration via ws_config
-    _DEFAULT_PING_TIMEOUT_SECONDS   # Expose for potential configuration via ws_config
-)
+from .websocket_communication_manager import WebSocketCommunicationManager
 from .pyodide_communication_manager import PyodideCommunicationManager
 from .utils import is_pyodide # Import is_pyodide for get_task_manager
 
@@ -65,8 +60,7 @@ def get_task_manager() -> TaskManager:
 
 def create_websocket_communication_manager(
     url: str,
-    task_manager: TaskManager,
-    ws_config: Optional[Dict[str, Any]] = None
+    task_manager: TaskManager
 ) -> WebSocketCommunicationManager:
     """Creates and returns a new instance of WebSocketCommunicationManager.
 
@@ -77,31 +71,13 @@ def create_websocket_communication_manager(
         url (str): The WebSocket URL to connect to (e.g., "ws://localhost:5163").
         task_manager (TaskManager): The TaskManager instance that this
             CommunicationManager will use for scheduling its asynchronous operations.
-        ws_config (Optional[Dict[str, Any]]): A dictionary for WebSocket-specific
-            configurations. Supported keys include:
-            - 'ping_interval' (float): Interval in seconds for sending pings.
-              Defaults to `_DEFAULT_PING_INTERVAL_SECONDS`.
-            - 'ping_timeout' (float): Timeout in seconds for pong responses.
-              Defaults to `_DEFAULT_PING_TIMEOUT_SECONDS`.
-            If `None` or keys are missing, default values are used.
 
     Returns:
         WebSocketCommunicationManager: A new instance configured for the given URL.
     """
-    effective_config = ws_config if ws_config is not None else {}
-    ping_interval = effective_config.get('ping_interval', _DEFAULT_PING_INTERVAL_SECONDS)
-    ping_timeout = effective_config.get('ping_timeout', _DEFAULT_PING_TIMEOUT_SECONDS)
 
-    logger.info(
-        f"Creating new WebSocketCommunicationManager instance for URL: {url} "
-        f"(ping_interval={ping_interval}s, ping_timeout={ping_timeout}s)"
-    )
-    return WebSocketCommunicationManager(
-        url=url,
-        task_manager=task_manager,
-        ping_interval=ping_interval,
-        ping_timeout=ping_timeout
-    )
+    logger.info(f"Creating new WebSocketCommunicationManager instance for URL: {url}")
+    return WebSocketCommunicationManager(url=url, task_manager=task_manager)
 
 def create_pyodide_communication_manager(
     task_manager: TaskManager

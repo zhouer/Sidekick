@@ -10,7 +10,7 @@ is typically used in standard CPython environments.
 import asyncio
 import logging
 import websockets # type: ignore[import-untyped]
-from typing import Awaitable, Callable, Union, Optional, Any
+from typing import Callable, Optional, Any
 
 from .communication_manager import (
     CommunicationManager,
@@ -29,14 +29,11 @@ from .exceptions import (
 
 logger = logging.getLogger(__name__)
 
-# Default timeout values for WebSocket operations
-_CONNECT_TIMEOUT_SECONDS = 10.0  # Timeout for establishing the initial connection.
-_CLOSE_TIMEOUT_SECONDS = 5.0    # Timeout for the graceful close handshake.
-_LISTENER_TASK_CANCEL_WAIT_SECONDS = 2.0 # Time to wait for listener task to exit after cancellation.
-
-# Default ping/pong configuration for keeping the WebSocket connection alive.
+_DEFAULT_OPEN_TIMEOUT_SECONDS = 5.0  # Timeout for establishing the initial connection.
+_DEFAULT_CLOSE_TIMEOUT_SECONDS = 1.0 # Timeout for the graceful close handshake.
 _DEFAULT_PING_INTERVAL_SECONDS = 20.0
 _DEFAULT_PING_TIMEOUT_SECONDS = 10.0
+_LISTENER_TASK_CANCEL_WAIT_SECONDS = 2.0 # Time to wait for listener task to exit after cancellation.
 
 
 class WebSocketCommunicationManager(CommunicationManager):
@@ -51,8 +48,10 @@ class WebSocketCommunicationManager(CommunicationManager):
     def __init__(self,
                  url: str,
                  task_manager: TaskManager,
+                 open_timeout: Optional[float] = _DEFAULT_OPEN_TIMEOUT_SECONDS,
                  ping_interval: Optional[float] = _DEFAULT_PING_INTERVAL_SECONDS,
-                 ping_timeout: Optional[float] = _DEFAULT_PING_TIMEOUT_SECONDS):
+                 ping_timeout: Optional[float] = _DEFAULT_PING_TIMEOUT_SECONDS,
+                 close_timeout: Optional[float] = _DEFAULT_CLOSE_TIMEOUT_SECONDS):
         """Initializes the WebSocketCommunicationManager.
 
         Args:
@@ -60,6 +59,8 @@ class WebSocketCommunicationManager(CommunicationManager):
             task_manager (TaskManager): The TaskManager instance that this
                 CommunicationManager will use for scheduling its asynchronous
                 operations, such as the message listener loop and handler invocations.
+            open_timeout (Optional[float]): The timeout in seconds for establishing
+                the initial connection. Defaults to `_DEFAULT_OPEN_TIMEOUT_SECONDS`.
             ping_interval (Optional[float]): The interval in seconds for sending
                 WebSocket keep-alive pings from this client to the server.
                 If `None`, automatic pings initiated by this client are disabled.
@@ -68,11 +69,16 @@ class WebSocketCommunicationManager(CommunicationManager):
                 pong response from the server after a ping is sent. If a pong is
                 not received within this time, the connection may be considered dead.
                 Defaults to `_DEFAULT_PING_TIMEOUT_SECONDS`.
+            close_timeout (Optional[float]): The timeout in seconds for the
+                graceful close handshake when establishing the connection.
+                Defaults to `_DEFAULT_CLOSE_TIMEOUT_SECONDS`.
         """
         self._url = url
         self._task_manager = task_manager
+        self._open_timeout = open_timeout
         self._ping_interval = ping_interval
         self._ping_timeout = ping_timeout
+        self._close_timeout = close_timeout
 
         self._ws_connection: Optional[websockets.client.WebSocketClientProtocol] = None
         self._status: CoreConnectionStatus = CoreConnectionStatus.DISCONNECTED
@@ -160,10 +166,10 @@ class WebSocketCommunicationManager(CommunicationManager):
                 # ping_interval and ping_timeout configure automatic keep-alive.
                 self._ws_connection = await websockets.connect(
                     self._url,
-                    open_timeout=_CONNECT_TIMEOUT_SECONDS,
+                    open_timeout=self._open_timeout,
                     ping_interval=self._ping_interval,
                     ping_timeout=self._ping_timeout,
-                    # close_timeout could be set here if more control over close handshake is needed.
+                    close_timeout=self._close_timeout,
                 )
                 logger.info(f"Successfully connected to WebSocket server: {self._url}")
                 await self._update_status_async(CoreConnectionStatus.CONNECTED)
@@ -189,6 +195,8 @@ class WebSocketCommunicationManager(CommunicationManager):
             except websockets.exceptions.InvalidURI as e_uri: # pragma: no cover
                 # Error if the URL format is incorrect.
                 await self._handle_connection_failure_async(e_uri, CoreConnectionRefusedError(self._url, e_uri))
+            except asyncio.TimeoutError as e_timeout: # If websockets.connect itself times out.
+                await self._handle_connection_failure_async(e_timeout, CoreConnectionTimeoutError(self._url, self._open_timeout, e_timeout))
             except websockets.exceptions.WebSocketException as e_ws:
                 # This is a broad category for `websockets` library errors.
                 # We try to map common underlying OS errors to more specific Core...Errors.
@@ -197,7 +205,7 @@ class WebSocketCommunicationManager(CommunicationManager):
                     await self._handle_connection_failure_async(e_ws, CoreConnectionRefusedError(self._url, e_ws))
                 elif isinstance(e_ws.__cause__, TimeoutError) or \
                      (e_ws.args and "timed out" in str(e_ws.args[0]).lower()):
-                    await self._handle_connection_failure_async(e_ws, CoreConnectionTimeoutError(self._url, _CONNECT_TIMEOUT_SECONDS, e_ws))
+                    await self._handle_connection_failure_async(e_ws, CoreConnectionTimeoutError(self._url, self._open_timeout, e_ws))
                 else: # pragma: no cover
                     # Other WebSocket specific errors.
                     await self._handle_connection_failure_async(
@@ -212,8 +220,6 @@ class WebSocketCommunicationManager(CommunicationManager):
                         e_os,
                         CoreConnectionError(f"OS error during WebSocket connection: {e_os}", url=self._url, original_exception=e_os)
                     )
-            except asyncio.TimeoutError as e_timeout: # If websockets.connect itself times out.
-                await self._handle_connection_failure_async(e_timeout, CoreConnectionTimeoutError(self._url, _CONNECT_TIMEOUT_SECONDS, e_timeout))
             except Exception as e_unexpected: # Catch-all for any other unexpected errors.
                  # pragma: no cover
                 await self._handle_connection_failure_async(
@@ -405,7 +411,7 @@ class WebSocketCommunicationManager(CommunicationManager):
                 try:
                     logger.debug(f"Attempting to gracefully close WebSocket object for {self._url}.")
                     # websockets.close() has its own timeout mechanism if not specified.
-                    await asyncio.wait_for(self._ws_connection.close(), timeout=_CLOSE_TIMEOUT_SECONDS)
+                    await asyncio.wait_for(self._ws_connection.close(), timeout=_DEFAULT_CLOSE_TIMEOUT_SECONDS)
                     logger.info(f"WebSocket connection to {self._url} has been closed.")
                 except asyncio.TimeoutError: # pragma: no cover
                     logger.warning(f"Timeout occurred while closing WebSocket connection to {self._url}.")
