@@ -45,6 +45,7 @@ export function usePyodide(
   const peerIdRef = useRef<string | null>(null);
   const pendingRunRef = useRef<boolean>(false);
   const offlineReceivedRef = useRef<boolean>(false);
+  const stopTimeoutRef = useRef<number | null>(null);
 
   // Generate a unique peer ID for this client instance
   useEffect(() => {
@@ -136,6 +137,13 @@ export function usePyodide(
           onMessageCallback({'id': 0, 'component': 'system', 'type': 'announce', 'payload': {'role': 'hero', 'status': 'offline'}});
         }
 
+        // Clear the stop timeout since the worker has responded
+        if (stopTimeoutRef.current !== null) {
+          console.log('[usePyodide] Clearing stop timeout');
+          clearTimeout(stopTimeoutRef.current);
+          stopTimeoutRef.current = null;
+        }
+
         if (workerRef.current) {
           console.log('[usePyodide] Clearing worker reference');
           workerRef.current.terminate();
@@ -223,6 +231,12 @@ export function usePyodide(
     sendAnnounceMessage('offline');
     workerRef.current.postMessage({ type: 'stop' });
 
+    // Clear any existing timeout
+    if (stopTimeoutRef.current !== null) {
+      clearTimeout(stopTimeoutRef.current);
+      stopTimeoutRef.current = null;
+    }
+
     // Set a timeout to terminate the worker if it doesn't respond within 3 seconds
     const timeoutId = setTimeout(() => {
       if (workerRef.current) {
@@ -231,10 +245,18 @@ export function usePyodide(
         workerRef.current = null;
         setStatus('terminated');
       }
+      stopTimeoutRef.current = null;
     }, 3000);
 
     // Store the timeout ID so it can be cleared if the worker responds
-    return () => clearTimeout(timeoutId);
+    stopTimeoutRef.current = timeoutId;
+
+    return () => {
+      if (stopTimeoutRef.current !== null) {
+        clearTimeout(stopTimeoutRef.current);
+        stopTimeoutRef.current = null;
+      }
+    };
   }, [sendAnnounceMessage, status]);
 
   return {
