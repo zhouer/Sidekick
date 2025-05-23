@@ -5,22 +5,16 @@ import sys
 # -- Path setup --------------------------------------------------------------
 # Add the 'src' directory of your library to sys.path so Sphinx can find it.
 # Adjust the path '../..' based on the location of conf.py relative to src/
-sys.path.insert(0, os.path.abspath('../../src'))
+sys.path.insert(0, os.path.abspath('../src'))
 
 # -- Project information -----------------------------------------------------
 project = 'Sidekick Python Library'
-copyright = '2025, Enjan Chou' # Replace with your name/year
-author = 'Enjan Chou' # Replace with your name
+copyright = '2025, Enjan Chou'
+author = 'Enjan Chou'
 
-# Attempt to get the version dynamically from your _version.py
-try:
-    from sidekick._version import __version__
-    version = __version__
-    release = __version__
-except ImportError:
-    print("Warning: Could not import sidekick._version to determine version.")
-    version = '0.0.0' # Fallback version
-    release = '0.0.0'
+from sidekick._version import __version__
+version = __version__
+release = __version__
 
 # -- General configuration ---------------------------------------------------
 extensions = [
