@@ -47,6 +47,7 @@ sendHeroMessage(json.dumps(announce))`;
         return new Response(testPyContent, {
             headers: {
                 'Content-Type': 'text/plain',
+                'Access-Control-Allow-Origin': '*',
             },
         });
     },
