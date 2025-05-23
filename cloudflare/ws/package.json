@@ -4,9 +4,9 @@
   "description": "Cloudflare Worker with Durable Object for Sidekick WebSocket",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "../node_modules/.bin/wrangler dev",
     "build": "echo \"No build step required\"",
-    "deploy": "wrangler deploy"
+    "deploy": "../node_modules/.bin/wrangler deploy"
   },
   "devDependencies": {
     "wrangler": "^4.16.0"

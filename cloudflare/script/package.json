@@ -1,0 +1,14 @@
+{
+  "name": "sidekick-script",
+  "version": "0.0.6",
+  "description": "Cloudflare Worker for Sidekick script",
+  "type": "module",
+  "scripts": {
+    "dev": "../node_modules/.bin/wrangler dev",
+    "build": "echo \"No build step required\"",
+    "deploy": "../node_modules/.bin/wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.16.0"
+  }
+}

@@ -1,0 +1,9 @@
+{
+    "compatibility_date": "2025-05-08",
+    "main": "./index.js",
+    "name": "script-sidekick",
+    "observability": {
+        "enabled": true
+    },
+    "upload_source_maps": true
+}
