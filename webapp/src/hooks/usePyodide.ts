@@ -23,27 +23,22 @@ type WorkerSidekickResponse = {
 
 type WorkerResponse = WorkerStatusResponse | WorkerSidekickResponse;
 
-// Hook options
-interface UsePyodideOptions {
-  enabled: boolean;
-  scriptPath: string;
-}
-
 /**
  * Custom React hook to manage Pyodide execution in a web worker.
  * 
  * @param onMessageCallback - Callback function to handle messages from the Python script
- * @param options - Configuration options for the hook
+ * @param scriptUrl - The script URL to load
+ * @param enabled - Whether the hook is enabled
  * @returns Object containing Pyodide state and control methods
  */
 export function usePyodide(
   onMessageCallback: (message: any) => void,
-  options: UsePyodideOptions
+  scriptUrl: string,
+  enabled: boolean
 ) {
   // State
   const [status, setStatus] = useState<PyodideStatus>('initializing');
   const [error, setError] = useState<string | null>(null);
-  const [scriptUrl, setScriptUrl] = useState<string | null>(null);
 
   // Refs
   const workerRef = useRef<Worker | null>(null);
@@ -53,11 +48,15 @@ export function usePyodide(
 
   // Generate a unique peer ID for this client instance
   useEffect(() => {
+    if (!enabled) {
+        return;
+    }
+
     if (!peerIdRef.current) {
       peerIdRef.current = `sidekick-${uuidv4()}`;
       console.log(`[usePyodide] Generated Sidekick Peer ID: ${peerIdRef.current}`);
     }
-  }, []);
+  }, [enabled]);
 
   // Send a message to the Python script
   const sendMessage = useCallback((message: SentMessage | object, description: string = "") => {
@@ -174,12 +173,12 @@ export function usePyodide(
 
   // Initialize Pyodide when enabled
   useEffect(() => {
-    if (!options.enabled || !options.scriptPath) {
+    if (!enabled) {
       return;
     }
 
-    console.log(`[usePyodide] Initializing with script: ${options.scriptPath}`);
-    setScriptUrl(options.scriptPath);
+    // Use the provided script URL
+    console.log(`[usePyodide] Initializing with script: ${scriptUrl}`);
 
     // Initialize the worker
     initializeWorker();
@@ -192,7 +191,7 @@ export function usePyodide(
         workerRef.current = null;
       }
     };
-  }, [options.enabled, options.scriptPath, initializeWorker]);
+  }, [scriptUrl, enabled, initializeWorker]);
 
   // Run the Python script
   const runScript = useCallback(() => {

@@ -1,28 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { SentMessage, SystemAnnounceMessage } from '../types';
-
-// --- Constants ---
-// Construct WebSocket URL with session ID if available from URL path
-const getWebSocketUrl = (): string => {
-    const baseUrl = __WS_URL__;
-
-    // Extract session ID from URL if available
-    const pathMatch = window.location.pathname.match(/\/session\/([^\/]+)/);
-    const sessionId = pathMatch ? pathMatch[1] : null;
-
-    if (sessionId) {
-        // Use URL API to properly handle URL construction
-        // This ensures correct handling regardless of whether baseUrl ends with a slash
-        const url = new URL(baseUrl);
-        url.searchParams.append('session', sessionId);
-        return url.toString();
-    }
-
-    return baseUrl;
-};
-
-const WS_URL = getWebSocketUrl(); // WebSocket server URL with session ID if available
 const RECONNECT_DELAY = 1000; // Initial reconnect delay in milliseconds (1 seconds)
 const MAX_RECONNECT_ATTEMPTS = 10; // Max attempts before giving up
 const RECONNECT_BACKOFF_FACTOR = 1.5; // Multiplier for exponential backoff
@@ -36,7 +14,8 @@ type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'reconnect
  * Custom React hook to manage a persistent WebSocket connection with automatic reconnection.
  *
  * @param onMessageCallback - A callback function that will be invoked with parsed incoming WebSocket messages.
- * @param options - Optional configuration for the WebSocket connection.
+ * @param wsUrl - The WebSocket URL to connect to.
+ * @param enabled - Whether the WebSocket connection is enabled (default: true).
  * @returns An object containing:
  *  - `isConnected` (boolean): Whether the WebSocket is currently connected.
  *  - `status` (ConnectionStatus): The current detailed connection status.
@@ -44,7 +23,8 @@ type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'reconnect
  */
 export function useWebSocket(
   onMessageCallback: (message: any) => void,
-  options: { enabled: boolean } = { enabled: true }
+  wsUrl: string,
+  enabled: boolean = true
 ) {
     // --- State ---
     /** Current connection state (true if OPEN, false otherwise). */
@@ -67,7 +47,7 @@ export function useWebSocket(
     // --- Effects ---
     /** Generate a unique Peer ID for this client instance on initial mount. */
     useEffect(() => {
-        if (!options.enabled) {
+        if (!enabled) {
             return;
         }
 
@@ -75,11 +55,11 @@ export function useWebSocket(
             peerIdRef.current = `sidekick-${uuidv4()}`;
             console.log(`[useWebSocket] Generated Sidekick Peer ID: ${peerIdRef.current}`);
         }
-    }, [options.enabled]);
+    }, [enabled]);
 
     /** Effect to attempt initial connection on mount and handle cleanup on unmount. */
     useEffect(() => {
-        if (!options.enabled) {
+        if (!enabled) {
             return;
         }
 
@@ -93,18 +73,18 @@ export function useWebSocket(
             disconnect(); // Perform manual disconnect and cleanup
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [options.enabled]); // Run when enabled changes (connect/disconnect are stable due to useCallback)
+    }, [enabled]); // Run when enabled changes (connect/disconnect are stable due to useCallback)
 
     /** Effect to reset the manual disconnect flag if the connection successfully establishes later. */
     useEffect(() => {
-        if (!options.enabled) {
+        if (!enabled) {
             return;
         }
 
         if (status === 'connected') {
             manualDisconnect.current = false;
         }
-    }, [status, options.enabled]);
+    }, [status, enabled]);
 
     // --- Callback Functions (Memoized) ---
 
@@ -190,11 +170,11 @@ export function useWebSocket(
             console.log("[useWebSocket] Cleared pending reconnect timer before new connection attempt.");
         }
 
-        console.log(`[useWebSocket] Attempting to connect to ${WS_URL}...`);
+        console.log(`[useWebSocket] Attempting to connect to ${wsUrl}...`);
         setStatus('connecting'); // Update status
 
         // Create the new WebSocket instance
-        const socket = new WebSocket(WS_URL);
+        const socket = new WebSocket(wsUrl);
         ws.current = socket; // Store reference immediately
 
         // --- WebSocket Event Handlers ---
@@ -271,7 +251,7 @@ export function useWebSocket(
         // scheduleReconnect depends on connect, creating a potential cycle if not handled carefully.
         // However, since they are memoized with useCallback and depend mostly on refs or stable functions,
         // this should be safe. Listing them explicitly clarifies intent.
-    }, [onMessageCallback, sendMessage, scheduleReconnect]);
+    }, [wsUrl, onMessageCallback, sendMessage, scheduleReconnect]);
 
     /**
      * Manually closes the WebSocket connection and prevents automatic reconnection.
