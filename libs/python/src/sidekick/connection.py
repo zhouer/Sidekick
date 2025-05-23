@@ -298,10 +298,9 @@ class ConnectionService:
 
             if connection_outcome.show_ui_url_hint and connection_outcome.ui_url_to_show:
                 # This print will appear in the user's terminal.
-                print(f"Successfully connected to: {self._connected_server_name or 'Remote Server'}")
+                # print(f"Successfully connected to: {self._connected_server_name or 'Remote Server'}")
                 print(f"Sidekick UI is available at: {connection_outcome.ui_url_to_show}")
                 print("For the best experience, install the 'Sidekick - Your Visual Coding Buddy' VS Code extension.")
-
 
             # --- Hero Announce ---
             hero_announce = {
@@ -322,7 +321,7 @@ class ConnectionService:
             try:
                 await asyncio.wait_for(self._sidekick_ui_online_event.wait(), timeout=_SIDEKICK_UI_WAIT_TIMEOUT_SECONDS) # type: ignore[union-attr]
                 if connection_outcome.show_ui_url_hint:
-                    print("Sidekick UI is now connected.")
+                    print("Sidekick UI is connected.")
                 logger.info("Sidekick UI 'online' announce received.")
             except asyncio.TimeoutError:
                 if connection_outcome.show_ui_url_hint:
@@ -447,7 +446,10 @@ class ConnectionService:
                     with self._status_lock: removed_peer = self._sidekick_peers_info.pop(peer_id, None)
                     if removed_peer and not self._sidekick_peers_info: # If last UI peer goes offline
                         logger.info("All known Sidekick UIs are now offline.")
-                        if self._sidekick_ui_online_event: self._sidekick_ui_online_event.clear()
+                        if self._sidekick_ui_online_event:
+                            self._sidekick_ui_online_event.clear()
+                        print("Sidekick UI is disconnected, shutting down.")
+                        self.shutdown_service()
         elif msg_type in ["event", "error"]:
             instance_id = message_dict.get("src")
             if instance_id:
