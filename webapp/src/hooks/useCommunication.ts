@@ -41,7 +41,7 @@ export const getCommunicationConfig = (): {
     } else if (pathType === 'script') {
       mode = 'script';
       const url = new URL(baseScriptUrl);
-      url.pathname += `/${id}`;
+      url.pathname += id;
       scriptUrl = url.toString();
     }
   }
