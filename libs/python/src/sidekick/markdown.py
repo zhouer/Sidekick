@@ -35,7 +35,7 @@ class Markdown(Component):
     """
     def __init__(
         self,
-        source: str,
+        source: str = "",
         instance_id: Optional[str] = None,
         parent: Optional[Union['Component', str]] = None,
         on_error: Optional[Callable[[ErrorEvent], None]] = None,
