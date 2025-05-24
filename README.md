@@ -67,61 +67,65 @@ Perfect for **learners**, **educators**, **parents teaching coding**, and anyone
 
 ### Core Visual Components
 
-1.  **[`Grid`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.grid)** - Interactive Cell-Based Visualizations
-    *   `Grid(num_columns, num_rows)`: Create a grid.
-    *   `set_color()`, `set_text()`: Set cell colors and text.
-    *   `on_click()`: Handle user clicks on cells.
-
-2.  **[`Console`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.console)** - Text-Based Input and Output
-    *   `Console(show_input=False)`: Create a console area.
-    *   `print()`: Display output text.
-    *   `on_submit()`: Handle user text submission (if `show_input=True`).
-
-3.  **[`Canvas`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.canvas)** - 2D Graphics and Animation
+1.  **[`Canvas`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.canvas)** - 2D Graphics and Animation
     *   `Canvas(width, height)`: Create a drawing canvas.
     *   `draw_line()`, `draw_rect()`, `draw_circle()`, `draw_polygon()`, `draw_ellipse()`, `draw_text()`: Draw shapes and text.
     *   `buffer()`: Context manager for smooth, double-buffered animations.
     *   `on_click()`: Respond to clicks on the canvas.
 
-4.  **[`Viz`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.viz)** - Data Structure Visualization
+2.  **[`Console`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.console)** - Text-Based Input and Output
+    *   `Console(show_input=False)`: Create a console area.
+    *   `print()`: Display output text.
+    *   `on_submit()`: Handle user text submission (if `show_input=True`).
+
+3.  **[`Grid`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.grid)** - Interactive Cell-Based Visualizations
+    *   `Grid(num_columns, num_rows)`: Create a grid.
+    *   `set_color()`, `set_text()`: Set cell colors and text.
+    *   `on_click()`: Handle user clicks on cells.
+
+4.  **[`Viz`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.viz)** - Data Structure Visualization
     *   `Viz()`: Create a panel for visualizing variables.
     *   `show()`: Display complex data (lists, dicts, sets, objects).
     *   `ObservableValue`: Wrap data for automatic visualization updates on change.
 
-### UI & Layout Components
+### UI Components
 
-5.  **[`Label`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.label)** - Simple Text Display
+1.  **[`Label`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.label)** - Simple Text Display
     *   `Label(text)`: Display a line of text.
     *   `.text` property: Get or set the displayed text.
 
-6.  **[`Button`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.button)** - Clickable Buttons
+2.  **[`Button`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.button)** - Clickable Buttons
     *   `Button(text)`: Create a button.
     *   `.text` property: Get or set the button label.
     *   `on_click()`, `@button.click`: Handle button clicks.
 
-7.  **[`Textbox`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.textbox)** - Single-Line Text Input
+3.  **[`Textbox`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.textbox)** - Single-Line Text Input
     *   `Textbox()`: Create a text input field.
     *   `.value` property: Get or set the text content.
     *   `on_submit()`, `@textbox.submit`: Handle text submission (on Enter/blur).
 
-8.  **[`Markdown`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.markdown)** - Formatted Text Display
+4.  **[`Markdown`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.markdown)** - Formatted Text Display
     *   `Markdown()`: Display text formatted with Markdown.
     *   `.source` property: Get or set the Markdown source string.
 
-9.  **Layout Containers (`Row`, `Column`)**
-    *   [`Row()`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.row): Arranges child components horizontally.
-    *   [`Column()`](https://zhouer.github.io/sidekick-py-docs/sidekick.html#module-sidekick.column): Arranges child components vertically.
+### Layout Components
+
+1.  **[`Row()`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.row)** - Arranges child components horizontally
+    *   Use `container.add_child(component)` or `Component(..., parent=container)` to structure layouts. 
+
+2.  **[`Column()`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.column)** - Arranges child components vertically
     *   Use `container.add_child(component)` or `Component(..., parent=container)` to structure layouts.
 
 ### Managing Script Lifecycle
 
-*   `sidekick.run_forever()`: Keep your script running to handle interactions (clicks, input). Necessary for interactive components.
-*   `sidekick.shutdown()`: Gracefully stop the script and disconnect (can be called from callbacks).
+1.  **[`sidekick.run_forever()`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#sidekick.run_forever)** - Keep your script running to handle interactions (clicks, input). Necessary for interactive components.
+
+2.  **[`sidekick.shutdown()`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#sidekick.shutdown)** - Gracefully stop the script and disconnect (can be called from callbacks).
 
 ## Learn More
 
 *   [Examples](https://github.com/zhouer/Sidekick/tree/main/examples/)
-*   [API Reference](https://zhouer.github.io/sidekick-py-docs/)
+*   [API Reference](https://sidekick-py.readthedocs.io/)
 *   **Developer Docs:** [Architecture](https://github.com/zhouer/Sidekick/blob/main/docs/architecture.md) | [Protocol](https://github.com/zhouer/Sidekick/blob/main/docs/protocol.md) | [Python](https://github.com/zhouer/Sidekick/blob/main/docs/python-development.md) | [WebApp](https://github.com/zhouer/Sidekick/blob/main/docs/webapp-development.md) | [Extension](https://github.com/zhouer/Sidekick/blob/main/docs/extension-development.md)
 
 ## Origins
