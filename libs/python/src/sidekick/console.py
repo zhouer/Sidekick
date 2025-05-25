@@ -149,36 +149,27 @@ class Console(Component):
 
         if msg_type == "event":
             event_type = payload.get("event") if payload else None
-            if event_type == "submit" and self._submit_callback:
-                try:
-                    # The UI sends the submitted text in the 'value' field.
-                    submitted_text = payload.get("value")
-                    if isinstance(submitted_text, str):
-                        # Construct the ConsoleSubmitEvent object
-                        submit_event = ConsoleSubmitEvent(
-                            instance_id=self.instance_id,
-                            type="submit",
-                            value=submitted_text
-                        )
-                        self._submit_callback(submit_event)
-                    else:
-                         # This case should ideally not happen if UI adheres to protocol.
-                         logger.warning(
-                            f"Console '{self.instance_id}' received 'submit' event " # Use self.instance_id
-                            f"with non-string value: {payload}"
-                         )
-                except Exception as e:
-                    # Prevent errors in user callback from crashing the listener.
-                    logger.exception(
-                        f"Error occurred inside Console '{self.instance_id}' " # Use self.instance_id
-                        f"on_submit callback: {e}"
+            if event_type == "submit":
+                logger.debug(f"Console '{self.instance_id}' received submit event.")
+                # The UI sends the submitted text in the 'value' field.
+                submitted_text = payload.get("value")
+                if isinstance(submitted_text, str):
+                    # Construct the ConsoleSubmitEvent object
+                    submit_event = ConsoleSubmitEvent(
+                        instance_id=self.instance_id,
+                        type="submit",
+                        value=submitted_text
                     )
-            elif event_type: # An event occurred but we don't have a handler or it's an unknown type
-                 logger.debug(
-                    f"Console '{self.instance_id}' received unhandled event type '{event_type}' " # Use self.instance_id
-                    f"or no input callback registered for 'submit'."
-                 )
-        # Always call the base handler for potential 'error' messages or other base handling.
+                    self._invoke_callback(self._submit_callback, submit_event)
+                else:
+                    # This case should ideally not happen if UI adheres to protocol.
+                    logger.warning(
+                        f"Console '{self.instance_id}' received 'submit' event "  # Use self.instance_id
+                        f"with non-string value: {payload}"
+                    )
+                return
+
+        # Call the base handler for potential 'error' messages or other base handling.
         super()._internal_message_handler(message)
 
     def on_submit(self, callback: Optional[Callable[[ConsoleSubmitEvent], None]]):

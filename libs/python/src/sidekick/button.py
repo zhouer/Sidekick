@@ -202,27 +202,15 @@ class Button(Component):
         msg_type = message.get("type")
         payload = message.get("payload")
 
-        # Check if it's a click event targeted at this button instance.
         if msg_type == "event" and payload and payload.get("event") == "click":
-            logger.debug(f"Button '{self.instance_id}' received click event.") # Use self.instance_id
-            # If a user callback is registered, execute it.
-            if self._click_callback:
-                try:
-                    # Construct the ButtonClickEvent object
-                    click_event = ButtonClickEvent(
-                        instance_id=self.instance_id,
-                        type="click"
-                    )
-                    self._click_callback(click_event) # Call the user's function
-                except Exception as e:
-                    # Prevent errors in user callback from crashing the listener.
-                    logger.exception(
-                        f"Error occurred inside Button '{self.instance_id}' on_click callback: {e}" # Use self.instance_id
-                    )
-            # No specific data needs extraction from a simple button click payload for the event object itself.
-
-        # Always call the base handler for potential 'error' messages.
-        super()._internal_message_handler(message)
+            logger.debug(f"Button '{self.instance_id}' received click event.")
+            click_event = ButtonClickEvent(
+                instance_id=self.instance_id,
+                type="click"
+            )
+            self._invoke_callback(self._click_callback, click_event)
+        else:
+            super()._internal_message_handler(message)
 
     def _reset_specific_callbacks(self):
         """Internal: Resets button-specific callbacks when the component is removed."""

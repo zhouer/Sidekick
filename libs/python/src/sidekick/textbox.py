@@ -266,23 +266,16 @@ class Textbox(Component):
             # This ensures consistency if the user reads textbox.value after submission.
             self._value = submitted_value_str
 
-            # If a user callback is registered, execute it with the submitted value.
-            if self._submit_callback:
-                try:
-                    # Construct the TextboxSubmitEvent object
-                    submit_event = TextboxSubmitEvent(
-                        instance_id=self.instance_id,
-                        type="submit",
-                        value=self._value # Pass the locally updated (and validated as string) value
-                    )
-                    self._submit_callback(submit_event)
-                except Exception as e:
-                    # Prevent errors in user callback from crashing the listener.
-                    logger.exception(
-                        f"Error occurred inside Textbox '{self.instance_id}' on_submit callback: {e}" # Use self.instance_id
-                    )
+            # Construct the TextboxSubmitEvent object
+            submit_event = TextboxSubmitEvent(
+                instance_id=self.instance_id,
+                type="submit",
+                value=self._value  # Pass the locally updated (and validated as string) value
+            )
+            self._invoke_callback(self._submit_callback, submit_event)
+            return
 
-        # Always call the base handler for potential 'error' messages.
+        # Call the base handler for potential 'error' messages.
         super()._internal_message_handler(message)
 
     def _reset_specific_callbacks(self):

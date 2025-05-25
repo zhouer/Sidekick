@@ -35,13 +35,14 @@ Note:
     its more specialized subclasses like `sidekick.Grid`, `sidekick.Console`, etc.
 """
 
+import asyncio
 from typing import Optional, Dict, Any, Callable, Union
 
 from . import logger
 from . import connection as sidekick_connection_module # Alias for clarity
 from .exceptions import SidekickConnectionError
 from .utils import generate_unique_id
-from .events import ErrorEvent
+from .events import ErrorEvent, BaseSidekickEvent
 
 
 class Component:
@@ -238,6 +239,35 @@ class Component:
             f"ID='{self.instance_id}', parent='{parent_display}'."
         )
 
+    def _invoke_callback(
+        self,
+        callback: Optional[Callable[[Any], Any]],
+        event_object: BaseSidekickEvent
+    ) -> None:
+        """
+        Internal helper to invoke a user-provided callback (sync or async).
+
+        Args:
+            callback: The callback function to invoke.
+            event_object: The event object to pass to the callback.
+        """
+        if not callback:
+            return
+
+        try:
+            if asyncio.iscoroutinefunction(callback):
+                coro_obj = callback(event_object)
+                sidekick_connection_module.submit_task(coro_obj)
+                logger.debug(f"Component '{self.instance_id}': Submitted async callback for event '{event_object.type}'.")
+            else:
+                callback(event_object)
+                logger.debug(f"Component '{self.instance_id}': Invoked sync callback for event '{event_object.type}'.")
+        except Exception as e:
+            logger.exception(
+                f"Error occurred preparing or invoking callback for component '{self.instance_id}' "
+                f"for event type '{event_object.type}': {e}"
+            )
+
     def _internal_message_handler(self, message: Dict[str, Any]) -> None:
         """Handles incoming messages (events/errors) for this component instance.
 
@@ -277,22 +307,12 @@ class Component:
                 f"received an error from the UI: \"{error_message_str}\""
             )
 
-            # If an error callback is registered, invoke it with an ErrorEvent.
-            if self._error_callback:
-                try:
-                    error_event = ErrorEvent(
-                        instance_id=self.instance_id,
-                        type="error", # Standardized event type for errors
-                        message=error_message_str,
-                    )
-                    self._error_callback(error_event)
-                except Exception as e_callback: # pragma: no cover
-                    # Catch errors within the user's error callback to prevent them
-                    # from disrupting the main message handling loop.
-                    logger.exception(
-                        f"An error occurred inside the 'on_error' callback for "
-                        f"component '{self.component_type}' (ID: '{self.instance_id}'): {e_callback}"
-                    )
+            error_event = ErrorEvent(
+                instance_id=self.instance_id,
+                type="error",  # Standardized event type for errors
+                message=error_message_str,
+            )
+            self._invoke_callback(self._error_callback, error_event)
         elif msg_type == "event":
             # Base Component class does not handle specific UI interaction events by default.
             # Subclasses (like Button, Grid) override this method to process their events.

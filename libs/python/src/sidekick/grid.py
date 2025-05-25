@@ -177,39 +177,31 @@ class Grid(Component):
 
         if msg_type == "event":
             event_type = payload.get("event") if payload else None
-            if event_type == "click" and self._click_callback:
-                try:
-                    # The UI sends the 'x' (column) and 'y' (row) of the click.
-                    x_coord = payload.get('x')
-                    y_coord = payload.get('y')
+            if event_type == "click":
+                logger.debug(f"Grid '{self.instance_id}' received click event.")
+                # The UI sends the 'x' (column) and 'y' (row) of the click.
+                x_coord = payload.get('x')
+                y_coord = payload.get('y')
 
-                    # Validate that x and y are indeed integers before calling callback.
-                    if isinstance(x_coord, int) and isinstance(y_coord, int):
-                        # Construct the GridClickEvent object
-                        click_event = GridClickEvent(
-                            instance_id=self.instance_id, # Component's own ID
-                            type="click",
-                            x=x_coord,
-                            y=y_coord
-                        )
-                        self._click_callback(click_event)
-                    else:
-                         # This indicates a potential protocol mismatch or UI bug.
-                         logger.warning(
-                            f"Grid '{self.instance_id}' received 'click' event "
-                            f"with missing or invalid coordinates: {payload}"
-                         )
-                except Exception as e:
-                    # Prevent errors in user callback from crashing the listener.
-                    logger.exception(
-                        f"Error occurred inside Grid '{self.instance_id}' on_click callback: {e}"
+                # Validate that x and y are indeed integers before calling callback.
+                if isinstance(x_coord, int) and isinstance(y_coord, int):
+                    # Construct the GridClickEvent object
+                    click_event = GridClickEvent(
+                        instance_id=self.instance_id, # Component's own ID
+                        type="click",
+                        x=x_coord,
+                        y=y_coord
                     )
-            elif event_type: # An event occurred but we don't have a handler or it's an unknown type
-                 logger.debug(
-                    f"Grid '{self.instance_id}' received unhandled event type '{event_type}' "
-                    f"or no click callback registered for 'click'."
-                 )
-        # Always call the base handler for potential 'error' messages or other base handling.
+                    self._invoke_callback(self._click_callback, click_event)
+                else:
+                     # This indicates a potential protocol mismatch or UI bug.
+                     logger.warning(
+                        f"Grid '{self.instance_id}' received 'click' event "
+                        f"with missing or invalid coordinates: {payload}"
+                     )
+                return
+
+        # Call the base handler for potential 'error' messages or other base handling.
         super()._internal_message_handler(message)
 
     def on_click(self, callback: Optional[Callable[[GridClickEvent], None]]):
