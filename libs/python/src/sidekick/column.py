@@ -26,7 +26,7 @@ You can also provide an `instance_id` to uniquely identify the Column.
 from . import logger
 from .component import Component
 from .events import ErrorEvent
-from typing import Optional, Dict, Any, Union, Callable, Tuple
+from typing import Optional, Dict, Any, Union, Callable, Tuple, Coroutine
 
 class Column(Component):
     """Represents a Column layout container instance in the Sidekick UI.
@@ -42,7 +42,7 @@ class Column(Component):
         *children: Component,
         instance_id: Optional[str] = None,
         parent: Optional[Union['Component', str]] = None,
-        on_error: Optional[Callable[[ErrorEvent], None]] = None,
+        on_error: Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]] = None,
     ):
         """Initializes the Column layout container and creates the UI element.
 
@@ -68,10 +68,11 @@ class Column(Component):
                 (e.g., a `sidekick.Row`) where this Column itself should be placed.
                 If `None` (the default), the Column is added to the main Sidekick
                 panel area (which acts like a root column).
-            on_error (Optional[Callable[[ErrorEvent], None]]): A function to call if
+            on_error (Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]]): A function to call if
                 an error message related to this specific Column container (not its
                 children) is sent back from the Sidekick UI. The function should
-                accept one `ErrorEvent` object as an argument. Defaults to `None`.
+                accept one `ErrorEvent` object as an argument. The callback can be a regular
+                function or a coroutine function (async def). Defaults to `None`.
 
         Raises:
             ValueError: If the provided `instance_id` is invalid or a duplicate,

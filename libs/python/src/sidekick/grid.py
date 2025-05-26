@@ -57,7 +57,7 @@ Interactive Usage with a Parent Container:
 from . import logger
 from .component import Component
 from .events import GridClickEvent, ErrorEvent
-from typing import Optional, Callable, Dict, Any, Union
+from typing import Optional, Callable, Dict, Any, Union, Coroutine
 
 class Grid(Component):
     """Represents an interactive Grid component instance in the Sidekick UI.
@@ -77,8 +77,8 @@ class Grid(Component):
         num_rows: int,
         instance_id: Optional[str] = None,
         parent: Optional[Union['Component', str]] = None,
-        on_click: Optional[Callable[[GridClickEvent], None]] = None,
-        on_error: Optional[Callable[[ErrorEvent], None]] = None,
+        on_click: Optional[Callable[[GridClickEvent], Union[None, Coroutine[Any, Any, None]]]] = None,
+        on_error: Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]] = None,
     ):
         """Initializes the Grid object and creates the UI element.
 
@@ -99,14 +99,16 @@ class Grid(Component):
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this grid
                 should be placed. If `None` (the default), the grid is added
                 to the main Sidekick panel area.
-            on_click (Optional[Callable[[GridClickEvent], None]]): A function to call
+            on_click (Optional[Callable[[GridClickEvent], Union[None, Coroutine[Any, Any, None]]]]): A function to call
                 when the user clicks on any cell in this grid. The function should
                 accept one `GridClickEvent` object as an argument, which contains
                 `instance_id`, `type`, `x` (column index), and `y` (row index)
-                of the clicked cell. Defaults to `None`.
-            on_error (Optional[Callable[[ErrorEvent], None]]): A function to call if
+                of the clicked cell. The callback can be a regular function or a coroutine function (async def).
+                Defaults to `None`.
+            on_error (Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]]): A function to call if
                 an error related to this specific grid occurs in the Sidekick UI.
                 The function should take one `ErrorEvent` object as an argument.
+                The callback can be a regular function or a coroutine function (async def).
                 Defaults to `None`.
 
         Raises:
@@ -131,7 +133,7 @@ class Grid(Component):
         # Initialize before super()
         self._num_columns = num_columns
         self._num_rows = num_rows
-        self._click_callback: Optional[Callable[[GridClickEvent], None]] = None
+        self._click_callback: Optional[Callable[[GridClickEvent], Union[None, Coroutine[Any, Any, None]]]] = None
 
         super().__init__(
             component_type="grid",
@@ -204,7 +206,7 @@ class Grid(Component):
         # Call the base handler for potential 'error' messages or other base handling.
         super()._internal_message_handler(message)
 
-    def on_click(self, callback: Optional[Callable[[GridClickEvent], None]]):
+    def on_click(self, callback: Optional[Callable[[GridClickEvent], Union[None, Coroutine[Any, Any, None]]]]):
         """Registers a function to call when the user clicks on any cell in this grid.
 
         The provided callback function will be executed in your Python script.
@@ -216,8 +218,9 @@ class Grid(Component):
         the `on_click` parameter in its constructor.
 
         Args:
-            callback (Optional[Callable[[GridClickEvent], None]]): The function to call
+            callback (Optional[Callable[[GridClickEvent], Union[None, Coroutine[Any, Any, None]]]]): The function to call
                 when a cell is clicked. It must accept one `GridClickEvent` argument.
+                The callback can be a regular function or a coroutine function (async def).
                 Pass `None` to remove a previously registered callback.
 
         Raises:
@@ -239,7 +242,7 @@ class Grid(Component):
         logger.info(f"Setting on_click callback for grid '{self.instance_id}'.")
         self._click_callback = callback
 
-    def click(self, func: Callable[[GridClickEvent], None]) -> Callable[[GridClickEvent], None]:
+    def click(self, func: Callable[[GridClickEvent], Union[None, Coroutine[Any, Any, None]]]) -> Callable[[GridClickEvent], Union[None, Coroutine[Any, Any, None]]]:
         """Decorator to register a function to call when a cell in this grid is clicked.
 
         This provides an alternative, more Pythonic way to set the click handler
@@ -247,11 +250,12 @@ class Grid(Component):
         `GridClickEvent` object as its argument.
 
         Args:
-            func (Callable[[GridClickEvent], None]): The function to register as the click handler.
-                It should accept one `GridClickEvent` argument.
+            func (Callable[[GridClickEvent], Union[None, Coroutine[Any, Any, None]]]): The function to register as the click handler.
+                It should accept one `GridClickEvent` argument. The callback can be a regular
+                function or a coroutine function (async def).
 
         Returns:
-            Callable[[GridClickEvent], None]: The original function, allowing the decorator to be used directly.
+            Callable[[GridClickEvent], Union[None, Coroutine[Any, Any, None]]]: The original function, allowing the decorator to be used directly.
 
         Raises:
             TypeError: If `func` is not a callable function.

@@ -55,7 +55,7 @@ Interactive Usage with a Parent Container:
 """
 
 import threading
-from typing import Optional, Dict, Any, Callable, List, Tuple, ContextManager, Union
+from typing import Optional, Dict, Any, Callable, List, Tuple, ContextManager, Union, Coroutine
 
 from . import logger
 from .component import Component
@@ -246,8 +246,8 @@ class Canvas(Component):
         height: int,
         instance_id: Optional[str] = None,
         parent: Optional[Union['Component', str]] = None,
-        on_click: Optional[Callable[[CanvasClickEvent], None]] = None,
-        on_error: Optional[Callable[[ErrorEvent], None]] = None,
+        on_click: Optional[Callable[[CanvasClickEvent], Union[None, Coroutine[Any, Any, None]]]] = None,
+        on_error: Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]] = None,
     ):
         """Initializes a new Canvas object and creates its UI element in Sidekick.
 
@@ -268,14 +268,16 @@ class Canvas(Component):
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this canvas
                 should be placed. If `None` (the default), the canvas is added
                 to the main Sidekick panel area.
-            on_click (Optional[Callable[[CanvasClickEvent], None]]): A function to call
+            on_click (Optional[Callable[[CanvasClickEvent], Union[None, Coroutine[Any, Any, None]]]]): A function to call
                 when the user clicks on the canvas. The function should accept one
                 `CanvasClickEvent` object as an argument, which contains `instance_id`,
                 `type`, `x` (click x-coordinate), and `y` (click y-coordinate).
+                The callback can be a regular function or a coroutine function (async def).
                 Defaults to `None`.
-            on_error (Optional[Callable[[ErrorEvent], None]]): A function to call if
+            on_error (Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]]): A function to call if
                 an error related to this specific canvas occurs in the Sidekick UI.
                 The function should take one `ErrorEvent` object as an argument.
+                The callback can be a regular function or a coroutine function (async def).
                 Defaults to `None`.
 
         Raises:
@@ -300,7 +302,7 @@ class Canvas(Component):
         # Initialize attributes before super() call.
         self._width = width
         self._height = height
-        self._click_callback: Optional[Callable[[CanvasClickEvent], None]] = None
+        self._click_callback: Optional[Callable[[CanvasClickEvent], Union[None, Coroutine[Any, Any, None]]]] = None
         self._buffer_pool: Dict[int, bool] = {} # Stores {buffer_id: is_in_use}
         self._next_buffer_id: int = 1 # Start offscreen buffer IDs from 1 (0 is onscreen)
         self._buffer_lock = threading.Lock() # Protects access to _buffer_pool and _next_buffer_id
@@ -375,7 +377,7 @@ class Canvas(Component):
         # Call the base handler for potential 'error' messages or other base handling.
         super()._internal_message_handler(message)
 
-    def on_click(self, callback: Optional[Callable[[CanvasClickEvent], None]]):
+    def on_click(self, callback: Optional[Callable[[CanvasClickEvent], Union[None, Coroutine[Any, Any, None]]]]):
         """Registers a function to call when the user clicks on this canvas.
 
         The provided callback function will be executed in your Python script.
@@ -387,9 +389,10 @@ class Canvas(Component):
         the `on_click` parameter in its constructor.
 
         Args:
-            callback (Optional[Callable[[CanvasClickEvent], None]]): The function to call
+            callback (Optional[Callable[[CanvasClickEvent], Union[None, Coroutine[Any, Any, None]]]]): The function to call
                 when the canvas is clicked. It must accept one `CanvasClickEvent`
-                argument. Pass `None` to remove a previously registered callback.
+                argument. The callback can be a regular function or a coroutine function (async def).
+                Pass `None` to remove a previously registered callback.
 
         Raises:
             TypeError: If `callback` is not a callable function or `None`.
@@ -410,7 +413,7 @@ class Canvas(Component):
         logger.info(f"Setting on_click callback for canvas '{self.instance_id}'.") # Use self.instance_id
         self._click_callback = callback
 
-    def click(self, func: Callable[[CanvasClickEvent], None]) -> Callable[[CanvasClickEvent], None]:
+    def click(self, func: Callable[[CanvasClickEvent], Union[None, Coroutine[Any, Any, None]]]) -> Callable[[CanvasClickEvent], Union[None, Coroutine[Any, Any, None]]]:
         """Decorator to register a function to call when this canvas is clicked.
 
         This provides an alternative, more Pythonic way to set the click handler
@@ -418,11 +421,12 @@ class Canvas(Component):
         `CanvasClickEvent` object as its argument.
 
         Args:
-            func (Callable[[CanvasClickEvent], None]): The function to register as the click handler.
-                It should accept one `CanvasClickEvent` argument.
+            func (Callable[[CanvasClickEvent], Union[None, Coroutine[Any, Any, None]]]): The function to register as the click handler.
+                It should accept one `CanvasClickEvent` argument. The callback can be a regular
+                function or a coroutine function (async def).
 
         Returns:
-            Callable[[CanvasClickEvent], None]: The original function, allowing the decorator to be used directly.
+            Callable[[CanvasClickEvent], Union[None, Coroutine[Any, Any, None]]]: The original function, allowing the decorator to be used directly.
 
         Raises:
             TypeError: If `func` is not a callable function.

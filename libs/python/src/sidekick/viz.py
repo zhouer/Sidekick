@@ -44,7 +44,7 @@ Reactive Usage with a Parent Container:
 """
 
 import functools
-from typing import Any, Dict, Optional, List, Union, Callable, Set, Tuple
+from typing import Any, Dict, Optional, List, Union, Callable, Set, Tuple, Coroutine
 from . import logger
 from .component import Component
 from .events import ErrorEvent
@@ -324,7 +324,7 @@ class Viz(Component):
         self,
         instance_id: Optional[str] = None,
         parent: Optional[Union['Component', str]] = None,
-        on_error: Optional[Callable[[ErrorEvent], None]] = None,
+        on_error: Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]] = None,
     ):
         """Initializes the Viz object and creates the UI panel.
 
@@ -342,11 +342,11 @@ class Viz(Component):
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this Viz panel
                 should be placed. If `None` (the default), the Viz panel is added
                 to the main Sidekick panel area.
-            on_error (Optional[Callable[[ErrorEvent], None]]): A function to call if
+            on_error (Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]]): A function to call if
                 an error message related to this specific Viz panel (not necessarily
                 the variables it's displaying) occurs in the Sidekick UI. The
-                function should accept one `ErrorEvent` object as an argument.
-                Defaults to `None`.
+                function should accept one `ErrorEvent` object as an argument. The callback can be a regular
+                function or a coroutine function (async def). Defaults to `None`.
 
         Raises:
             ValueError: If the provided `instance_id` is invalid or a duplicate.

@@ -51,7 +51,7 @@ Interactive Usage with a Parent Container:
 from . import logger
 from .component import Component
 from .events import ConsoleSubmitEvent, ErrorEvent
-from typing import Optional, Callable, Dict, Any, Union
+from typing import Optional, Callable, Dict, Any, Union, Coroutine
 
 class Console(Component):
     """Represents a Console component instance in the Sidekick UI panel.
@@ -68,8 +68,8 @@ class Console(Component):
         show_input: bool = False,
         instance_id: Optional[str] = None,
         parent: Optional[Union['Component', str]] = None,
-        on_submit: Optional[Callable[[ConsoleSubmitEvent], None]] = None,
-        on_error: Optional[Callable[[ErrorEvent], None]] = None,
+        on_submit: Optional[Callable[[ConsoleSubmitEvent], Union[None, Coroutine[Any, Any, None]]]] = None,
+        on_error: Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]] = None,
     ):
         """Initializes the Console object and creates the UI element.
 
@@ -93,14 +93,16 @@ class Console(Component):
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this console
                 should be placed. If `None` (the default), the console is added
                 to the main Sidekick panel area.
-            on_submit (Optional[Callable[[ConsoleSubmitEvent], None]]): A function to call
+            on_submit (Optional[Callable[[ConsoleSubmitEvent], Union[None, Coroutine[Any, Any, None]]]]): A function to call
                 when the user submits text from the input field (if `show_input`
                 is `True`). The function should accept one `ConsoleSubmitEvent` object
                 as an argument, which contains `instance_id`, `type`, and `value` (the
-                submitted text). Defaults to `None`.
-            on_error (Optional[Callable[[ErrorEvent], None]]): A function to call if
+                submitted text). The callback can be a regular function or a coroutine function (async def).
+                Defaults to `None`.
+            on_error (Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]]): A function to call if
                 an error related to this specific console occurs in the Sidekick UI.
                 The function should take one `ErrorEvent` object as an argument.
+                The callback can be a regular function or a coroutine function (async def).
                 Defaults to `None`.
 
         Raises:
@@ -119,7 +121,7 @@ class Console(Component):
              spawn_payload["text"] = str(initial_text)
 
         # Initialize before super() in case super() triggers events or uses these.
-        self._submit_callback: Optional[Callable[[ConsoleSubmitEvent], None]] = None
+        self._submit_callback: Optional[Callable[[ConsoleSubmitEvent], Union[None, Coroutine[Any, Any, None]]]] = None
 
         super().__init__(
             component_type="console",
@@ -172,7 +174,7 @@ class Console(Component):
         # Call the base handler for potential 'error' messages or other base handling.
         super()._internal_message_handler(message)
 
-    def on_submit(self, callback: Optional[Callable[[ConsoleSubmitEvent], None]]):
+    def on_submit(self, callback: Optional[Callable[[ConsoleSubmitEvent], Union[None, Coroutine[Any, Any, None]]]]):
         """Registers a function to call when the user submits text from the console's input field.
 
         This method is only relevant if the console was initialized with `show_input=True`.
@@ -184,9 +186,9 @@ class Console(Component):
         the `on_submit` parameter in its constructor.
 
         Args:
-            callback (Optional[Callable[[ConsoleSubmitEvent], None]]): The function to call when
-                text is submitted. It must accept one `ConsoleSubmitEvent` argument.
-                Pass `None` to remove a previously registered callback.
+            callback (Optional[Callable[[ConsoleSubmitEvent], Union[None, Coroutine[Any, Any, None]]]]): The function to call when
+                text is submitted. It must accept one `ConsoleSubmitEvent` argument. The callback can be a regular
+                function or a coroutine function (async def). Pass `None` to remove a previously registered callback.
 
         Raises:
             TypeError: If `callback` is not a callable function or `None`.
@@ -209,7 +211,7 @@ class Console(Component):
         logger.info(f"Setting on_submit callback for console '{self.instance_id}'.") # Use self.instance_id
         self._submit_callback = callback
 
-    def submit(self, func: Callable[[ConsoleSubmitEvent], None]) -> Callable[[ConsoleSubmitEvent], None]:
+    def submit(self, func: Callable[[ConsoleSubmitEvent], Union[None, Coroutine[Any, Any, None]]]) -> Callable[[ConsoleSubmitEvent], Union[None, Coroutine[Any, Any, None]]]:
         """Decorator to register a function to call when the user submits text from the console.
 
         This provides an alternative, more Pythonic syntax to `on_submit()`
@@ -217,11 +219,12 @@ class Console(Component):
         `ConsoleSubmitEvent` object as its argument.
 
         Args:
-            func (Callable[[ConsoleSubmitEvent], None]): The function to register as the submit handler.
-                It must accept one `ConsoleSubmitEvent` argument.
+            func (Callable[[ConsoleSubmitEvent], Union[None, Coroutine[Any, Any, None]]]): The function to register as the submit handler.
+                It must accept one `ConsoleSubmitEvent` argument. The callback can be a regular
+                function or a coroutine function (async def).
 
         Returns:
-            Callable[[ConsoleSubmitEvent], None]: The original function, allowing the decorator to be used directly.
+            Callable[[ConsoleSubmitEvent], Union[None, Coroutine[Any, Any, None]]]: The original function, allowing the decorator to be used directly.
 
         Raises:
             TypeError: If `func` is not a callable function.

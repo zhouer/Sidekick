@@ -26,7 +26,7 @@ You can define the textbox's submission behavior in several ways:
 from . import logger
 from .component import Component
 from .events import TextboxSubmitEvent, ErrorEvent
-from typing import Optional, Callable, Dict, Any, Union
+from typing import Optional, Callable, Dict, Any, Union, Coroutine
 
 class Textbox(Component):
     """Represents a single-line Textbox component instance in the Sidekick UI.
@@ -52,8 +52,8 @@ class Textbox(Component):
         placeholder: str = "",
         instance_id: Optional[str] = None,
         parent: Optional[Union['Component', str]] = None,
-        on_submit: Optional[Callable[[TextboxSubmitEvent], None]] = None,
-        on_error: Optional[Callable[[ErrorEvent], None]] = None,
+        on_submit: Optional[Callable[[TextboxSubmitEvent], Union[None, Coroutine[Any, Any, None]]]] = None,
+        on_error: Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]] = None,
     ):
         """Initializes the Textbox object and creates the UI element.
 
@@ -74,14 +74,16 @@ class Textbox(Component):
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this textbox
                 should be placed. If `None` (the default), the textbox is added
                 to the main Sidekick panel area.
-            on_submit (Optional[Callable[[TextboxSubmitEvent], None]]): A function to call when
+            on_submit (Optional[Callable[[TextboxSubmitEvent], Union[None, Coroutine[Any, Any, None]]]]): A function to call when
                 the user submits text from this textbox. The function should
                 accept one `TextboxSubmitEvent` object as an argument, which
                 contains `instance_id`, `type`, and `value` (the submitted text).
+                The callback can be a regular function or a coroutine function (async def).
                 Defaults to `None`.
-            on_error (Optional[Callable[[ErrorEvent], None]]): A function to call if
+            on_error (Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]]): A function to call if
                 an error related to this specific textbox occurs in the Sidekick UI.
                 The function should take one `ErrorEvent` object as an argument.
+                The callback can be a regular function or a coroutine function (async def).
                 Defaults to `None`.
 
         Raises:
@@ -95,7 +97,7 @@ class Textbox(Component):
         self._placeholder = str(placeholder)
         # Callback function provided by the user via on_submit or decorator.
         # Initialize here.
-        self._submit_callback: Optional[Callable[[TextboxSubmitEvent], None]] = None
+        self._submit_callback: Optional[Callable[[TextboxSubmitEvent], Union[None, Coroutine[Any, Any, None]]]] = None
 
         # Prepare the payload for the 'spawn' command.
         spawn_payload: Dict[str, Any] = {}
@@ -175,7 +177,7 @@ class Textbox(Component):
         self._send_update(payload)
         logger.debug(f"Textbox '{self.instance_id}' placeholder set to '{new_ph_str}'.") # Use self.instance_id
 
-    def on_submit(self, callback: Optional[Callable[[TextboxSubmitEvent], None]]):
+    def on_submit(self, callback: Optional[Callable[[TextboxSubmitEvent], Union[None, Coroutine[Any, Any, None]]]]):
         """Registers a function to call when the user submits text from this textbox.
 
         The submission typically happens when the user presses Enter while the
@@ -188,9 +190,9 @@ class Textbox(Component):
         the `on_submit` parameter in its constructor.
 
         Args:
-            callback (Optional[Callable[[TextboxSubmitEvent], None]]): The function to call on submit.
-                It must accept one `TextboxSubmitEvent` argument.
-                Pass `None` to remove the current callback.
+            callback (Optional[Callable[[TextboxSubmitEvent], Union[None, Coroutine[Any, Any, None]]]]): The function to call on submit.
+                It must accept one `TextboxSubmitEvent` argument. The callback can be a regular
+                function or a coroutine function (async def). Pass `None` to remove the current callback.
 
         Raises:
             TypeError: If `callback` is not a callable function or `None`.
@@ -210,7 +212,7 @@ class Textbox(Component):
         logger.info(f"Setting on_submit callback for textbox '{self.instance_id}'.") # Use self.instance_id
         self._submit_callback = callback
 
-    def submit(self, func: Callable[[TextboxSubmitEvent], None]) -> Callable[[TextboxSubmitEvent], None]:
+    def submit(self, func: Callable[[TextboxSubmitEvent], Union[None, Coroutine[Any, Any, None]]]) -> Callable[[TextboxSubmitEvent], Union[None, Coroutine[Any, Any, None]]]:
         """Decorator to register a function to call when the user submits text.
 
         This provides an alternative, more Pythonic syntax to `on_submit()`
@@ -218,11 +220,12 @@ class Textbox(Component):
         `TextboxSubmitEvent` object as its argument.
 
         Args:
-            func (Callable[[TextboxSubmitEvent], None]): The function to register as the submit handler.
-                It must accept one `TextboxSubmitEvent` argument.
+            func (Callable[[TextboxSubmitEvent], Union[None, Coroutine[Any, Any, None]]]): The function to register as the submit handler.
+                It must accept one `TextboxSubmitEvent` argument. The callback can be a regular
+                function or a coroutine function (async def).
 
         Returns:
-            Callable[[TextboxSubmitEvent], None]: The original function, allowing the decorator to be used directly.
+            Callable[[TextboxSubmitEvent], Union[None, Coroutine[Any, Any, None]]]: The original function, allowing the decorator to be used directly.
 
         Raises:
             TypeError: If `func` is not a callable function.

@@ -36,7 +36,7 @@ Note:
 """
 
 import asyncio
-from typing import Optional, Dict, Any, Callable, Union
+from typing import Optional, Dict, Any, Callable, Union, Coroutine
 
 from . import logger
 from . import connection as sidekick_connection_module # Alias for clarity
@@ -66,7 +66,7 @@ class Component:
         payload: Optional[Dict[str, Any]] = None,
         instance_id: Optional[str] = None,
         parent: Optional[Union['Component', str]] = None,
-        on_error: Optional[Callable[[ErrorEvent], None]] = None,
+        on_error: Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]] = None,
     ):
         """Initializes the base component and sends a "spawn" command to the UI.
 
@@ -107,10 +107,10 @@ class Component:
                 or its string `instance_id`. This determines where the new
                 component is placed in the UI layout. If `None`, the component
                 is added to the default top-level area of the Sidekick panel.
-            on_error (Optional[Callable[[ErrorEvent], None]]): An optional callback
+            on_error (Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]]): An optional callback
                 function. If the Sidekick UI sends an error message related to
                 this component, this function will be called with an `ErrorEvent`
-                object.
+                object. The callback can be a regular function or a coroutine function (async def).
 
         Raises:
             SidekickConnectionError: If the `ConnectionService` fails to establish
@@ -123,7 +123,7 @@ class Component:
                        callable function.
         """
         self.component_type = component_type
-        self._error_callback: Optional[Callable[[ErrorEvent], None]] = None # Init before potential use
+        self._error_callback: Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]] = None # Init before potential use
 
         # --- Instance ID Assignment ---
         final_instance_id: str
@@ -241,15 +241,32 @@ class Component:
 
     def _invoke_callback(
         self,
-        callback: Optional[Callable[[Any], Any]],
+        callback: Optional[Callable[[BaseSidekickEvent], Union[Any, Coroutine[Any, Any, Any]]]],
         event_object: BaseSidekickEvent
     ) -> None:
-        """
-        Internal helper to invoke a user-provided callback (sync or async).
+        """Internal helper to invoke a user-provided callback (sync or async).
+
+        This method safely executes callbacks registered by users for various events
+        (e.g., clicks, submissions, errors). It handles both synchronous functions and
+        asynchronous coroutines appropriately:
+
+        - For regular synchronous functions: Calls the function directly and returns
+          after completion.
+        - For asynchronous coroutine functions: Submits the coroutine to the Sidekick
+          connection module's task system for execution without blocking. This allows
+          async callbacks to perform I/O operations or other async tasks.
+
+        All exceptions that might occur during callback invocation are caught and logged,
+        preventing user-provided callback errors from disrupting the component's operation.
 
         Args:
-            callback: The callback function to invoke.
-            event_object: The event object to pass to the callback.
+            callback (Optional[Callable[[BaseSidekickEvent], Union[Any, Coroutine[Any, Any, Any]]]]): 
+                The callback function to invoke. Can be a regular function, a coroutine function,
+                or None. If None, this method returns immediately.
+            event_object (BaseSidekickEvent): The event object to pass to the callback.
+                This contains information about the event that triggered the callback,
+                such as the component's instance_id, the event type, and any event-specific
+                data.
         """
         if not callback:
             return
@@ -329,7 +346,7 @@ class Component:
                 f"received a message with an unexpected type: '{msg_type}'. Full message: {message}"
             )
 
-    def on_error(self, callback: Optional[Callable[[ErrorEvent], None]]) -> None:
+    def on_error(self, callback: Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]]) -> None:
         """Registers a function to handle UI error messages for this component.
 
         If the Sidekick UI encounters an error specifically related to this
@@ -343,9 +360,10 @@ class Component:
         and a `message` string describing the error.
 
         Args:
-            callback (Optional[Callable[[ErrorEvent], None]]): The function to call
+            callback (Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]]): The function to call
                 when an error message for this component is received from the UI.
-                It must accept one `ErrorEvent` argument. Pass `None` to remove
+                It must accept one `ErrorEvent` argument. The callback can be a regular
+                function or a coroutine function (async def). Pass `None` to remove
                 any previously registered error callback.
 
         Raises:

@@ -24,7 +24,7 @@ You can define the button's click behavior in several ways:
 from . import logger
 from .component import Component
 from .events import ButtonClickEvent, ErrorEvent
-from typing import Optional, Callable, Dict, Any, Union
+from typing import Optional, Callable, Dict, Any, Union, Coroutine
 
 class Button(Component):
     """Represents a clickable Button component instance in the Sidekick UI.
@@ -43,8 +43,8 @@ class Button(Component):
         text: str = "",
         instance_id: Optional[str] = None,
         parent: Optional[Union['Component', str]] = None,
-        on_click: Optional[Callable[[ButtonClickEvent], None]] = None,
-        on_error: Optional[Callable[[ErrorEvent], None]] = None,
+        on_click: Optional[Callable[[ButtonClickEvent], Union[None, Coroutine[Any, Any, None]]]] = None,
+        on_error: Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]] = None,
     ):
         """Initializes the Button object and creates the UI element.
 
@@ -62,14 +62,14 @@ class Button(Component):
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this button
                 should be placed. If `None` (the default), the button is added
                 to the main Sidekick panel area.
-            on_click (Optional[Callable[[ButtonClickEvent], None]]): A function to call when
+            on_click (Optional[Callable[[ButtonClickEvent], Union[None, Coroutine[Any, Any, None]]]]): A function to call when
                 this button is clicked in the Sidekick UI. The function should
-                accept one `ButtonClickEvent` object as an argument.
-                Defaults to `None`.
-            on_error (Optional[Callable[[ErrorEvent], None]]): A function to call if
+                accept one `ButtonClickEvent` object as an argument. The callback can be a regular
+                function or a coroutine function (async def). Defaults to `None`.
+            on_error (Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]]): A function to call if
                 an error related to this specific button occurs in the Sidekick UI.
-                The function should take one `ErrorEvent` object as an argument.
-                Defaults to `None`.
+                The function should take one `ErrorEvent` object as an argument. The callback can be a regular
+                function or a coroutine function (async def). Defaults to `None`.
 
         Raises:
             ValueError: If the provided `instance_id` is invalid or a duplicate.
@@ -81,7 +81,7 @@ class Button(Component):
         self._text = str(text)
         # Callback function provided by the user via on_click or decorator.
         # Initialize here before super() in case super() somehow triggers an event.
-        self._click_callback: Optional[Callable[[ButtonClickEvent], None]] = None
+        self._click_callback: Optional[Callable[[ButtonClickEvent], Union[None, Coroutine[Any, Any, None]]]] = None
 
         # Prepare the payload for the 'spawn' command.
         spawn_payload: Dict[str, Any] = {
@@ -126,7 +126,7 @@ class Button(Component):
         self._send_update(payload)
         logger.debug(f"Button '{self.instance_id}' text set to '{new_text_str}'.") # Use self.instance_id
 
-    def on_click(self, callback: Optional[Callable[[ButtonClickEvent], None]]):
+    def on_click(self, callback: Optional[Callable[[ButtonClickEvent], Union[None, Coroutine[Any, Any, None]]]]):
         """Registers a function to be called when this button is clicked.
 
         The provided callback function will be executed in your Python script
@@ -138,9 +138,9 @@ class Button(Component):
         the `on_click` parameter in its constructor.
 
         Args:
-            callback (Optional[Callable[[ButtonClickEvent], None]]): The function to call on click.
-                It should accept one `ButtonClickEvent` argument.
-                Pass `None` to remove the current callback.
+            callback (Optional[Callable[[ButtonClickEvent], Union[None, Coroutine[Any, Any, None]]]]): The function to call on click.
+                It should accept one `ButtonClickEvent` argument. The callback can be a regular
+                function or a coroutine function (async def). Pass `None` to remove the current callback.
 
         Raises:
             TypeError: If `callback` is not a callable function or `None`.
@@ -160,7 +160,7 @@ class Button(Component):
         logger.info(f"Setting on_click callback for button '{self.instance_id}'.") # Use self.instance_id
         self._click_callback = callback
 
-    def click(self, func: Callable[[ButtonClickEvent], None]) -> Callable[[ButtonClickEvent], None]:
+    def click(self, func: Callable[[ButtonClickEvent], Union[None, Coroutine[Any, Any, None]]]) -> Callable[[ButtonClickEvent], Union[None, Coroutine[Any, Any, None]]]:
         """Decorator to register a function to be called when this button is clicked.
 
         This provides an alternative, more Pythonic way to set the click handler
@@ -168,11 +168,12 @@ class Button(Component):
         `ButtonClickEvent` object as its argument.
 
         Args:
-            func (Callable[[ButtonClickEvent], None]): The function to register as the click handler.
-                It should accept one `ButtonClickEvent` argument.
+            func (Callable[[ButtonClickEvent], Union[None, Coroutine[Any, Any, None]]]): The function to register as the click handler.
+                It should accept one `ButtonClickEvent` argument. The callback can be a regular
+                function or a coroutine function (async def).
 
         Returns:
-            Callable[[ButtonClickEvent], None]: The original function, allowing the decorator to be used directly.
+            Callable[[ButtonClickEvent], Union[None, Coroutine[Any, Any, None]]]: The original function, allowing the decorator to be used directly.
 
         Raises:
             TypeError: If `func` is not a callable function.

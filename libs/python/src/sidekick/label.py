@@ -14,7 +14,7 @@ to uniquely identify the label.
 from . import logger
 from .component import Component
 from .events import ErrorEvent
-from typing import Optional, Dict, Any, Union, Callable
+from typing import Optional, Dict, Any, Union, Callable, Coroutine
 
 class Label(Component):
     """Represents a non-interactive text Label component instance in the Sidekick UI.
@@ -35,7 +35,7 @@ class Label(Component):
         text: str = "",
         instance_id: Optional[str] = None,
         parent: Optional[Union['Component', str]] = None,
-        on_error: Optional[Callable[[ErrorEvent], None]] = None,
+        on_error: Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]] = None,
     ):
         """Initializes the Label object and creates the UI element.
 
@@ -53,10 +53,11 @@ class Label(Component):
                 (e.g., a `sidekick.Row` or `sidekick.Column`) where this label
                 should be placed. If `None` (the default), the label is added
                 to the main Sidekick panel area.
-            on_error (Optional[Callable[[ErrorEvent], None]]): A function to call if
+            on_error (Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]]): A function to call if
                 an error message related to this specific label occurs in the
                 Sidekick UI. The function should accept one `ErrorEvent` object
-                as an argument. Defaults to `None`.
+                as an argument. The callback can be a regular function or a coroutine function (async def).
+                Defaults to `None`.
 
         Raises:
             ValueError: If the provided `instance_id` is invalid or a duplicate.
