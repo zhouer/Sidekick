@@ -283,8 +283,6 @@ class Canvas(Component):
         Raises:
             ValueError: If `width` or `height` are not positive integers, or if the
                         provided `instance_id` is invalid or a duplicate.
-            SidekickConnectionError: If the library cannot connect to the
-                Sidekick UI panel.
             TypeError: If `parent` is an invalid type, or if `on_click` or
                 `on_error` are provided but are not callable functions.
         """

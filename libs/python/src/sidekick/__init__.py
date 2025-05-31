@@ -26,12 +26,20 @@ Getting Started:
             a UI URL to open in your browser.
     3.  **Import:** Start your script with `import sidekick`.
     4.  **Create Components:** E.g., `label = sidekick.Label("Hello!")`.
-        The connection to a Sidekick service (local or remote) activates
-        implicitly when the first component is created or an explicit connection
-        function is called.
-    5.  **Handle Interactivity:** Use `sidekick.run_forever()` (for CPython) or
+        Component creation is non-blocking. The connection to a Sidekick service
+        (local or remote) activates implicitly when the first component is created
+        or an explicit connection function like `sidekick.activate_connection()`
+        is called. `activate_connection()` itself is non-blocking.
+    5.  **Wait for Connection (CPython, Optional but Recommended before interaction):**
+        If you need to ensure the connection is active before proceeding with
+        operations that immediately require UI interaction in CPython, you can use
+        `sidekick.wait_for_connection()`. This function will block until
+        the connection is established or fails.
+    6.  **Handle Interactivity:** Use `sidekick.run_forever()` (for CPython) or
         `await sidekick.run_forever_async()` (for Pyodide/async) at the end of
         your script if you need to process UI events like button clicks.
+        `run_forever()` and `run_forever_async()` will internally wait for
+        the connection to be established before proceeding.
         Stop with Ctrl+C or by calling `sidekick.shutdown()` from a callback.
 
 Happy visual coding!
@@ -61,11 +69,12 @@ if not logger.hasHandlers():
 # They are wrappers around the ConnectionService singleton.
 from .connection import (
     set_url,                      # Set a specific WebSocket server URL, bypassing defaults.
-    activate_connection,          # Explicitly activate the connection (usually implicit).
+    activate_connection,          # Non-blocking: Ensures connection activation is initiated.
+    wait_for_connection,          # New: (CPython) Blocks until connection is active or fails.
     clear_all,                    # Remove all components from the Sidekick UI.
     register_global_message_handler, # Advanced: Handle *all* incoming raw messages.
-    run_forever,                  # Keep the script running (blocks main thread in CPython).
-    run_forever_async,            # Keep the script running (awaits in async context).
+    run_forever,                  # Keep script running (CPython), waits for connection first.
+    run_forever_async,            # Keep script running (async), waits for connection first.
     shutdown,                     # Gracefully close the connection to Sidekick.
     submit_task                   # Submit a user coroutine to Sidekick's event loop.
 )
@@ -124,6 +133,7 @@ __all__ = [
     # Config/Connection/Lifecycle
     'set_url',
     'activate_connection',
+    'wait_for_connection',
     'clear_all',
     'register_global_message_handler',
     'run_forever',

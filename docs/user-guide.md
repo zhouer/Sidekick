@@ -112,10 +112,10 @@ Let's create a very simple Sidekick program to see it in action.
     greeting_label.text = "Done counting!"
     console.print("Script finished.")
 
-    # Keep the Sidekick connection alive if you had interactive elements
-    # For this non-interactive script, it's not strictly needed after the loop,
-    # but it's good practice if you plan to add interactivity later.
-    # sidekick.run_forever()
+    # Always call sidekick.run_forever() at the end of your script.
+    # This keeps the Sidekick connection alive and ensures all components
+    # behave as expected, even if no interactive elements are immediately apparent.
+    sidekick.run_forever()
     ```
 
 3.  **Run the Python script:**
@@ -149,8 +149,8 @@ Let's create a very simple Sidekick program to see it in action.
 
 *   **Script Lifecycle & Interactivity:**
     *   **Implicit Connection:** When you create your first Sidekick component (e.g., `my_label = sidekick.Label()`), the library implicitly attempts to activate its connection to a Sidekick service (VS Code extension or cloud relay).
-    *   **`sidekick.run_forever()`:** If your script has interactive components (like buttons with click handlers, or textboxes waiting for input), you **must** call `sidekick.run_forever()` at the end of your script. This function blocks the main thread (in CPython) and keeps your script alive to listen for and process events from the Sidekick UI. Without it, your script would finish, and interactive elements would stop working. You can stop a script running with `run_forever()` by pressing `Ctrl+C` in the terminal.
-    *   **`sidekick.shutdown()`:** To programmatically stop the Sidekick connection and allow your script to exit (even if `run_forever()` was called), you can call `sidekick.shutdown()`. This is often used within an event handler, for example, when a "Quit" button is clicked.
+    *   **`sidekick.run_forever()`:** You **must** call `sidekick.run_forever()` at the end of your script. This function blocks the main thread (in CPython) and keeps your script alive to listen for and process events from the Sidekick UI, as well as ensuring proper finalization of non-interactive components. Without it, your script might finish prematurely, and interactive elements (if any) would stop working. It's a crucial part of any Sidekick script. You can stop a script running with `run_forever()` by pressing `Ctrl+C` in the terminal.
+    *   **`sidekick.shutdown()`:** To programmatically stop the Sidekick connection and allow your script to exit (even if `run_forever()` was called), you can call `sidekick.shutdown`. This is often used within an event handler, for example, when a "Quit" button is clicked.
 
 ---
 
@@ -255,7 +255,7 @@ drawing_area.draw_rect(50, 50, 100, 75, fill_color="blue", line_color="darkblue"
 # Draw some text
 drawing_area.draw_text(60, 150, "Sidekick Canvas!", text_color="green", text_size=20)
 
-# sidekick.run_forever() # Only needed if interactive
+sidekick.run_forever() # Ensures the script runs and Sidekick panel stays active
 ```
 
 ### 2.4 `Viz` - Data Structure Visualizer
@@ -293,7 +293,7 @@ data_viewer.show("Custom Object", my_obj)
 my_list.append(3)
 data_viewer.show("My List Data", my_list) # Re-show to see the '3'
 
-# sidekick.run_forever() # Usually not needed for Viz unless used with ObservableValue updates over time
+sidekick.run_forever() # Keeps the script alive for the Viz panel
 ```
 
 ### 2.5 `Label` - Text Label
@@ -393,6 +393,7 @@ Visit [Sidekick on GitHub](https://github.com/zhouer/Sidekick).
 md_display = sidekick.Markdown(md_content)
 # To update:
 # md_display.source = "## New Content\n*Updated*"
+sidekick.run_forever()
 ````
 
 ---
@@ -541,7 +542,7 @@ error_prone_label = sidekick.Label("Initial text", on_error=my_component_error_h
 #  but this shows how you *would* register the handler)
 # error_prone_label._send_update({"action": "invalidAction", "options": {}})
 
-# sidekick.run_forever()
+sidekick.run_forever()
 ```
 
 ---
@@ -628,7 +629,7 @@ app_layout = sidekick.Column(
     instance_id="app-root-column"
 )
 
-# sidekick.run_forever() # if interactive elements exist
+sidekick.run_forever() # Essential for running Sidekick applications
 ```
 
 ### 4.4 Declarative Layout Style Examples

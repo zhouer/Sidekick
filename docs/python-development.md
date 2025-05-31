@@ -13,163 +13,159 @@ To set up for development, clone the main Sidekick repository. For the Python li
 *   **`sidekick.config.ServerConfig` & `DEFAULT_SERVERS`**: Defines server connection configurations and a default list of servers (local, remote) to try.
 *   **`sidekick.utils.generate_session_id()`**: Generates session IDs for connecting to remote servers.
 *   **`sidekick.core.TaskManager`**: Manages an asyncio event loop.
-    *   **CPython (`CPythonTaskManager`):** Runs the loop in a dedicated background thread.
+    *   **CPython (`CPythonTaskManager`):** Runs the loop in a dedicated background thread. Startup includes a two-stage confirmation (loop set + responsiveness probe) to ensure reliability. The loop's main task (`_loop_runner_task`) uses `asyncio.sleep(0)` to remain responsive to tasks submitted from other threads.
     *   **Pyodide (`PyodideTaskManager`):** Uses the browser-provided event loop (in the Web Worker).
     *   Accessed via the singleton factory `sidekick.core.factories.get_task_manager()`.
 *   **`sidekick.core.CommunicationManager` (ABC)**: Abstracts the raw transport layer.
     *   Concrete implementations: `WebSocketCommunicationManager` (CPython) and `PyodideCommunicationManager` (Pyodide).
     *   Instances are now created by specific factory functions (`create_websocket_communication_manager`, `create_pyodide_communication_manager`) primarily invoked by the `ServerConnector`.
-*   **`sidekick.server_connector.ServerConnector`**: A new component responsible for the **connection establishment strategy**. It attempts to connect to a Sidekick server by trying different approaches in a prioritized order:
+*   **`sidekick.server_connector.ServerConnector`**: Responsible for the **connection establishment strategy**. It attempts to connect to a Sidekick server by trying different approaches in a prioritized order:
     1.  Pyodide environment (direct JS bridge).
     2.  User-defined URL (if `sidekick.set_url()` was called).
-    3.  A default list of servers (`DEFAULT_SERVERS` from `config.py`), typically trying local VS Code extension first, then remote cloud servers.
+    3.  A default list of servers (`DEFAULT_SERVERS` from `config.py`).
     It handles session ID generation and URL construction for remote servers.
 *   **`sidekick.connection.ConnectionService`**: The central orchestrator *after* a connection is successfully established by the `ServerConnector`. It uses the `TaskManager` and the `CommunicationManager` instance provided by the `ServerConnector`. It handles:
-    *   The Sidekick-specific post-connection activation sequence (hero announce, waiting for sidekick UI announce, global clearAll).
+    *   The Sidekick-specific post-connection activation sequence (hero announce, waiting for sidekick UI announce, global clearAll). This activation sequence is managed by an internal asynchronous task (`_async_activate_and_run_message_queue`).
     *   Printing UI URLs and VS Code extension hints for remote connections.
     *   Message queuing for operations attempted before full activation.
     *   Serialization/deserialization of messages.
     *   Dispatching incoming UI events (`event`, `error` messages) to the correct `Component` instance handlers.
     *   Managing the overall service status post-connection.
-*   **`sidekick.Component` (and subclasses like `Grid`, `Button`)**: User-facing classes representing UI elements. They delegate communication tasks to the `ConnectionService` (via module-level functions in `sidekick.connection`).
+    *   **Connection Activation:**
+        *   `activate_connection_internally()`: This method is **non-blocking**. It ensures the asynchronous activation task (`_async_activate_and_run_message_queue`) is scheduled on the `TaskManager` if not already running or active. It does not wait for the activation to complete.
+        *   `wait_for_active_connection_sync()`: (CPython specific) A method used internally by `sidekick.wait_for_connection()` and `sidekick.run_forever()` to **synchronously block** the calling (non-event-loop) thread until the asynchronous activation completes or fails. It uses a `threading.Event` for this synchronization.
+*   **`sidekick.Component` (and subclasses like `Grid`, `Button`)**: User-facing classes representing UI elements.
+    *   Their `__init__` methods are **non-blocking**. They send a "spawn" command via `ConnectionService.send_message_internally()`. If the service is not yet active, the command is queued, and `__init__` returns immediately.
+    *   They delegate communication tasks to the `ConnectionService` (via module-level functions in `sidekick.connection`).
 
 **Key Design Philosophy & Connection Model:**
 
-1.  **Connection Priority & Fallback:**
+1.  **Connection Priority & Fallback (via `ServerConnector`):**
     *   The library first checks if it's running in **Pyodide**. If so, it attempts to use `PyodideCommunicationManager`.
     *   If not in Pyodide, it checks if the user has specified a URL via **`sidekick.set_url()`**. If yes, it attempts to connect only to this URL.
-    *   Otherwise, it iterates through the **`DEFAULT_SERVERS`** list in `sidekick.config`. This list typically prioritizes a local WebSocket server (e.g., `ws://localhost:5163` for the VS Code extension) and then falls back to remote cloud-based servers.
-2.  **Session IDs for Remote Servers:**
-    *   When attempting to connect to a remote server marked as `requires_session_id: True` in its `ServerConfig`, a unique session ID is generated.
-    *   This session ID is appended to the WebSocket URL (e.g., `wss://ws.remote/?session=12345678`) and used to construct the UI URL (e.g., `https://ui.remote/12345678`).
-3.  **UI URL Prompt:**
-    *   If a connection to a remote server (marked with `show_ui_url: True`) is successful, the `ConnectionService` will print the session-specific UI URL to the console, prompting the user to open it in a browser. It will also suggest installing the VS Code extension for a better experience.
-    *   For local connections (VS Code extension) or user-set URLs, this prompt is typically suppressed.
-4.  **Activation Process (Triggered by First Component):**
-    *   The *first* operation requiring communication (e.g., creating the first `sidekick.Grid()`, or an explicit `sidekick.activate_connection()`) triggers the `ConnectionService`'s activation sequence.
-    *   `ConnectionService` now invokes `ServerConnector.connect_async()` to obtain a connected `CommunicationManager`.
-    *   The `ServerConnector` executes the prioritized connection strategy described above.
-    *   Once `ServerConnector` returns a successfully connected `CommunicationManager`, `ConnectionService` proceeds with its post-connection sequence: sending "hero online" `system/announce`, waiting for the Sidekick UI's "online" `system/announce` (from the connected endpoint), sending `global/clearAll`, and then processing any queued messages.
-    *   **CPython:** The `activate_connection()` call (and thus the first component creation) **blocks** the calling (main) thread until this entire sequence (including `ServerConnector` finding a connection and `ConnectionService` completing its protocol handshake) completes or fails.
-    *   **Pyodide:** The `activate_connection()` call is **non-blocking**. It initiates the asynchronous activation sequence. Messages sent by components during this pending activation are queued by `ConnectionService`.
-5.  **Message Sending:**
-    *   Component methods (e.g., `grid.set_color()`) call internal `_send_update` or `_send_command` methods, which then use `sidekick.connection.send_message()`. This module-level function delegates to `ConnectionService.send_message_internally()`.
-    *   `ConnectionService` queues messages if not fully active or sends them via the established `CommunicationManager`.
+    *   Otherwise, it iterates through the **`DEFAULT_SERVERS`** list.
+2.  **Session IDs for Remote Servers:** Handled by `ServerConnector`.
+3.  **UI URL Prompt:** Handled by `ConnectionService` after successful remote connection by `ServerConnector`.
+4.  **Activation Process (Triggered by First Component or Explicit Call):**
+    *   The *first* operation requiring communication (e.g., creating the first `sidekick.Grid()`, or an explicit `sidekick.activate_connection()`) triggers `ConnectionService.activate_connection_internally()`.
+    *   `ConnectionService.activate_connection_internally()` is **non-blocking**. It schedules `_async_activate_and_run_message_queue` on the `TaskManager`.
+    *   The `_async_activate_and_run_message_queue` coroutine then:
+        1.  Invokes `ServerConnector.connect_async()` to obtain a connected `CommunicationManager`.
+        2.  Proceeds with its post-connection sequence: sending "hero online" `system/announce`, waiting for the Sidekick UI's "online" `system/announce`, sending `global/clearAll`, and then processing any queued messages.
+    *   **CPython - Synchronous Waiting:**
+        *   If a CPython user needs to wait for the connection to be active (e.g., before proceeding with critical UI interactions or when `run_forever()` starts), they can call `sidekick.wait_for_connection()`. This function internally calls `ConnectionService.wait_for_active_connection_sync()`, which blocks the calling thread (e.g., the main thread) until the `_async_activate_and_run_message_queue` completes or fails.
+    *   **Pyodide:** Activation is entirely non-blocking. Messages are queued by `ConnectionService`. `await sidekick.run_forever_async()` will internally await the completion of the activation sequence.
+5.  **Message Sending (`Component` -> `ConnectionService`):**
+    *   Component methods call `sidekick.connection.send_message()`.
+    *   `connection.send_message()` calls `ConnectionService.send_message_internally()`.
+    *   `send_message_internally()` first calls `activate_connection_internally()` (non-blocking) to ensure the activation process is running or scheduled.
+    *   If the service is not yet `ACTIVE`, the message is queued. Otherwise, it's sent via the established `CommunicationManager`.
 6.  **Error Handling:**
-    *   If `ServerConnector` fails to connect to any server (after trying all applicable strategies), it raises a `SidekickConnectionError`.
-    *   If `sidekick.set_url()` was used and that specific connection fails, `ServerConnector` raises `SidekickConnectionRefusedError`.
-    *   `ConnectionService` catches these and other errors (like timeouts waiting for UI announce) during activation. In CPython's blocking `activate_connection()`, these errors are propagated to the user.
+    *   `ServerConnector` raises `SidekickConnectionError` or `SidekickConnectionRefusedError` if it cannot establish an initial connection. These are caught by `_async_activate_and_run_message_queue`.
+    *   If `_async_activate_and_run_message_queue` fails (due to connection errors, timeouts waiting for UI announce, etc.), it stores the exception and signals completion.
+    *   `ConnectionService.wait_for_active_connection_sync()` (CPython) will then re-raise this stored exception to the synchronously waiting thread.
     *   Once active, transport errors from `CommunicationManager` are handled by `ConnectionService`, potentially leading to a `FAILED` state and `SidekickDisconnectedError` on subsequent operations.
 7.  **No Automatic Reconnection (at `sidekick-py` level):** The library does **not** currently attempt automatic reconnection if a connection is lost after being established.
 
 ## 2. Core Implementation Details (`sidekick-py`)
 
 ### 2.1. `sidekick.config`
-*   Defines the `ServerConfig` dataclass for server connection parameters (`name`, `ws_url`, `ui_url`, `requires_session_id`, `show_ui_url`).
-*   Contains the `DEFAULT_SERVERS` list, which `ServerConnector` uses as a fallback.
-*   Manages the user-set URL via `get_user_set_url()` and `set_user_url_globally()`.
+*   Defines `ServerConfig` and `DEFAULT_SERVERS`. Manages user-set URL. (Largely unchanged by recent refactoring).
 
 ### 2.2. `sidekick.utils`
-*   `generate_unique_id()`: For component instance IDs.
-*   `generate_session_id()`: For creating session IDs for remote server connections.
+*   Provides `generate_unique_id()`, `generate_session_id()`. (Largely unchanged).
 
 ### 2.3. `sidekick.core` Sub-package
-This sub-package contains foundational, environment-agnostic abstractions and their concrete CPython/Pyodide implementations:
+This sub-package contains foundational abstractions and their implementations:
 
-*   **`core.status.CoreConnectionStatus`**: Enum for low-level transport connection states.
+*   **`core.status.CoreConnectionStatus`**: Enum for low-level transport states.
 *   **`core.exceptions`**: Defines `CoreConnectionError` and related low-level exceptions.
-*   **`core.utils.is_pyodide()`**: Detects the execution environment.
+*   **`core.utils.is_pyodide()`**: Detects execution environment.
 *   **`core.TaskManager` (ABC)**:
     *   `CPythonTaskManager`: Manages an asyncio loop in a background thread.
+        *   `ensure_loop_running()`: Now implements a two-stage confirmation. First, it waits for the loop thread to signal it has set its event loop. Second, it submits a "probe" coroutine and waits for its completion to ensure the loop is responsive to tasks submitted from other threads.
+        *   `_loop_runner_task()`: The main coroutine for the event loop thread. It uses `asyncio.sleep(0)` in a `while` loop to continuously process tasks and check for shutdown, ensuring the loop remains responsive to `call_soon_threadsafe` calls.
+        *   `_shutdown_requested_event_for_loop`: This `asyncio.Event` is now created within `_run_loop_in_thread` to ensure it's bound to the correct event loop.
     *   `PyodideTaskManager`: Uses Pyodide's existing asyncio loop.
     *   A singleton instance is provided by `core.factories.get_task_manager()`.
 *   **`core.CommunicationManager` (ABC)**:
-    *   `WebSocketCommunicationManager` (CPython): Uses `websockets` library.
-    *   `PyodideCommunicationManager` (Pyodide): Uses `js` module and `pyodide.ffi`.
-    *   Instances are now created by `core.factories.create_websocket_communication_manager()` or `create_pyodide_communication_manager()`.
-*   **`core.factories`**:
-    *   `get_task_manager()`: Singleton factory for `TaskManager`.
-    *   `create_websocket_communication_manager()`: Creates new `WebSocketCommunicationManager` instances.
-    *   `create_pyodide_communication_manager()`: Creates new `PyodideCommunicationManager` instances.
+    *   `WebSocketCommunicationManager` (CPython) and `PyodideCommunicationManager` (Pyodide).
+    *   Created by factory functions in `core.factories`.
+*   **`core.factories`**: Provides `get_task_manager()` and creation functions for `CommunicationManager` implementations.
 
 ### 2.4. `sidekick.server_connector.ServerConnector`
-*   **Responsibilities**: Encapsulates the logic for attempting connections to Sidekick servers.
-*   **`connect_async()` method**:
-    1.  Checks if running in Pyodide. If so, attempts to use `PyodideCommunicationManager`. Returns on success.
-    2.  Checks if a user URL is set via `config.get_user_set_url()`. If so, attempts connection only to this URL using `WebSocketCommunicationManager`. Returns on success or raises `SidekickConnectionRefusedError` on failure.
-    3.  Iterates through `config.DEFAULT_SERVERS`. For each server:
-        *   Calls `_attempt_single_ws_connection()` with the server's config.
-        *   If successful, returns the `ConnectionResult` (containing the CM, UI URL info, etc.).
-    4.  If all attempts fail, raises a comprehensive `SidekickConnectionError`.
-*   **`_attempt_single_ws_connection()` method**:
-    *   Takes a `ServerConfig`.
-    *   If `requires_session_id` is true, calls `utils.generate_session_id()` and constructs the final WebSocket URL (e.g., `wss://.../?session=ID`) and UI URL (e.g., `https://.../ID`).
-    *   Creates a new `WebSocketCommunicationManager` instance.
-    *   Calls `cm.connect_async()`.
-    *   Returns a `ConnectionAttemptResult` with success status, the CM, and any UI/hint info.
-*   URL helper methods: `_build_ws_url_with_session`, `_build_ui_url_with_session_path`.
+*   Encapsulates connection attempt logic (Pyodide, user URL, default servers).
+*   Its `connect_async()` method returns a `ConnectionResult` with a connected `CommunicationManager` or raises an error. (Largely unchanged by recent refactoring of `ConnectionService` activation).
 
 ### 2.5. `sidekick.connection.ConnectionService`
-The `ConnectionService` remains the central orchestrator for post-connection logic but now delegates the initial connection establishment to `ServerConnector`.
+The `ConnectionService` is the central orchestrator.
 
-*   **Singleton:** Accessed via a module-level `_get_service_instance()`.
-*   **State Machine (`_ServiceStatus` Enum):** Tracks detailed lifecycle (IDLE, ACTIVATING_SCHEDULED, CORE_CONNECTED, WAITING_SIDEKICK_ANNOUNCE, ACTIVE, FAILED, etc.).
-*   **Async Activation (`_async_activate_and_run_message_queue`):**
-    *   Launched as an `asyncio.Task` by the `TaskManager`.
-    *   **Step 1: Obtain Connection:** Calls `await self._server_connector.connect_async()`.
-        *   If successful, receives a `ConnectionResult` containing a connected `CommunicationManager`, the name of the connected server, and UI URL/hint information.
-        *   Stores the received `CommunicationManager` as `self._communication_manager`.
-        *   Registers its internal `_handle_core_message`, `_handle_core_status_change`, and `_handle_core_error` callbacks with this `CommunicationManager`.
-        *   Sets `self._service_status` to `CORE_CONNECTED`.
-        *   If `connection_outcome.show_ui_url_hint` is true, prints the `connection_outcome.ui_url_to_show` and VS Code extension hint to the console.
-        *   If `ServerConnector.connect_async()` raises an error, this error is propagated, caught by the outer try-except of `_async_activate_and_run_message_queue`, and the service status is set to `FAILED`.
-    *   **Step 2: Post-Connection Protocol:** (This part is largely as before)
-        *   Sends "hero online" `system/announce` message via `self._communication_manager`.
-        *   Waits for `_sidekick_ui_online_event` (set by `_handle_core_message` on "sidekick online" announce, with timeout).
-        *   Sends `global/clearAll` message.
-        *   Processes any messages in `_message_queue`.
-        *   Sets service status to `ACTIVE` and sets `_clearall_sent_and_queue_processed_event`.
-    *   Exceptions during this entire process are caught, set the service to `FAILED`, and are propagated to CPython's blocking `activate_connection_internally()` call.
-*   **Blocking `activate_connection_internally()` (CPython):**
-    *   Launches `_async_activate_and_run_message_queue`.
-    *   Uses `_activation_cv` (a `threading.Condition`) to block the calling thread until the async activation task completes.
-*   **Non-blocking `activate_connection_internally()` (Pyodide):**
-    *   Launches `_async_activate_and_run_message_queue` and returns.
-*   **Message Queuing (`_message_queue`):** Still used for messages sent before `ACTIVE` state.
+*   **Singleton:** Accessed via `_get_service_instance()`.
+*   **State Machine (`_ServiceStatus` Enum):** Tracks detailed lifecycle.
+*   **`activate_connection_internally()`:**
+    *   This method is now **non-blocking**.
+    *   It checks the current service status. If activation is needed and not already in progress, it schedules the `_async_activate_and_run_message_queue` coroutine on the `TaskManager`.
+    *   It uses `_sync_activation_complete_event` (`threading.Event`) and `_activation_exception` to communicate the result of the asynchronous activation back to any synchronous waiters (CPython).
+*   **`_async_activate_and_run_message_queue()`:**
+    *   This is the core asynchronous activation task. It:
+        1.  Calls `self._server_connector.connect_async()` to get a `CommunicationManager`.
+        2.  Registers handlers with the `CommunicationManager`.
+        3.  Performs the Sidekick protocol handshake: sends "hero online" `system/announce`, waits for Sidekick UI's "online" `system/announce` (with timeout), sends `global/clearAll`.
+        4.  Processes any messages in `_message_queue`.
+        5.  Sets service status to `ACTIVE`.
+    *   Its completion (or failure) is signaled by `_activation_done_callback`.
+*   **`_activation_done_callback()`:**
+    *   Called when `_async_activate_and_run_message_queue` finishes.
+    *   Stores any exception from the activation task into `self._activation_exception`.
+    *   Sets `self._sync_activation_complete_event` to unblock synchronous waiters.
+    *   Updates the final service status based on the outcome.
+*   **`wait_for_active_connection_sync()`:**
+    *   (CPython specific) Called by `sidekick.wait_for_connection()`.
+    *   First, calls `activate_connection_internally()` (non-blocking) to ensure activation is scheduled.
+    *   Then, blocks on `self._sync_activation_complete_event.wait(timeout)`.
+    *   After unblocking, checks `self._activation_exception` and `self._service_status` to determine success or raise appropriate errors.
+*   **Message Queuing (`_message_queue`):** Used for messages sent before `ACTIVE` state.
 *   **Message Sending (`send_message_internally()` via module function `send_message`):**
-    *   If active, serializes and sends via `self._communication_manager`. Otherwise, queues.
-*   **Incoming Message Handling (`_handle_core_message`):** Deserializes and routes messages to component handlers or global handler.
-*   **Core Status/Error Handling (`_handle_core_status_change`, `_handle_core_error`):** Updates service status based on feedback from the `CommunicationManager`.
+    *   Calls `activate_connection_internally()` (non-blocking).
+    *   If service is `ACTIVE`, serializes and sends via `self._communication_manager`. Otherwise, queues.
+*   **Incoming Message Handling (`_handle_core_message`):** Deserializes and routes messages.
+*   **Core Status/Error Handling (`_handle_core_status_change`, `_handle_core_error`):** Updates service status.
 *   **Shutdown (`shutdown_service()` via module `shutdown()`):**
     *   Sends "hero offline" (best effort).
-    *   Schedules `self._communication_manager.close_async()` (if CM exists).
+    *   Cancels ongoing `_async_activate_task` if any.
+    *   Sets `_sync_activation_complete_event` with an error if waiters might be stuck.
+    *   Schedules `self._communication_manager.close_async()`.
     *   Signals `TaskManager.signal_shutdown()`.
 
 ### 2.6. `sidekick.Component`
-*   `__init__` still calls `sidekick_connection_module.register_message_handler()` and then `_send_command("spawn", ...)`. The `_send_command` (which uses `sidekick_connection_module.send_message()`) will implicitly trigger `ConnectionService.activate_connection_internally()` if it's the first such call.
-*   Its core interaction pattern with the `ConnectionService` (via `sidekick_connection_module`) remains largely unchanged from its perspective.
+*   `__init__` is **non-blocking**. It calls `sidekick_connection_module.send_message()` which uses `ConnectionService.send_message_internally()`. The "spawn" command will be queued if the service isn't active yet.
 
 ### 2.7. Lifecycle & Synchronization Functions (`sidekick/__init__.py` wrappers)
-*   **`sidekick.set_url(url)`:** Now calls `config.set_user_url_globally(url)`. `ServerConnector` will pick this up.
-*   **`sidekick.activate_connection()`:** Calls `ConnectionService.activate_connection_internally()`.
-*   **`sidekick.run_forever()` (CPython):** Calls `ConnectionService.run_service_forever()`.
-*   **`sidekick.run_forever_async()` (Pyodide/Async):** Calls `ConnectionService.run_service_forever_async()`.
+*   **`sidekick.set_url(url)`:** Calls `config.set_user_url_globally(url)`.
+*   **`sidekick.activate_connection()`:** Now non-blocking. Calls `ConnectionService.activate_connection_internally()`.
+*   **`sidekick.wait_for_connection(timeout)` (New for CPython):** Blocks the calling thread until the connection is active or fails/times out. Internally calls `ConnectionService.wait_for_active_connection_sync()`.
+*   **`sidekick.run_forever()` (CPython):**
+    *   First, calls `sidekick.wait_for_connection()` to ensure the connection is active before proceeding. Handles exceptions from this wait.
+    *   Then, calls `ConnectionService._task_manager.wait_for_shutdown()`.
+*   **`sidekick.run_forever_async()` (Pyodide/Async):**
+    *   Calls `ConnectionService.activate_connection_internally()` (which is non-blocking for Pyodide).
+    *   Awaits the completion of the internal `_async_activate_task` (or checks `is_active()`) before proceeding to `ConnectionService._task_manager.wait_for_shutdown_async()`.
 *   **`sidekick.shutdown()`:** Calls `ConnectionService.shutdown_service()`.
-*   **`sidekick.submit_task(coro)`:** Delegates to `TaskManager.submit_task(coro)`.
+*   **`sidekick.submit_task(coro)`:** Delegates to `TaskManager.submit_task(coro)`. The `CPythonTaskManager`'s `submit_task` is now more robust due to improvements in `ensure_loop_running`.
 
 ## 3. API Design Notes (Recap)
 
-*   **Public API remains mostly synchronous for CPython ease of use.** The complexities of tiered connection attempts and async operations are hidden.
-*   `sidekick.set_url()` provides user override for connection.
-*   If no user URL and not Pyodide, library tries local VS Code, then remote cloud servers.
-*   UI URL and VS Code extension hints are printed for successful remote connections.
-*   Pyodide users and advanced CPython users can leverage `run_forever_async` and `submit_task`.
+*   **Public API remains mostly synchronous for CPython ease of use,** but component initialization is now non-blocking.
+*   `sidekick.wait_for_connection()` provides an explicit synchronous waiting point for CPython users.
+*   `run_forever()` now robustly waits for connection before blocking for task manager shutdown.
+*   Connection activation is an asynchronous process internally.
+*   Pyodide users continue to use an async-first approach.
 
 ## 4. Logging Strategy
 
 *   Root logger "sidekick". Submodule loggers like "sidekick.connection", "sidekick.server_connector", "sidekick.core.cpython_task_manager".
-*   Detailed logging in `ServerConnector` for each connection attempt.
-*   Logging in `ConnectionService` for its lifecycle and UI URL printing.
-*   Default `NullHandler` for the "sidekick" logger; applications can configure it.
+*   Detailed logging in `CPythonTaskManager` for its intricate startup sequence.
+*   Logging in `ConnectionService` for its lifecycle, activation states, and UI URL printing.
+*   Default `NullHandler`; applications can configure it.
 
-This revised architecture makes the connection process more robust and user-friendly by trying multiple endpoints and guiding users towards the optimal setup (VS Code extension) when using remote fallbacks.
+This refactoring makes the connection activation process more robust, especially in CPython environments where synchronous and asynchronous code interact, by clearly separating the non-blocking scheduling of activation from the optional synchronous waiting for its completion.

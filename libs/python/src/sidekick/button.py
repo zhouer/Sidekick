@@ -73,8 +73,6 @@ class Button(Component):
 
         Raises:
             ValueError: If the provided `instance_id` is invalid or a duplicate.
-            SidekickConnectionError: If the library cannot connect to the
-                Sidekick UI panel.
             TypeError: If `parent` is an invalid type, or if `on_click` or
                 `on_error` are provided but are not callable functions.
         """
