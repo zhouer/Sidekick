@@ -92,30 +92,26 @@ export default function websocketServerPlugin(options: WebSocketPluginOptions): 
 
             // Function to send the list of online peers to a newly connected client
             const sendPeerList = (ws: WebSocket) => {
-                const onlinePeers: { peerId: string, role: string, version: string, status: string, timestamp: number }[] = [];
-
+                let peerCount = 0;
                 connectedPeers.forEach((peerInfo, socket) => {
                     if (socket !== ws && peerInfo.status === 'online') {
-                        onlinePeers.push(peerInfo);
+                        const msg = { 
+                            id: 0, 
+                            component: 'system', 
+                            type: 'announce', 
+                            payload: {
+                                peerId: peerInfo.peerId,
+                                role: peerInfo.role as PeerRole,
+                                status: 'online',
+                                version: peerInfo.version,
+                                timestamp: peerInfo.timestamp
+                            }
+                        };
+                        sendToClient(ws, msg, `peer list announce for ${peerInfo.peerId}`);
+                        peerCount++;
                     }
                 });
-
-                if (onlinePeers.length > 0) {
-                    console.log(`[WSS][PeerList] Sending ${onlinePeers.length} online peer announcements to new connection`);
-                    onlinePeers.forEach(peerInfo => {
-                        const announcePayload: AnnouncePayload = {
-                            peerId: peerInfo.peerId,
-                            role: peerInfo.role as PeerRole,
-                            status: 'online',
-                            version: peerInfo.version,
-                            timestamp: peerInfo.timestamp
-                        };
-                        const historyMsg = { id: 0, component: 'system', type: 'announce', payload: announcePayload };
-                        sendToClient(ws, historyMsg, `peer list announce for ${peerInfo.peerId}`);
-                    });
-                } else {
-                    console.log(`[WSS][PeerList] No online peers to send to new connection`);
-                }
+                console.log(`[WSS][PeerList] Sent ${peerCount} online peer announcements to new connection`);
             };
 
             wss.on('connection', (ws: WebSocket, req) => {
