@@ -8,11 +8,11 @@ interface WebSocketPluginOptions {
     port: number;
 }
 
-// --- State Maps (remain the same) ---
-// Map: WebSocket instance -> { peerId, role, version }
-const connectedPeers = new Map<WebSocket, { peerId: string, role: string, version: string }>();
-// Map: peerId -> AnnouncePayload (last known state)
-const lastAnnouncements = new Map<string, AnnouncePayload>();
+// --- State Map ---
+// Map: WebSocket instance -> { peerId, role, version, status, timestamp }
+const connectedPeers = new Map<WebSocket, { peerId: string, role: string, version: string, status: string, timestamp: number }>();
+// Map: peerId -> WebSocket (for reverse lookup)
+const peerSockets = new Map<string, WebSocket>();
 
 // --- Helper Functions (remain mostly the same, added logging) ---
 
@@ -90,11 +90,42 @@ export default function websocketServerPlugin(options: WebSocketPluginOptions): 
                 console.log(`[WSS] WebSocket server started and listening on ws://${address.address}:${address.port}`);
             });
 
+            // Function to send the list of online peers to a newly connected client
+            const sendPeerList = (ws: WebSocket) => {
+                const onlinePeers: { peerId: string, role: string, version: string, status: string, timestamp: number }[] = [];
+
+                connectedPeers.forEach((peerInfo, socket) => {
+                    if (socket !== ws && peerInfo.status === 'online') {
+                        onlinePeers.push(peerInfo);
+                    }
+                });
+
+                if (onlinePeers.length > 0) {
+                    console.log(`[WSS][PeerList] Sending ${onlinePeers.length} online peer announcements to new connection`);
+                    onlinePeers.forEach(peerInfo => {
+                        const announcePayload: AnnouncePayload = {
+                            peerId: peerInfo.peerId,
+                            role: peerInfo.role as PeerRole,
+                            status: 'online',
+                            version: peerInfo.version,
+                            timestamp: peerInfo.timestamp
+                        };
+                        const historyMsg = { id: 0, component: 'system', type: 'announce', payload: announcePayload };
+                        sendToClient(ws, historyMsg, `peer list announce for ${peerInfo.peerId}`);
+                    });
+                } else {
+                    console.log(`[WSS][PeerList] No online peers to send to new connection`);
+                }
+            };
+
             wss.on('connection', (ws: WebSocket, req) => {
                 // Log incoming connection with remote address if available
                 const remoteAddress = req.socket.remoteAddress || 'unknown address';
                 const remotePort = req.socket.remotePort || 'unknown port';
                 console.log(`[WSS] New client connection opened from ${remoteAddress}:${remotePort}`);
+
+                // Send the current list of online peers immediately upon connection
+                sendPeerList(ws);
 
                 ws.on('message', (data) => {
                     let message: any;
@@ -128,32 +159,19 @@ export default function websocketServerPlugin(options: WebSocketPluginOptions): 
 
                         if (status === 'online') {
                             console.log(`[WSS][Announce] ONLINE from ${peerDescription}`);
-                            const peerInfo = { peerId, role, version };
-
-                            // --- Send History ---
-                            // Gather announcements of other currently online peers
-                            const historyAnnouncements: AnnouncePayload[] = [];
-                            lastAnnouncements.forEach((announce, existingPeerId) => {
-                                if (existingPeerId !== peerId && announce.status === 'online') {
-                                    historyAnnouncements.push(announce);
-                                }
-                            });
-                            // Send the history list to the newly connected peer
-                            if (historyAnnouncements.length > 0) {
-                                console.log(`[WSS][History] Sending ${historyAnnouncements.length} online peer announcements to ${peerId}`);
-                                historyAnnouncements.forEach(histAnnounce => {
-                                    const historyMsg = { id: 0, component: 'system', type: 'announce', payload: histAnnounce };
-                                    sendToClient(ws, historyMsg, `history announce for ${histAnnounce.peerId}`);
-                                });
-                            } else {
-                                console.log(`[WSS][History] No other online peers found for ${peerId}`);
-                            }
+                            const peerInfo = { 
+                                peerId, 
+                                role, 
+                                version, 
+                                status, 
+                                timestamp 
+                            };
 
                             // --- Store Peer Info ---
                             // Associate WebSocket connection with peer identity
                             connectedPeers.set(ws, peerInfo);
-                            // Update the central state with the latest announcement
-                            lastAnnouncements.set(peerId, payload);
+                            // Add to reverse lookup map
+                            peerSockets.set(peerId, ws);
 
                             // --- Broadcast Online Status ---
                             broadcastMessage(wss, ws, message, `ONLINE announce for ${peerId}`);
@@ -163,18 +181,19 @@ export default function websocketServerPlugin(options: WebSocketPluginOptions): 
                             console.log(`[WSS][Announce] OFFLINE from ${peerDescription}`);
 
                             // Update stored status for this peer
-                            const existingAnnounce = lastAnnouncements.get(peerId);
-                            if (existingAnnounce) {
-                                lastAnnouncements.set(peerId, { ...existingAnnounce, status: 'offline', timestamp });
+                            const peerInfo = connectedPeers.get(ws);
+                            if (peerInfo) {
+                                // Update the status to offline
+                                peerInfo.status = 'offline';
+                                peerInfo.timestamp = timestamp;
+                                connectedPeers.set(ws, peerInfo);
                             } else {
-                                // Record the offline status even if 'online' was missed
-                                lastAnnouncements.set(peerId, payload);
-                                console.warn(`[WSS][Announce] Recorded offline status for ${peerId} which was not previously known as online.`);
+                                console.warn(`[WSS][Announce] Received offline status for ${peerId} but no connection info found.`);
                             }
 
                             // Broadcast the offline status to others
                             broadcastMessage(wss, ws, message, `OFFLINE announce for ${peerId}`);
-                            // Don't remove from connectedPeers here; wait for 'close' event
+                            // Don't remove from connectedPeers or peerSockets here; wait for 'close' event
 
                         } else {
                             // Handle unknown status values
@@ -203,17 +222,12 @@ export default function websocketServerPlugin(options: WebSocketPluginOptions): 
                         const peerDescription = `${role} peer ${peerId} (v${version})`;
                         console.log(`[WSS][Close] Connection closed for ${peerDescription}. Code: ${code}, Reason: ${reasonString}`);
 
-                        // Clean up active connection mapping
-                        connectedPeers.delete(ws);
-                        console.log(`[WSS][State] Removed ${peerId} from active connections map.`);
-
                         // Check if peer already announced offline gracefully
-                        const lastAnnounce = lastAnnouncements.get(peerId);
-                        if (lastAnnounce?.status === 'offline') {
+                        if (peerInfo.status === 'offline') {
                             console.log(`[WSS][Close] ${peerId} disconnected gracefully (status was already offline).`);
                         } else {
                             // Abnormal disconnect: Status was 'online' or unknown
-                            console.warn(`[WSS][Close] ${peerId} disconnected abnormally (status was '${lastAnnounce?.status || 'unknown'}'). Generating offline announce.`);
+                            console.warn(`[WSS][Close] ${peerId} disconnected abnormally (status was '${peerInfo.status}'). Generating offline announce.`);
 
                             // Generate and broadcast an offline announcement
                             const offlinePayload: AnnouncePayload = {
@@ -225,13 +239,15 @@ export default function websocketServerPlugin(options: WebSocketPluginOptions): 
                             };
                             const offlineMsg = { id: 0, component: 'system', type: 'announce', payload: offlinePayload };
 
-                            // Update central state
-                            lastAnnouncements.set(peerId, offlinePayload);
-
                             // Broadcast to remaining peers
                             // 'ws' is already closed, so broadcast won't send to it
                             broadcastMessage(wss, ws, offlineMsg, `generated OFFLINE announce for ${peerId}`);
                         }
+
+                        // Clean up active connection mappings
+                        connectedPeers.delete(ws);
+                        peerSockets.delete(peerId);
+                        console.log(`[WSS][State] Removed ${peerId} from active connections maps.`);
                     } else {
                         // Client disconnected before identifying itself
                         console.log(`[WSS][Close] Connection closed for unidentified client from ${remoteAddress}:${remotePort}. Code: ${code}, Reason: ${reasonString}`);

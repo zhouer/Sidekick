@@ -36,6 +36,38 @@ export class Session {
 
         let peerId = null;
 
+        // Common function to broadcast messages
+        const broadcastMessage = (senderPeerId, message) => {
+            for (const [otherId, info] of this.clients) {
+                // Broadcast to all other peers regardless of role
+                if (otherId !== senderPeerId) {
+                    info.ws.send(message);
+                }
+            }
+        };
+
+        // Send existing online peers to the new client immediately upon connection
+        const sendPeerList = () => {
+            for (const [otherId, info] of this.clients) {
+                const ann = {
+                    id: 0,
+                    component: 'system',
+                    type: 'announce',
+                    payload: {
+                        peerId: otherId,
+                        role: info.role,
+                        status: 'online',
+                        version: info.version,
+                        timestamp: info.timestamp
+                    }
+                };
+                server.send(JSON.stringify(ann));
+            }
+        };
+
+        // Send the current peer list immediately
+        sendPeerList();
+
         // Handle incoming messages
         server.addEventListener('message', (event) => {
             let msg;
@@ -46,58 +78,26 @@ export class Session {
             }
             const { component, type, payload } = msg;
 
-            // Announce messages carry role information
+            // Process system announce messages
             if (component === 'system' && type === 'announce') {
                 const { peerId: id, role: r, status, version } = payload;
                 peerId = id;
 
                 if (status === 'online') {
-                    // Register this client
-                    this.clients.set(id, { ws: server, role: r, version });
-
-                    // Send existing online announcements to new client
-                    for (const [otherId, info] of this.clients) {
-                        if (otherId !== id) {
-                            const ann = {
-                                id: 0,
-                                component: 'system',
-                                type: 'announce',
-                                payload: {
-                                    peerId: otherId,
-                                    role: info.role,
-                                    status: 'online',
-                                    version: info.version,
-                                    timestamp: Date.now()
-                                }
-                            };
-                            server.send(JSON.stringify(ann));
-                        }
-                    }
-
-                    // Broadcast this client's online announce to others
-                    for (const [otherId, info] of this.clients) {
-                        if (otherId !== id) info.ws.send(event.data);
-                    }
-
+                    // Register this client with timestamp
+                    const timestamp = payload.timestamp || Date.now();
+                    this.clients.set(id, { ws: server, role: r, version, timestamp });
                 } else if (status === 'offline') {
-                    // Remove client and broadcast offline status
+                    // Remove client
                     this.clients.delete(id);
-                    for (const [, info] of this.clients) {
-                        info.ws.send(event.data);
-                    }
                 }
-                return;
             }
 
-            // Relay all other messages between roles
+            // Relay all messages
             if (!peerId) return;
             const sender = this.clients.get(peerId);
             if (!sender) return;
-            for (const [otherId, info] of this.clients) {
-                if (info.role !== sender.role) {
-                    info.ws.send(event.data);
-                }
-            }
+            broadcastMessage(peerId, event.data);
         });
 
         // Handle unexpected disconnection
@@ -118,9 +118,9 @@ export class Session {
                         timestamp: Date.now()
                     }
                 };
-                for (const [, c] of this.clients) {
-                    c.ws.send(JSON.stringify(offline));
-                }
+                const offlineMsg = JSON.stringify(offline);
+                // Use the common broadcastMessage function
+                broadcastMessage(peerId, offlineMsg);
             }
         });
 
