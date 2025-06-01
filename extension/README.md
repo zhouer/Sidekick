@@ -64,7 +64,7 @@ Perfect for **learners**, **educators**, **parents teaching coding**, and anyone
 
 ## Features
 
-### Core Visual Components
+### Visual Components
 
 1.  **[`Canvas`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.canvas)** - 2D Graphics and Animation
     *   `Canvas(width, height)`: Create a drawing canvas.
@@ -123,6 +123,7 @@ Perfect for **learners**, **educators**, **parents teaching coding**, and anyone
 
 ## Learn More
 
-*   **[Sidekick GitHub Repository](https://github.com/zhouer/Sidekick)**
-*   Explore the [Examples Directory](https://github.com/zhouer/Sidekick/tree/main/examples).
-*   Read the [Python API Reference](https://zhouer.github.io/sidekick-py-docs/).
+*   [GitHub Repository](https://github.com/zhouer/Sidekick)
+*   [Examples](https://github.com/zhouer/Sidekick/tree/main/examples).
+*   [User Guide](https://github.com/zhouer/Sidekick/blob/main/docs/user-guide.md)
+*   [API Reference](https://sidekick-py.readthedocs.io/).

@@ -65,7 +65,7 @@ Perfect for **learners**, **educators**, **parents teaching coding**, and anyone
 
 ## Features
 
-### Core Visual Components
+### Visual Components
 
 1.  **[`Canvas`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.canvas)** - 2D Graphics and Animation
     *   `Canvas(width, height)`: Create a drawing canvas.
@@ -125,12 +125,15 @@ Perfect for **learners**, **educators**, **parents teaching coding**, and anyone
 ## Learn More
 
 *   [Examples](https://github.com/zhouer/Sidekick/tree/main/examples/)
+*   [User Guide](https://github.com/zhouer/Sidekick/blob/main/docs/user-guide.md)
 *   [API Reference](https://sidekick-py.readthedocs.io/)
-*   **Developer Docs:** [Architecture](https://github.com/zhouer/Sidekick/blob/main/docs/architecture.md) | [Protocol](https://github.com/zhouer/Sidekick/blob/main/docs/protocol.md) | [Python](https://github.com/zhouer/Sidekick/blob/main/docs/python-development.md) | [WebApp](https://github.com/zhouer/Sidekick/blob/main/docs/webapp-development.md) | [Extension](https://github.com/zhouer/Sidekick/blob/main/docs/extension-development.md)
-
-## Origins
-
-This project started as a personal tool designed to help teach my own children the fundamentals of coding in a more visual and engaging way. I wanted to bridge the gap between abstract code and tangible results. The core ideas were inspired by the great work and philosophy behind [PyKidos](https://pykidos.github.io/).
+*   **Developer Docs:** 
+    *   [Architecture](https://github.com/zhouer/Sidekick/blob/main/docs/architecture.md)
+    *   [Protocol](https://github.com/zhouer/Sidekick/blob/main/docs/protocol.md)
+    *   [Python](https://github.com/zhouer/Sidekick/blob/main/docs/python-development.md)
+    *   [WebApp](https://github.com/zhouer/Sidekick/blob/main/docs/webapp-development.md)
+    *   [Extension](https://github.com/zhouer/Sidekick/blob/main/docs/extension-development.md)
+    *   [Cloudflare](https://github.com/zhouer/Sidekick/blob/main/docs/cloudflare-development.md)
 
 ## License
 

@@ -153,19 +153,10 @@ The `ConnectionService` is the central orchestrator.
 *   **`sidekick.shutdown()`:** Calls `ConnectionService.shutdown_service()`.
 *   **`sidekick.submit_task(coro)`:** Delegates to `TaskManager.submit_task(coro)`. The `CPythonTaskManager`'s `submit_task` is now more robust due to improvements in `ensure_loop_running`.
 
-## 3. API Design Notes (Recap)
+## 3. API Design Notes
 
 *   **Public API remains mostly synchronous for CPython ease of use,** but component initialization is now non-blocking.
 *   `sidekick.wait_for_connection()` provides an explicit synchronous waiting point for CPython users.
 *   `run_forever()` now robustly waits for connection before blocking for task manager shutdown.
 *   Connection activation is an asynchronous process internally.
 *   Pyodide users continue to use an async-first approach.
-
-## 4. Logging Strategy
-
-*   Root logger "sidekick". Submodule loggers like "sidekick.connection", "sidekick.server_connector", "sidekick.core.cpython_task_manager".
-*   Detailed logging in `CPythonTaskManager` for its intricate startup sequence.
-*   Logging in `ConnectionService` for its lifecycle, activation states, and UI URL printing.
-*   Default `NullHandler`; applications can configure it.
-
-This refactoring makes the connection activation process more robust, especially in CPython environments where synchronous and asynchronous code interact, by clearly separating the non-blocking scheduling of activation from the optional synchronous waiting for its completion.

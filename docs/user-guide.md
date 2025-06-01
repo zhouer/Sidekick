@@ -112,9 +112,8 @@ Let's create a very simple Sidekick program to see it in action.
     greeting_label.text = "Done counting!"
     console.print("Script finished.")
 
-    # Always call sidekick.run_forever() at the end of your script.
-    # This keeps the Sidekick connection alive and ensures all components
-    # behave as expected, even if no interactive elements are immediately apparent.
+    # Always call sidekick.run_forever() at the end of your script if you
+    # want the UI to remain visible or interactive after the main logic.
     sidekick.run_forever()
     ```
 
@@ -148,9 +147,13 @@ Let's create a very simple Sidekick program to see it in action.
     Event objects received in callbacks will contain the `instance_id` of the component that triggered the event.
 
 *   **Script Lifecycle & Interactivity:**
-    *   **Implicit Connection:** When you create your first Sidekick component (e.g., `my_label = sidekick.Label()`), the library implicitly attempts to activate its connection to a Sidekick service (VS Code extension or cloud relay).
-    *   **`sidekick.run_forever()`:** You **must** call `sidekick.run_forever()` at the end of your script. This function blocks the main thread (in CPython) and keeps your script alive to listen for and process events from the Sidekick UI, as well as ensuring proper finalization of non-interactive components. Without it, your script might finish prematurely, and interactive elements (if any) would stop working. It's a crucial part of any Sidekick script. You can stop a script running with `run_forever()` by pressing `Ctrl+C` in the terminal.
-    *   **`sidekick.shutdown()`:** To programmatically stop the Sidekick connection and allow your script to exit (even if `run_forever()` was called), you can call `sidekick.shutdown`. This is often used within an event handler, for example, when a "Quit" button is clicked.
+    *   **Implicit Connection Activation:** When you create your first Sidekick component (e.g., `my_label = sidekick.Label()`) or explicitly call `sidekick.activate_connection()`, the library non-blockingly initiates the connection to a Sidekick service (VS Code extension or cloud relay).
+    *   **Waiting for Connection (CPython, Optional):** If your script needs to ensure the connection is fully active *before* proceeding with critical UI interactions, you can call `sidekick.wait_for_connection()`. This function will block the calling thread until the connection is established or fails.
+    *   **`sidekick.run_forever()` / `await sidekick.run_forever_async()`:** You **must** call one of these at the end of your script if you want it to handle UI interactions (like button clicks) or if you simply want the Sidekick UI to remain visible after your script's main logic has finished.
+        *   `sidekick.run_forever()` (for CPython): Internally calls `sidekick.wait_for_connection()` and then blocks the main thread, keeping your script alive to listen for and process events.
+        *   `await sidekick.run_forever_async()` (for Pyodide/asyncio scripts): Asynchronously waits for connection and then keeps the script alive for events.
+        Without one of these, your script might finish prematurely, and interactive elements would stop working or UI might disappear. You can typically stop a script running with `run_forever()` by pressing `Ctrl+C` in the terminal.
+    *   **`sidekick.shutdown()`:** To programmatically stop the Sidekick connection and allow your script to exit (even if `run_forever()` or `run_forever_async()` was called), you can call `sidekick.shutdown`. This is often used within an event handler, for example, when a "Quit" button is clicked.
 
 ---
 
@@ -255,7 +258,8 @@ drawing_area.draw_rect(50, 50, 100, 75, fill_color="blue", line_color="darkblue"
 # Draw some text
 drawing_area.draw_text(60, 150, "Sidekick Canvas!", text_color="green", text_size=20)
 
-sidekick.run_forever() # Ensures the script runs and Sidekick panel stays active
+# Use run_forever() if you want the canvas to remain visible after the script's main logic.
+sidekick.run_forever()
 ```
 
 ### 2.4 `Viz` - Data Structure Visualizer
@@ -293,7 +297,8 @@ data_viewer.show("Custom Object", my_obj)
 my_list.append(3)
 data_viewer.show("My List Data", my_list) # Re-show to see the '3'
 
-sidekick.run_forever() # Keeps the script alive for the Viz panel
+# Keeps the script alive for the Viz panel to remain visible and updatable.
+sidekick.run_forever()
 ```
 
 ### 2.5 `Label` - Text Label
@@ -312,6 +317,9 @@ import time
 status_label = sidekick.Label("Status: Initializing...", instance_id="app-status")
 time.sleep(1)
 status_label.text = "Status: Ready"
+
+# To keep the label visible after the script finishes its main logic:
+sidekick.run_forever()
 ```
 
 ### 2.6 `Button` - Clickable Button
@@ -375,7 +383,7 @@ Displays text formatted with Markdown.
     *   `.source`: Get or set the Markdown source string.
 
 **Example:**
-````python
+```python
 import sidekick
 
 md_content = """
@@ -392,9 +400,11 @@ Visit [Sidekick on GitHub](https://github.com/zhouer/Sidekick).
 
 md_display = sidekick.Markdown(md_content)
 # To update:
-# md_display.source = "## New Content\n*Updated*"
+# md_display.source = "## New Content\\n*Updated*"
+
+# To keep the Markdown content visible after the script finishes its main logic:
 sidekick.run_forever()
-````
+```
 
 ---
 
@@ -523,24 +533,24 @@ There are three main ways to register an event handler for a component:
 
 ### 3.4 Handling Component Errors (`on_error`)
 
-Sometimes, an error might occur in the Sidekick UI related to a specific component (e.g., while trying to render it or process an update for it). The UI can send an "error" message back. You can handle these using the `on_error` parameter in the constructor or the `component.on_error(callback)` method.
+Sometimes, an error might occur in the Sidekick UI related to a specific component (e.g., while trying to render it or process an update command received from your Python script). The UI can send an "error" message back to your Python script. You can handle these using the `on_error` parameter in the component's constructor or by calling the `component.on_error(callback)` method.
 
-The callback receives an `ErrorEvent` object, which has an `instance_id`, `type` (always "error"), and a `message` string describing the error.
+The callback receives an `ErrorEvent` object, which has an `instance_id`, `type` (always "error"), and a `message` string describing the error encountered by the UI.
 
 ```python
 import sidekick
 from sidekick.events import ErrorEvent
 
 def my_component_error_handler(event: ErrorEvent):
-    print(f"ERROR for component '{event.instance_id}': {event.message}")
+    print(f"ERROR from Sidekick UI for component '{event.instance_id}': {event.message}")
 
 # Example: Registering error handler for a label
 error_prone_label = sidekick.Label("Initial text", on_error=my_component_error_handler)
 
-# Simulate an action that might cause an error if the protocol was violated by library code
-# (This is hard to demonstrate without intentionally breaking things,
-#  but this shows how you *would* register the handler)
-# error_prone_label._send_update({"action": "invalidAction", "options": {}})
+# This example primarily shows how to *register* the handler.
+# Triggering a UI-side error from Python for demonstration is complex.
+# Such errors usually stem from issues in the UI's processing of valid commands,
+# or potentially from protocol violations if the library itself had a bug.
 
 sidekick.run_forever()
 ```
@@ -574,6 +584,7 @@ You can add components (children) to `Row` or `Column` containers in several way
 
     my_row.add_child(button1)
     my_row.add_child(button2)
+    sidekick.run_forever()
     ```
 
 2.  **Specifying `parent=container_instance` in the child's constructor:**
@@ -585,6 +596,7 @@ You can add components (children) to `Row` or `Column` containers in several way
     my_column = sidekick.Column(instance_id="main-content")
     title_label = sidekick.Label("My App", parent=my_column)
     data_grid = sidekick.Grid(5, 5, parent=my_column)
+    sidekick.run_forever()
     ```
 
 3.  **Passing child components directly to the container's constructor:**
@@ -604,6 +616,7 @@ You can add components (children) to `Row` or `Column` containers in several way
         sidekick.Markdown("Some *details* here..."),
         instance_id="info-area"
     )
+    sidekick.run_forever()
     ```
 
 ### 4.3 Nested Layouts
@@ -688,7 +701,6 @@ def button_c_action(event: ButtonClickEvent):
 
 # Add button_c to the existing row or a new one
 app_ui.add_child(button_c) # Assuming Row is the main container here.
-                           # If app_ui was meant to be the only thing, you'd create it and then run.
 
 sidekick.run_forever()
 ```
@@ -738,15 +750,25 @@ The `sidekick.Viz` component is powerful for inspecting data, but it becomes tru
     del observable_dict["a"]       # Viz updates
 
     # For sets (similar methods like .add(), .discard())
-    my_set = sidekick.ObservableValue({1, 2})
-    viz_panel.show("My Reactive Set", my_set)
-    my_set.add(3)                    # Viz updates
-    my_set.discard(1)                # Viz updates
+    my_set_data = {1, 2}
+    observable_set = sidekick.ObservableValue(my_set_data)
+    viz_panel.show("My Reactive Set", observable_set)
+    observable_set.add(3)            # Viz updates
+    observable_set.discard(1)        # Viz updates
     ```
 
 **Important:**
 *   Modifications must be made using the `ObservableValue` wrapper's methods (e.g., `observable_list.append()`, not `my_list.append()`).
-*   If `ObservableValue` contains nested mutable structures (e.g., a list inside an observed dictionary), those nested structures also need to be wrapped in `ObservableValue` if you want their internal changes to be automatically reflected.
+*   If `ObservableValue` contains nested mutable structures (e.g., a list inside an observed dictionary), those nested structures also need to be wrapped in `ObservableValue` if you want their internal changes to be automatically reflected. For example:
+    ```python
+    nested_data = sidekick.ObservableValue({
+        "config": sidekick.ObservableValue({"options": sidekick.ObservableValue([1, 2])})
+    })
+    viz_panel.show("Nested Reactive", nested_data)
+    nested_data["config"]["options"].append(3) # This will trigger UI updates
+    ```
+
+    Call `sidekick.run_forever()` if your script needs to stay alive for these updates to be processed and shown after the main logic.
 
 ### 5.2 `Canvas` Double Buffering for Smooth Animations
 
@@ -785,7 +807,7 @@ try:
 except KeyboardInterrupt:
     print("Animation stopped.")
 finally:
-    sidekick.shutdown()
+    sidekick.shutdown() # Ensure clean shutdown of Sidekick connection
 ```
 
 ### 5.3 Asynchronous Programming with Sidekick
@@ -793,7 +815,7 @@ finally:
 While Sidekick's API is primarily synchronous for ease of use in CPython, it also supports asynchronous operations, which is especially relevant when running in Pyodide (in a browser Web Worker).
 
 *   **`sidekick.run_forever_async()`:**
-    If you are writing an `async def` main function or running in Pyodide, use `await sidekick.run_forever_async()` instead of `sidekick.run_forever()`.
+    If you are writing an `async def` main function or running in Pyodide, use `await sidekick.run_forever_async()` instead of `sidekick.run_forever()`. It will ensure the connection is active before waiting for the shutdown signal.
 
 *   **`sidekick.submit_task(coroutine)`:**
     You can submit your own custom coroutines to Sidekick's managed event loop. This is useful if you have background async tasks that need to run alongside Sidekick's communication.
@@ -809,10 +831,14 @@ While Sidekick's API is primarily synchronous for ease of use in CPython, it als
             await asyncio.sleep(2)
             console.print(f"Background task reporting: Tick {i+1}")
         console.print("Background task finished.")
+        # Example: if background task completion should end the program
+        # sidekick.shutdown()
 
     # Submit the task
     sidekick.submit_task(my_background_task())
     console.print("Main script continues while background task runs...")
+
+    # Use run_forever() or await run_forever_async() depending on context
     sidekick.run_forever()
     ```
 
@@ -832,26 +858,32 @@ sidekick.set_url("ws://my-custom-sidekick-server.example.com:1234")
 # Now create your components
 my_label = sidekick.Label("Connecting to custom server...")
 # ... rest of your script ...
+sidekick.run_forever()
 ```
 
 ### 5.5 Clearing the UI
 
 *   **`component.remove()`:** Removes a specific component instance from the Sidekick UI and cleans up its resources on the Python side.
     ```python
+    import sidekick
     my_button = sidekick.Button("Temporary Button")
     # ... use the button ...
-    my_button.remove() # Button disappears from the UI
+    sidekick.run_forever() # Assume it's interactive
+    # Sometime later, perhaps in a callback:
+    # my_button.remove() # Button disappears from the UI
     ```
 
 *   **`sidekick.clear_all()`:** Sends a command to remove *all* currently displayed component instances from the Sidekick UI, effectively resetting the panel to an empty state (except for the root container).
     ```python
     import sidekick
+    import time
 
     sidekick.Label("This will disappear.")
     sidekick.Button("So will this.")
-    # ...
+    time.sleep(2) # Show them for a moment
     sidekick.clear_all() # Clears everything shown so far
     sidekick.Label("Panel is now clear, new content starts here.")
+    sidekick.run_forever()
     ```
 
 ---
@@ -865,11 +897,12 @@ This chapter provides a more detailed (but not exhaustive) reference for the pub
 These functions are available directly under the `sidekick` module (e.g., `sidekick.run_forever()`).
 
 *   `set_url(url: Optional[str])`: Sets a custom WebSocket URL for the Sidekick server, overriding defaults. Call before any component creation. Pass `None` to revert to default server list.
-*   `activate_connection()`: Explicitly initiates the connection to the Sidekick service. Usually called implicitly on first component creation. Blocks in CPython until active or failed; non-blocking in Pyodide.
+*   `activate_connection()`: **Non-blocking.** Ensures the Sidekick connection activation process is initiated if not already started or active. Usually called implicitly on first component creation.
+*   `wait_for_connection(timeout: Optional[float] = None)`: **(CPython specific)** Blocks the calling thread until the Sidekick connection is fully active and ready, or until timeout/failure. Call this if you need to ensure connection before proceeding with UI interactions, and are not immediately calling `run_forever()`.
 *   `clear_all()`: Removes all components from the Sidekick UI.
 *   `register_global_message_handler(handler: Optional[Callable[[Dict], None]])`: Advanced. Registers a handler to receive *all* raw JSON messages coming from the Sidekick UI. Useful for debugging or custom protocol extensions.
-*   `run_forever()`: (CPython) Blocks the main script thread, keeping the Sidekick connection alive to process UI events. Exits on `Ctrl+C` or `sidekick.shutdown()`.
-*   `run_forever_async()`: (Pyodide/async) Asynchronously keeps the Sidekick connection alive. `await` this function.
+*   `run_forever()`: (CPython) Internally ensures connection is active, then blocks the main script thread, keeping the Sidekick connection alive to process UI events. Exits on `Ctrl+C` or `sidekick.shutdown()`.
+*   `run_forever_async()`: (Pyodide/async) Asynchronously ensures connection is active, then keeps the Sidekick connection alive. `await` this function.
 *   `shutdown()`: Gracefully closes the connection to Sidekick and signals `run_forever` or `run_forever_async` to terminate.
 *   `submit_task(coro: Coroutine)`: Submits a user-defined coroutine to Sidekick's managed asyncio event loop. Returns an `asyncio.Task`.
 
