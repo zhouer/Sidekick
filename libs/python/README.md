@@ -15,15 +15,12 @@ This library provides the Python interface for interacting with the [Sidekick Vi
     pip install sidekick-py
     ```
 
-2.  **Install the VS Code Extension:** 
+2.  **Install and Open in VS Code (Recommended for the best experience):**
 
-    Get "Sidekick - Your Visual Coding Buddy" from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=sidekick-coding.sidekick-coding)
+    *   Install "Sidekick - Your Visual Coding Buddy" from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=sidekick-coding.sidekick-coding).
+    *   Once installed, open the Sidekick Panel: Use the command palette (`Ctrl+Shift+P` or `Cmd+Shift+P`) and run `Sidekick: Show Panel`.
 
-3.  **Open Sidekick Panel:** 
-
-    Use the command palette (`Ctrl+Shift+P`) and run `Sidekick: Show Panel`.
-
-4.  **Run the sample code**:
+3. **Run the sample code**:
 
     ```python
     import sidekick
@@ -31,26 +28,22 @@ This library provides the Python interface for interacting with the [Sidekick Vi
 
     # Create a 5x5 Grid
     grid = sidekick.Grid(5, 5)
-
-    # Define what happens on click
-    def handle_click(event):
-        colors = ["khaki", "lavender", "peachpuff", "pink", "plum", "powderblue"]
+    colors = ["khaki", "lavender", "peachpuff", "pink", "plum", "powderblue"]
+    
+    @grid.click # Use decorator for click handler
+    def handle_cell_click(event):
         random_color = random.choice(colors)
         grid.set_color(event.x, event.y, random_color)
-        print(f"Grid '{event.instance_id}' cell ({event.x}, {event.y}) clicked, set to {random_color}")
-
-    # Register the click handler
-    grid.on_click(handle_click)
+        print(f"Cell ({event.x}, {event.y}) set to {random_color}")
 
     # Keep your script running to listen for clicks!
     sidekick.run_forever()
     ```
 
-    Run your script using `python your_file.py` in the terminal, or click the `Run` button in VS Code.
-
-5.  **Interact:**
-
-    Click cells in the Sidekick panel to see colors change (press `Ctrl+C` to stop).
+    Run your Python script (e.g., `python your_file.py`) from your terminal, or use the "Run" button in VS Code.
+  
+    *   **If you have the VS Code extension installed and the Sidekick Panel open,** you will see the 5x5 Grid appear directly in the panel.
+    *   **If the VS Code extension is not active or not installed,** the Python script will attempt to connect to a cloud relay server. In this case, a UI URL will be printed in your terminal; open this URL in your web browser to see and interact with the Grid.
 
 ## Learn More
 

@@ -5,11 +5,9 @@
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/sidekick-coding.sidekick-coding?label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=sidekick-coding.sidekick-coding)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**See your code come to life, right inside VS Code!**
-
-Sidekick is your friendly visual assistant for programming. It tackles the challenge of abstract code by providing an **interactive panel** directly within your VS Code editor. Watch loops draw patterns, data structures change in real-time, without leaving your development environment.
-
-Perfect for **learners**, **educators**, **parents teaching coding**, and anyone who benefits from seeing code in action!
+Sidekick is your visual coding buddy! An intuitive Python library that brings your code to life through an interactive panel in VS Code or your browser.
+Quickly understand code execution, explore it visually, and make abstract programming concepts tangible.
+Perfect for anyone learning or teaching Python, from young students to experienced developers.
 
 ## Quick Start
 
@@ -19,15 +17,12 @@ Perfect for **learners**, **educators**, **parents teaching coding**, and anyone
     pip install sidekick-py
     ```
 
-2.  **Install the VS Code Extension:**
+2.  **Install and Open in VS Code (Recommended for the best experience):**
 
-    Get "Sidekick - Your Visual Coding Buddy" from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=sidekick-coding.sidekick-coding)
+    *   Install "Sidekick - Your Visual Coding Buddy" from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=sidekick-coding.sidekick-coding).
+    *   Once installed, open the Sidekick Panel: Use the command palette (`Ctrl+Shift+P` or `Cmd+Shift+P`) and run `Sidekick: Show Panel`.
 
-3.  **Open Sidekick Panel:**
-
-    Use the command palette (`Ctrl+Shift+P` or `Cmd+Shift+P`) and run `Sidekick: Show Panel`.
-
-4.  **Run the sample code**:
+3. **Run the sample code**:
 
     ```python
     import sidekick
@@ -35,33 +30,29 @@ Perfect for **learners**, **educators**, **parents teaching coding**, and anyone
 
     # Create a 5x5 Grid
     grid = sidekick.Grid(5, 5)
-
-    # Define what happens on click
-    def handle_click(event):
-        colors = ["khaki", "lavender", "peachpuff", "pink", "plum", "powderblue"]
+    colors = ["khaki", "lavender", "peachpuff", "pink", "plum", "powderblue"]
+    
+    @grid.click # Use decorator for click handler
+    def handle_cell_click(event):
         random_color = random.choice(colors)
         grid.set_color(event.x, event.y, random_color)
-        print(f"Grid '{event.instance_id}' cell ({event.x}, {event.y}) clicked, set to {random_color}")
-
-    # Register the click handler
-    grid.on_click(handle_click)
+        print(f"Cell ({event.x}, {event.y}) set to {random_color}")
 
     # Keep your script running to listen for clicks!
     sidekick.run_forever()
     ```
 
-    Run your script using `python your_file.py` in the terminal, or click the `Run` button in VS Code.
-
-5.  **Interact:**
-
-    Click cells in the Sidekick panel to see colors change.
+    Run your Python script (e.g., `python your_file.py`) from your terminal, or use the "Run" button in VS Code.
+  
+    *   **If you have the VS Code extension installed and the Sidekick Panel open,** you will see the 5x5 Grid appear directly in the panel.
+    *   **If the VS Code extension is not active or not installed,** the Python script will attempt to connect to a cloud relay server. In this case, a UI URL will be printed in your terminal; open this URL in your web browser to see and interact with the Grid.
 
 ## Why Choose Sidekick?
 
-*   **Real-time Visual Feedback:** See your code in action instantly with interactive visualizations. Watch data structures change, algorithms execute, and user interactions trigger responses in real-time.
-*   **Intuitive, Pythonic Syntax:** Focus on learning concepts rather than UI programming. Sidekick's intuitive, beginner-friendly API keeps your code clean and readable with minimal boilerplate.
-*   **Integrated Development Experience:** Seamlessly embedded in VS Code, Sidekick lets you see results immediately without switching applications, all within your complete development environment.
-*   **Building Blocks, Not Frameworks:** Sidekick doesn't aim to be a complete UI framework like Qt or Tkinter. Instead, it provides essential building blocks that let you create unlimited possibilities with your imagination.
+*   **Real-time Visual Feedback:** See your code in action instantly with interactive visualizations. Watch data structures change, algorithms execute, and user interactions trigger responses in real-time. This makes abstract programming concepts more tangible and easier to understand.
+*   **Intuitive, Pythonic Syntax:** Focus on learning programming concepts rather than complex UI programming. Sidekick's beginner-friendly API keeps your code clean and readable with minimal boilerplate.
+*   **Integrated Development Experience:** Seamlessly embedded in VS Code, Sidekick lets you see results immediately without switching applications. This tight feedback loop is invaluable for learning and debugging.
+*   **Building Blocks, Not Frameworks:** Sidekick provides essential visual and UI building blocks. It doesn't aim to be a complete UI framework like Qt or Tkinter, but rather empowers you to create unlimited possibilities with your imagination by combining these fundamental components.
 
 ## Features
 
@@ -111,29 +102,29 @@ Perfect for **learners**, **educators**, **parents teaching coding**, and anyone
 ### Layout Components
 
 1.  **[`Row()`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.row)** - Arranges child components horizontally
-    *   Use `container.add_child(component)` or `Component(..., parent=container)` to structure layouts. 
+    *   Use `container.add_child(component)` or `Component(..., parent=container)` to structure layouts.
 
 2.  **[`Column()`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.column)** - Arranges child components vertically
     *   Use `container.add_child(component)` or `Component(..., parent=container)` to structure layouts.
 
 ### Managing Script Lifecycle
 
-1.  **[`sidekick.run_forever()`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#sidekick.run_forever)** - Keep your script running to handle interactions (clicks, input). Necessary for interactive components.
+1.  **[`sidekick.run_forever()`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#sidekick.run_forever)** - Keeps your script running to handle UI interactions (clicks, input) and ensures the Sidekick panel remains active. This is **necessary** for any script with interactive components or if you want the UI to persist after the main logic finishes. (For asyncio scripts, use `await sidekick.run_forever_async()`).
 
-2.  **[`sidekick.shutdown()`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#sidekick.shutdown)** - Gracefully stop the script and disconnect (can be called from callbacks).
+2.  **[`sidekick.shutdown()`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#sidekick.shutdown)** - Gracefully stops the script's interaction with Sidekick and allows `run_forever()` to terminate. This can be called from your event callbacks (e.g., a "Quit" button's click handler).
 
 ## Learn More
 
 *   [Examples](https://github.com/zhouer/Sidekick/tree/main/examples/)
 *   [User Guide](https://github.com/zhouer/Sidekick/blob/main/docs/user-guide.md)
 *   [API Reference](https://sidekick-py.readthedocs.io/)
-*   **Developer Docs:** 
+*   **Developer Docs:**
     *   [Architecture](https://github.com/zhouer/Sidekick/blob/main/docs/architecture.md)
     *   [Protocol](https://github.com/zhouer/Sidekick/blob/main/docs/protocol.md)
-    *   [Python](https://github.com/zhouer/Sidekick/blob/main/docs/python-development.md)
-    *   [WebApp](https://github.com/zhouer/Sidekick/blob/main/docs/webapp-development.md)
-    *   [Extension](https://github.com/zhouer/Sidekick/blob/main/docs/extension-development.md)
-    *   [Cloudflare](https://github.com/zhouer/Sidekick/blob/main/docs/cloudflare-development.md)
+    *   [Python Library Development](https://github.com/zhouer/Sidekick/blob/main/docs/python-development.md)
+    *   [WebApp Development](https://github.com/zhouer/Sidekick/blob/main/docs/webapp-development.md)
+    *   [VS Code Extension Development](https://github.com/zhouer/Sidekick/blob/main/docs/extension-development.md)
+    *   [Cloudflare Infrastructure](https://github.com/zhouer/Sidekick/blob/main/docs/cloudflare-development.md)
 
 ## License
 
