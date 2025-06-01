@@ -56,4 +56,4 @@ This library provides the Python interface for interacting with the [Sidekick Vi
 
 *   **[Sidekick GitHub Repository](https://github.com/zhouer/Sidekick)**
 *   Explore the [Examples Directory](https://github.com/zhouer/Sidekick/tree/main/examples).
-*   Read the [Python API Reference](https://zhouer.github.io/sidekick-py-docs/).
+*   Read the [Python API Reference](https://sidekick-py.readthedocs.io/).
