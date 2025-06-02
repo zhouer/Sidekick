@@ -19,7 +19,7 @@ and hints about installing the VS Code extension for a better experience.
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Union # Added Union
+from typing import List, Optional
 from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
 from .config import ServerConfig, DEFAULT_SERVERS, get_user_set_url
@@ -30,13 +30,14 @@ from .core import (
     CoreConnectionError,
     CoreConnectionRefusedError,
     CoreConnectionTimeoutError,
-    # CoreDisconnectedError, # Not directly raised by ServerConnector's primary path, but CMs can.
-    is_pyodide
+    is_pyodide,
+    MessageHandlerType,
+    StatusChangeHandlerType,
+    ErrorHandlerType
 )
 from .core.factories import (
     create_websocket_communication_manager,
     create_pyodide_communication_manager,
-    # get_task_manager # TaskManager instance is passed into ServerConnector
 )
 from .exceptions import SidekickConnectionError, SidekickConnectionRefusedError
 
@@ -156,6 +157,9 @@ class ServerConnector:
     async def _attempt_single_ws_connection(
         self,
         server_config: ServerConfig,
+        message_handler: Optional[MessageHandlerType],
+        status_change_handler: Optional[StatusChangeHandlerType],
+        error_handler: Optional[ErrorHandlerType]
     ) -> ConnectionAttemptResult:
         """Attempts to connect to a single WebSocket server configuration.
 
@@ -165,6 +169,9 @@ class ServerConnector:
 
         Args:
             server_config (ServerConfig): The configuration for the server to attempt.
+            message_handler (Optional[MessageHandlerType]): Callback for incoming messages.
+            status_change_handler (Optional[StatusChangeHandlerType]): Callback for status changes.
+            error_handler (Optional[ErrorHandlerType]): Callback for communication errors.
 
         Returns:
             ConnectionAttemptResult: An object detailing the outcome of this attempt.
@@ -190,9 +197,11 @@ class ServerConnector:
         cm = create_websocket_communication_manager(final_ws_url, self._task_manager)
 
         try:
-            # The connect_async method of CommunicationManager handles its own timeouts
-            # and should raise specific CoreConnectionError subtypes on failure.
-            await cm.connect_async()
+            await cm.connect_async(
+                message_handler=message_handler,
+                status_change_handler=status_change_handler,
+                error_handler=error_handler
+            )
 
             # After connect_async returns, cm.is_connected() should be true if successful.
             if cm.is_connected():
@@ -258,13 +267,23 @@ class ServerConnector:
             )
             return ConnectionAttemptResult(success=False, error=e, server_name=server_config.name)
 
-    async def connect_async(self) -> ConnectionResult:
+    async def connect_async(
+        self,
+        message_handler: Optional[MessageHandlerType],
+        status_change_handler: Optional[StatusChangeHandlerType],
+        error_handler: Optional[ErrorHandlerType]
+    ) -> ConnectionResult:
         """Attempts to establish a Sidekick connection using various strategies.
 
         The connection order of priority is:
         1.  Pyodide environment (if detected).
         2.  User-defined URL (if provided via `sidekick.set_url()`).
         3.  Default server list (from `sidekick.config.DEFAULT_SERVERS`).
+
+        Args:
+            message_handler (Optional[MessageHandlerType]): Callback for incoming messages.
+            status_change_handler (Optional[StatusChangeHandlerType]): Callback for status changes.
+            error_handler (Optional[ErrorHandlerType]): Callback for communication errors.
 
         Returns:
             ConnectionResult: Details of the successfully established connection.
@@ -278,7 +297,11 @@ class ServerConnector:
             logger.info("Pyodide environment detected. Attempting to initialize Pyodide communication.")
             try:
                 cm_pyodide = create_pyodide_communication_manager(self._task_manager)
-                await cm_pyodide.connect_async() # Pyodide's connect_async sets up JS bridge
+                await cm_pyodide.connect_async(
+                    message_handler=message_handler,
+                    status_change_handler=status_change_handler,
+                    error_handler=error_handler
+                )
                 if cm_pyodide.is_connected():
                     logger.info("Successfully established communication via Pyodide bridge.")
                     return ConnectionResult(
@@ -286,10 +309,7 @@ class ServerConnector:
                         server_name="Pyodide In-Browser Bridge"
                     )
                 else: # pragma: no cover
-                    # This would be unusual if Pyodide environment is correctly detected
-                    # and its connect_async logic is sound.
                     logger.error("PyodideCommunicationManager's connect_async completed but is_connected is false.")
-                    # Fallback is generally not meaningful from Pyodide, so raise.
                     raise SidekickConnectionError("Pyodide communication setup failed: CM not connected post-init.")
             except Exception as e_pyodide: # pragma: no cover
                 logger.exception(f"Critical error during Pyodide communication setup: {e_pyodide}")
@@ -302,16 +322,19 @@ class ServerConnector:
         user_custom_url = get_user_set_url()
         if user_custom_url:
             logger.info(f"User-defined URL '{user_custom_url}' found. Attempting direct connection.")
-            # For a user-defined URL, we assume they handle session IDs in the URL itself if needed.
-            # No UI URL is printed by default for user-set URLs.
             user_server_config = ServerConfig(
                 name="User-defined Server",
                 ws_url=user_custom_url,
-                ui_url=None, # Not used for user-set URL UI hint
-                requires_session_id=False, # Assume user manages this in the URL
-                show_ui_url=False # Don't show UI URL for user-set server
+                ui_url=None,
+                requires_session_id=False,
+                show_ui_url=False
             )
-            attempt_result = await self._attempt_single_ws_connection(user_server_config)
+            attempt_result = await self._attempt_single_ws_connection(
+                user_server_config,
+                message_handler,
+                status_change_handler,
+                error_handler
+            )
 
             if attempt_result.success and attempt_result.communication_manager:
                 logger.info(f"Successfully connected to user-defined URL: {user_custom_url}")
@@ -320,13 +343,12 @@ class ServerConnector:
                     server_name=attempt_result.server_name
                 )
             else:
-                # If user specified a URL and it fails, it's a hard failure.
                 error_message = (
                     f"Failed to connect to user-defined Sidekick URL '{user_custom_url}'. "
                     f"Error: {attempt_result.error or 'Unknown error'}"
                 )
                 logger.error(error_message)
-                raise SidekickConnectionRefusedError( # More specific error for user-set URL failure
+                raise SidekickConnectionRefusedError(
                     message=error_message,
                     url=user_custom_url,
                     original_exception=attempt_result.error
@@ -334,17 +356,21 @@ class ServerConnector:
 
         # --- Strategy 3: Default Server List ---
         logger.info("No user-defined URL. Attempting connections from default server list.")
-        attempt_errors: List[str] = [] # To collect error messages from each failed attempt
+        attempt_errors: List[str] = []
 
-        if not DEFAULT_SERVERS: # Should not happen if config is correct
+        if not DEFAULT_SERVERS:
             logger.error("DEFAULT_SERVERS list is empty. Cannot attempt any default connections.")
             raise SidekickConnectionError("No default Sidekick servers configured.")
 
 
         for server_config_entry in DEFAULT_SERVERS:
-            attempt_result = await self._attempt_single_ws_connection(server_config_entry)
+            attempt_result = await self._attempt_single_ws_connection(
+                server_config_entry,
+                message_handler,
+                status_change_handler,
+                error_handler
+            )
             if attempt_result.success and attempt_result.communication_manager:
-                # Successful connection to one of the default servers
                 return ConnectionResult(
                     communication_manager=attempt_result.communication_manager,
                     ui_url_to_show=attempt_result.ui_url_to_show,
@@ -352,18 +378,15 @@ class ServerConnector:
                     server_name=attempt_result.server_name
                 )
             else:
-                # Log the specific error for this server and add to list for summary
                 error_info = f"{server_config_entry.name} ({server_config_entry.ws_url}): {type(attempt_result.error).__name__}"
                 if attempt_result.error and hasattr(attempt_result.error, 'url') and attempt_result.error.url: # type: ignore
                     error_info += f" (Target: {attempt_result.error.url})" # type: ignore
                 attempt_errors.append(error_info)
-                # Log full error for debugging
                 logger.warning(
                     f"Connection attempt to default server '{server_config_entry.name}' failed. "
                     f"Error: {attempt_result.error}"
                 )
 
-        # If all attempts in the default list failed
         error_summary_str = "; ".join(attempt_errors) if attempt_errors else "No servers attempted or all attempts yielded unknown errors."
         final_error_message = (
             "Failed to connect to any configured Sidekick server. Please ensure Sidekick is running "

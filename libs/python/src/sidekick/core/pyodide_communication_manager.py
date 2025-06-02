@@ -186,7 +186,12 @@ class PyodideCommunicationManager(CommunicationManager):
                 "but no message handler is currently registered. Message ignored."
             )
 
-    async def connect_async(self) -> None:
+    async def connect_async(
+        self,
+        message_handler: Optional[MessageHandlerType] = None,
+        status_change_handler: Optional[StatusChangeHandlerType] = None,
+        error_handler: Optional[ErrorHandlerType] = None
+    ) -> None:
         """Establishes the communication bridge to JavaScript.
 
         For Pyodide, "connecting" means registering a Python callback function
@@ -202,6 +207,11 @@ class PyodideCommunicationManager(CommunicationManager):
 
             await self._update_status_async(CoreConnectionStatus.CONNECTING)
             logger.info("PyodideCommunicationManager: Attempting to establish JavaScript communication bridge.")
+
+            # Store provided handlers internally
+            self._message_handler = message_handler
+            self._status_change_handler = status_change_handler
+            self._error_handler = error_handler
 
             try:
                 # Check if essential JavaScript functions are available on the global `js` object.
@@ -223,6 +233,7 @@ class PyodideCommunicationManager(CommunicationManager):
 
                 # Create a Pyodide proxy for the Python method `_on_message_from_js`.
                 # This proxy makes the Python method callable from JavaScript.
+                # _on_message_from_js will use the self._message_handler set above.
                 self._js_message_handler_proxy = create_proxy(self._on_message_from_js)
 
                 # Register this proxied Python callback with the JavaScript side.
@@ -330,25 +341,12 @@ class PyodideCommunicationManager(CommunicationManager):
             # Pyodide manages), that side might also need explicit cleanup if this proxy
             # were to be replaced by a new one later without a full page reload.
 
+            # Clear handlers after connection is confirmed closed
+            self._message_handler = None
+            self._status_change_handler = None
+            self._error_handler = None
             await self._update_status_async(CoreConnectionStatus.DISCONNECTED)
             logger.info("PyodideCommunicationManager: JavaScript communication bridge closed.")
-
-    def register_message_handler(self, handler: MessageHandlerType) -> None:
-        """Registers a callback function to handle incoming messages from JavaScript."""
-        logger.debug(f"PyodideCM: Registering message handler: {handler}")
-        self._message_handler = handler
-
-    def register_status_change_handler(self, handler: StatusChangeHandlerType) -> None:
-        """Registers a callback function for connection status changes."""
-        logger.debug(f"PyodideCM: Registering status change handler: {handler}")
-        self._status_change_handler = handler
-
-    def register_error_handler(self, handler: Optional[ErrorHandlerType]) -> None:
-        """Registers a callback function to handle low-level communication errors.
-        Pass `None` to unregister.
-        """
-        logger.debug(f"PyodideCM: Registering error handler: {handler}")
-        self._error_handler = handler # Correctly allows Optional[ErrorHandlerType]
 
     def is_connected(self) -> bool:
         """Checks if the communication bridge to JavaScript is considered active."""

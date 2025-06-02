@@ -60,9 +60,7 @@ from .server_connector import ServerConnector, ConnectionResult
 
 # --- Constants ---
 _SIDEKICK_UI_WAIT_TIMEOUT_SECONDS = 180.0
-# _CONNECT_CORE_TRANSPORT_TIMEOUT_SECONDS = 3.0 # No longer directly used here, ServerConnector handles its timeouts
 _MAX_MESSAGE_QUEUE_SIZE = 1000
-# _ACTIVATION_WAIT_POLL_INTERVAL_CPYTHON = 0.1 # Replaced by threading.Event.wait()
 _ACTIVATION_FULL_TIMEOUT_SECONDS_CPYTHON = 180.0 # Default timeout for synchronous wait
 
 
@@ -287,16 +285,18 @@ class ConnectionService:
             logger.debug("_async_activate_and_run_message_queue: Attempting connection via ServerConnector.")
             connection_outcome: ConnectionResult
             try:
-                connection_outcome = await self._server_connector.connect_async()
+                # Pass handlers directly to the server_connector's connect_async method
+                connection_outcome = await self._server_connector.connect_async(
+                    message_handler=self._handle_core_message,
+                    status_change_handler=self._handle_core_status_change,
+                    error_handler=self._handle_core_error
+                )
                 self._communication_manager = connection_outcome.communication_manager
                 self._connected_server_name = connection_outcome.server_name
 
                 if not self._communication_manager: # Should be caught by ServerConnector raising error
                     raise SidekickConnectionError("ServerConnector returned without a CommunicationManager.") # pragma: no cover
 
-                self._communication_manager.register_message_handler(self._handle_core_message)
-                self._communication_manager.register_status_change_handler(self._handle_core_status_change)
-                self._communication_manager.register_error_handler(self._handle_core_error)
                 logger.info(f"Successfully connected to Sidekick server: {self._connected_server_name or 'Unknown'}")
 
             except SidekickConnectionError as e_conn_strat:
@@ -590,9 +590,11 @@ class ConnectionService:
                     with self._status_lock: self._sidekick_peers_info[peer_id] = payload
                     if self._sidekick_ui_online_event and not self._sidekick_ui_online_event.is_set():
                          try:
-                             # Ensure event manipulation happens on its own loop
-                             loop = self._sidekick_ui_online_event._loop # type: ignore
-                             loop.call_soon_threadsafe(self._sidekick_ui_online_event.set)
+                             loop_for_event_set = self._task_manager.get_loop()
+                             if loop_for_event_set and not loop_for_event_set.is_closed():
+                                 loop_for_event_set.call_soon_threadsafe(self._sidekick_ui_online_event.set)
+                             else: # pragma: no cover
+                                 logger.error("Cannot set _sidekick_ui_online_event: TaskManager loop is not available or closed.")
                          except Exception as e_set_event: # pragma: no cover
                               logger.error(f"Error setting _sidekick_ui_online_event from _handle_core_message: {e_set_event}")
 
@@ -603,8 +605,11 @@ class ConnectionService:
                         logger.info("All known Sidekick UIs are now offline.")
                         if self._sidekick_ui_online_event and self._sidekick_ui_online_event.is_set():
                             try:
-                                loop = self._sidekick_ui_online_event._loop # type: ignore
-                                loop.call_soon_threadsafe(self._sidekick_ui_online_event.clear)
+                                loop_for_event_set = self._task_manager.get_loop()
+                                if loop_for_event_set and not loop_for_event_set.is_closed():
+                                    loop_for_event_set.call_soon_threadsafe(self._sidekick_ui_online_event.clear)
+                                else:  # pragma: no cover
+                                    logger.error("Cannot clear _sidekick_ui_online_event: TaskManager loop is not available or closed.")
                             except Exception as e_clear_event: # pragma: no cover
                                  logger.error(f"Error clearing _sidekick_ui_online_event: {e_clear_event}")
                         print("Sidekick UI has disconnected. Shutting down Sidekick Python client.")

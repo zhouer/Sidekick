@@ -11,8 +11,8 @@ The `CommunicationManager` is responsible for:
 - Receiving raw string-based messages from the link.
 - Reporting changes in the connection status (using `CoreConnectionStatus`).
 - Notifying about underlying communication errors that might occur.
-- Allowing higher-level services (like `ConnectionService`) to register callback
-  functions to handle incoming messages, status changes, and errors.
+- Allowing higher-level services (like `ConnectionService`) to provide callback
+  functions during connection to handle incoming messages, status changes, and errors.
 
 This abstraction allows the rest of the Sidekick system to interact with different
 communication methods through a consistent interface.
@@ -50,24 +50,34 @@ class CommunicationManager(ABC):
     Implementations of this class will abstract the specifics of the underlying
     transport mechanism (e.g., WebSockets, Pyodide's JavaScript message passing)
     and provide a standardized interface for:
-    - Connecting to and disconnecting from a remote endpoint.
+    - Connecting to and disconnecting from a remote endpoint, accepting handlers at connect time.
     - Sending and receiving string-based messages.
     - Monitoring the connection status.
-    - Registering callbacks for messages, status changes, and errors.
     """
 
     @abstractmethod
-    async def connect_async(self) -> None:
+    async def connect_async(
+        self,
+        message_handler: Optional[MessageHandlerType] = None,
+        status_change_handler: Optional[StatusChangeHandlerType] = None,
+        error_handler: Optional[ErrorHandlerType] = None
+    ) -> None:
         """Establishes the connection to the remote endpoint asynchronously.
 
         Implementations should handle the complete process of setting up the
         communication link according to the chosen transport protocol (e.g.,
-        performing a WebSocket handshake).
+        performing a WebSocket handshake). The provided handlers should be
+        stored and used by the CommunicationManager for the duration of this connection.
 
         Upon successful connection, the manager's status should transition to
         `CoreConnectionStatus.CONNECTED`. If the connection attempt fails, an
         appropriate `CoreConnectionError` (such as `CoreConnectionRefusedError`
         or `CoreConnectionTimeoutError`) should be raised to indicate the failure.
+
+        Args:
+            message_handler (Optional[MessageHandlerType]): Callback for incoming messages.
+            status_change_handler (Optional[StatusChangeHandlerType]): Callback for status changes.
+            error_handler (Optional[ErrorHandlerType]): Callback for communication errors.
 
         Raises:
             CoreConnectionError: If the connection cannot be established due to
@@ -104,61 +114,6 @@ class CommunicationManager(ABC):
             Exception: Other transport-specific exceptions might be raised if the
                 send fails for reasons other than disconnection (e.g., message
                 too large for buffer, underlying socket errors).
-        """
-        pass
-
-    @abstractmethod
-    def register_message_handler(self, handler: MessageHandlerType) -> None:
-        """Registers a callback function to handle incoming raw string messages.
-
-        The provided `handler` will be invoked by the CommunicationManager
-        whenever a new message string is received from the remote endpoint.
-        The manager is responsible for correctly calling the handler, whether
-        it's a synchronous function or an awaitable coroutine.
-
-        If a handler was previously registered, calling this method again with a
-        new handler will replace the old one. To remove a handler, one might
-        pass `None` or a dedicated `unregister_message_handler` could be added
-        if more complex handler management is needed.
-
-        Args:
-            handler (MessageHandlerType): A callable that accepts a single string
-                argument (the received message) and returns `None` or an
-                `Awaitable[None]`.
-        """
-        pass
-
-    @abstractmethod
-    def register_status_change_handler(self, handler: StatusChangeHandlerType) -> None:
-        """Registers a callback function to be notified of connection status changes.
-
-        The `handler` will be invoked whenever the `CoreConnectionStatus` of the
-        communication channel changes (e.g., from `CONNECTING` to `CONNECTED`, or
-        from `CONNECTED` to `DISCONNECTED`). This allows higher-level services
-        to react to the state of the underlying connection.
-
-        Args:
-            handler (StatusChangeHandlerType): A callable that accepts a
-                `CoreConnectionStatus` enum member as its argument and returns
-                `None` or an `Awaitable[None]`.
-        """
-        pass
-
-    @abstractmethod
-    def register_error_handler(self, handler: Optional[ErrorHandlerType]) -> None:
-        """Registers a callback function to handle low-level communication errors.
-
-        This handler is intended for errors that originate from the communication
-        transport layer itself. These are typically errors that might lead to
-        disconnection or indicate a significant problem with the channel's health
-        (e.g., a WebSocket error event, an unhandled exception in the message
-        listening loop if not caught and translated into a status change).
-
-        Args:
-            handler (Optional[ErrorHandlerType]): A callable that accepts a single
-                `Exception` object as its argument and returns `None` or an
-                `Awaitable[None]`. Pass `None` to unregister a previously set
-                error handler.
         """
         pass
 

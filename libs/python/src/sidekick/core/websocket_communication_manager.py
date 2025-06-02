@@ -16,7 +16,7 @@ from .communication_manager import (
     CommunicationManager,
     MessageHandlerType,
     StatusChangeHandlerType,
-    ErrorHandlerType  # ErrorHandlerType is already Optional in some contexts
+    ErrorHandlerType
 )
 from .status import CoreConnectionStatus
 from .task_manager import TaskManager
@@ -88,7 +88,7 @@ class WebSocketCommunicationManager(CommunicationManager):
 
         self._message_handler: Optional[MessageHandlerType] = None
         self._status_change_handler: Optional[StatusChangeHandlerType] = None
-        self._error_handler: Optional[ErrorHandlerType] = None # Now explicitly Optional
+        self._error_handler: Optional[ErrorHandlerType] = None
 
         self._listener_task: Optional[asyncio.Task] = None # Task for _listen_for_messages_async
 
@@ -148,7 +148,12 @@ class WebSocketCommunicationManager(CommunicationManager):
             except Exception as e_submit: # pragma: no cover
                  logger.error(f"Failed to submit status change notification task: {e_submit}")
 
-    async def connect_async(self) -> None:
+    async def connect_async(
+        self,
+        message_handler: Optional[MessageHandlerType] = None,
+        status_change_handler: Optional[StatusChangeHandlerType] = None,
+        error_handler: Optional[ErrorHandlerType] = None
+    ) -> None:
         """Establishes the WebSocket connection to the configured URL asynchronously."""
         async with self._connection_lock: # Ensure only one connect/close operation at a time
             if self._status == CoreConnectionStatus.CONNECTED or self._status == CoreConnectionStatus.CONNECTING:
@@ -159,6 +164,11 @@ class WebSocketCommunicationManager(CommunicationManager):
 
             await self._update_status_async(CoreConnectionStatus.CONNECTING)
             logger.info(f"Attempting to connect to WebSocket server at: {self._url}")
+
+            # Store provided handlers internally before attempting connection
+            self._message_handler = message_handler
+            self._status_change_handler = status_change_handler
+            self._error_handler = error_handler
 
             try:
                 # `websockets.connect` establishes the connection.
@@ -189,6 +199,7 @@ class WebSocketCommunicationManager(CommunicationManager):
 
 
                 # Start the message listener task for this new connection.
+                # Handlers are now set, so the listener can immediately process messages correctly.
                 self._listener_task = self._task_manager.submit_task(self._listen_for_messages_async())
                 logger.debug(f"WebSocket message listener task started for {self._url}.")
 
@@ -421,26 +432,12 @@ class WebSocketCommunicationManager(CommunicationManager):
                     logger.exception(f"An unexpected error occurred during WebSocket close for {self._url}: {e_close_unexpected}")
 
             self._ws_connection = None # Clear the connection object reference.
+            # Clear handlers after connection is confirmed closed to prevent further use
+            self._message_handler = None
+            self._status_change_handler = None
+            self._error_handler = None
             await self._update_status_async(CoreConnectionStatus.DISCONNECTED)
             logger.info(f"WebSocketCommunicationManager for {self._url} is now fully DISCONNECTED.")
-
-
-    def register_message_handler(self, handler: MessageHandlerType) -> None:
-        """Registers a callback function to handle incoming raw string messages."""
-        logger.debug(f"Registering message handler for WebSocket CM ({self._url}): {handler}")
-        self._message_handler = handler
-
-    def register_status_change_handler(self, handler: StatusChangeHandlerType) -> None:
-        """Registers a callback function for connection status changes."""
-        logger.debug(f"Registering status change handler for WebSocket CM ({self._url}): {handler}")
-        self._status_change_handler = handler
-
-    def register_error_handler(self, handler: Optional[ErrorHandlerType]) -> None:
-        """Registers a callback function to handle low-level communication errors.
-        Pass `None` to unregister.
-        """
-        logger.debug(f"Registering error handler for WebSocket CM ({self._url}): {handler}")
-        self._error_handler = handler # MODIFIED: Directly assign, can be None
 
     def is_connected(self) -> bool:
         """Checks if the WebSocket is actively connected and the connection object is valid."""
