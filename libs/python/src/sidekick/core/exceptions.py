@@ -15,13 +15,17 @@ from typing import Optional, Any
 # --- Base Core Exception ---
 
 class CoreBaseError(Exception):
-    """Base class for all core errors within the Sidekick library infrastructure.
+    """Base class for all core errors within the Sidekick library infrastructure."""
+    def __init__(self, message: str, original_exception: Optional[BaseException] = None):
+        super().__init__(message)
+        self.original_exception = original_exception
 
-    Catching this exception can be a way to handle any error originating from
-    the fundamental TaskManager or CommunicationManager operations, if a more
-    general catch is desired.
-    """
-    pass
+    def __str__(self) -> str:
+        """Provide a more informative string representation."""
+        parts = [super().__str__()]
+        if self.original_exception:
+            parts.append(f"Original Exception: {type(self.original_exception).__name__}: {self.original_exception}")
+        return ". ".join(parts)
 
 
 # --- Core CommunicationManager Exceptions ---

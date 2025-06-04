@@ -1,463 +1,284 @@
-"""Unit tests for CPythonTaskManager in sidekick.core."""
-
-import unittest
 import asyncio
 import threading
 import time
+import unittest
 import logging
-import concurrent.futures
-from unittest.mock import patch, MagicMock
+import warnings
 
-from sidekick.core.cpython_task_manager import (
-    CPythonTaskManager,
-    _LOOP_START_TIMEOUT,
-    _PROBE_CORO_TIMEOUT,
-    _LOOP_JOIN_TIMEOUT
-)
-from sidekick.core.exceptions import CoreLoopNotRunningError, CoreTaskManagerError, CoreTaskSubmissionError
-
-logger = logging.getLogger("test_cpython_task_manager")
-# (Keep existing logging setup)
-
-
-# A simple coroutine for testing
-async def simple_coro(duration=0.01, value_to_return=42):
-    """A test coroutine that sleeps and returns a value or raises an exception."""
-    logger.debug(f"simple_coro: Sleeping for {duration}s, will return/raise: {value_to_return}")
-    try:
-        await asyncio.sleep(duration)
-        if isinstance(value_to_return, Exception):
-            logger.debug(f"simple_coro: Raising exception {type(value_to_return).__name__}")
-            raise value_to_return
-        logger.debug(f"simple_coro: Returning value {value_to_return}")
-        return value_to_return
-    except asyncio.CancelledError:
-        logger.debug("simple_coro: Was cancelled during sleep or operation.")
-        raise
+from sidekick.core.cpython_task_manager import CPythonTaskManager, _TASK_REF_TIMEOUT_SECONDS
+from sidekick.core.exceptions import CoreLoopNotRunningError, CoreTaskSubmissionError, CoreTaskManagerError
 
 
 class TestCPythonTaskManager(unittest.TestCase):
+    """
+    Tests for the CPythonTaskManager implementation.
+    """
 
     def setUp(self):
-        """Set up for each test case."""
-        logger.debug(f"--- Starting test: {self.id()} ---")
         self.tm = CPythonTaskManager()
+        self.assertFalse(self.tm.is_loop_running(), "TaskManager loop should not be running at start of test.")
 
     def tearDown(self):
-        """Clean up after each test case."""
-        logger.debug(f"--- Tearing down test: {self.id()} ---")
-        if self.tm._loop_creation_attempted and self.tm.is_loop_running():
-            logger.debug(f"tearDown: Loop for TM {id(self.tm)} still running. Signaling shutdown.")
+        if self.tm and self.tm.is_loop_running():
             self.tm.signal_shutdown()
-            try:
-                with patch('sidekick.core.cpython_task_manager._LOOP_JOIN_TIMEOUT', 1.0): # Use a shorter timeout for test teardown
-                     self.tm.wait_for_shutdown()
-                logger.debug(f"tearDown: TM {id(self.tm)} shutdown complete.")
-            except Exception as e:  # pragma: no cover
-                logger.error(f"tearDown: Error during TM shutdown: {e}")
+            self.tm.wait_for_shutdown()
+        if self.tm:
+            self.assertFalse(self.tm.is_loop_running(), "TaskManager loop should be stopped after teardown.")
 
-        if self.tm._loop_thread and self.tm._loop_thread.is_alive():  # pragma: no cover
-            logger.warning(
-                f"tearDown: TM {id(self.tm)} loop thread (TID: {self.tm._loop_thread.ident}) "
-                "still alive after wait_for_shutdown. This might indicate a stuck thread."
-            )
-        else:
-            logger.debug(f"tearDown: Loop thread for TM {id(self.tm)} is confirmed not alive or was not created.")
-        logger.debug(f"--- Finished test: {self.id()} ---")
-
-    # ... (test_initial_state, test_ensure_loop_running_starts_loop_and_thread_and_probes,
-    #      test_ensure_loop_running_idempotent, test_get_loop_returns_running_loop,
-    #      test_get_loop_raises_if_ensure_loop_fails remain the same) ...
-    # Start of pasted unchanged tests
     def test_initial_state(self):
-        """Test the initial state of the TaskManager."""
-        logger.info("test_initial_state: Verifying initial TM attributes.")
-        self.assertIsNone(self.tm._loop, "Initial self._loop should be None.")
-        self.assertIsNone(self.tm._loop_thread, "Initial self._loop_thread should be None.")
-        self.assertFalse(self.tm._loop_creation_attempted, "Initial self._loop_creation_attempted should be False.")
-        self.assertFalse(self.tm.is_loop_running(), "is_loop_running should be False initially.")
-        self.assertFalse(self.tm._sync_loop_set_confirm_event.is_set(), "_sync_loop_set_confirm_event should be clear.")
-
-    def test_ensure_loop_running_starts_loop_and_thread_and_probes(self):
-        """Test that ensure_loop_running starts the loop, thread, and completes probe."""
-        logger.info("test_ensure_loop_running: Starting test.")
         self.assertFalse(self.tm.is_loop_running())
+        self.assertIsNone(self.tm._loop)
+        self.assertIsNone(self.tm._loop_thread)
 
+    def test_ensure_loop_running_starts_loop(self):
         self.tm.ensure_loop_running()
-
-        logger.info("test_ensure_loop_running: ensure_loop_running completed. Verifying state.")
-        self.assertTrue(self.tm.is_loop_running(), "Loop should be considered running after successful ensure_loop_running.")
-        self.assertIsNotNone(self.tm._loop, "self._loop object should be created.")
-
-        self.assertIsNotNone(self.tm._loop_thread, "Loop thread object should be created.")
-        self.assertTrue(self.tm._loop_thread.is_alive(), "Loop thread should be alive.")
-        self.assertTrue(self.tm._loop_creation_attempted, "self._loop_creation_attempted should be True.")
-
-        self.assertTrue(self.tm._sync_loop_set_confirm_event.is_set(),
-                        "_sync_loop_set_confirm_event should be set after ensure_loop_running.")
-        logger.info("test_ensure_loop_running: Completed successfully.")
+        self.assertTrue(self.tm.is_loop_running())
+        self.assertIsNotNone(self.tm._loop)
+        self.assertTrue(self.tm._loop.is_running()) # type: ignore
+        self.assertIsNotNone(self.tm._loop_thread)
+        self.assertTrue(self.tm._loop_thread.is_alive()) # type: ignore
 
     def test_ensure_loop_running_idempotent(self):
-        """Test that multiple calls to ensure_loop_running are idempotent."""
-        logger.info("test_ensure_loop_running_idempotent: Starting.")
-        self.tm.ensure_loop_running() # First call
-        loop_id_first = id(self.tm._loop)
-        thread_id_first = self.tm._loop_thread.ident if self.tm._loop_thread else None
-        logger.info(f"test_ensure_loop_running_idempotent: First call done. Loop ID: {loop_id_first}, Thread ID: {thread_id_first}")
+        self.tm.ensure_loop_running()
+        loop_id_first = id(self.tm.get_loop())
+        thread_id_first = self.tm._loop_thread.ident if self.tm._loop_thread else None # type: ignore
 
-        self.tm.ensure_loop_running()  # Second call
-        logger.info("test_ensure_loop_running_idempotent: Second call done. Verifying state.")
+        self.tm.ensure_loop_running()
         self.assertTrue(self.tm.is_loop_running())
-        self.assertEqual(id(self.tm._loop), loop_id_first, "Loop object should not be recreated on idempotent call.")
-        self.assertIsNotNone(self.tm._loop_thread, "Loop thread should still exist.")
-        self.assertEqual(self.tm._loop_thread.ident, thread_id_first, "Loop thread should not be recreated on idempotent call.")
-        logger.info("test_ensure_loop_running_idempotent: Completed successfully.")
+        self.assertEqual(id(self.tm.get_loop()), loop_id_first)
+        self.assertEqual(self.tm._loop_thread.ident if self.tm._loop_thread else None, thread_id_first) # type: ignore
 
+    def test_get_loop_starts_loop_if_not_running(self):
+        loop = self.tm.get_loop()
+        self.assertTrue(self.tm.is_loop_running())
+        self.assertIsInstance(loop, asyncio.AbstractEventLoop)
+        self.assertTrue(loop.is_running())
 
-    def test_get_loop_returns_running_loop(self):
-        """Test get_loop() returns the correct loop after ensure_loop_running."""
-        logger.info("test_get_loop_returns_running_loop: Starting.")
+    async def _simple_coro(self, delay=0.01, result="done"):
+        await asyncio.sleep(delay)
+        return result
+
+    async def _coro_that_raises(self, exc_type=ValueError, msg="Test error"):
+        await asyncio.sleep(0.01)
+        raise exc_type(msg)
+
+    def test_submit_task_from_main_thread(self):
+        self.tm.ensure_loop_running()
+        coro_to_run = self._simple_coro(result="task_submitted")
+        task_ref = self.tm.submit_task(coro_to_run)
+        self.assertIsInstance(task_ref, asyncio.Task)
+
+        async def waiter(task_to_await):
+            return await task_to_await
+        result = self.tm.submit_and_wait(waiter(task_ref))
+        self.assertEqual(result, "task_submitted")
+
+    def test_submit_task_from_loop_thread(self):
+        async def coro_submitter():
+            inner_task = self.tm.submit_task(self._simple_coro(result="inner_done"))
+            self.assertIsInstance(inner_task, asyncio.Task)
+            return await inner_task
+        result = self.tm.submit_and_wait(coro_submitter())
+        self.assertEqual(result, "inner_done")
+
+    def test_submit_and_wait_from_main_thread(self):
+        result = self.tm.submit_and_wait(self._simple_coro(result="wait_success"))
+        self.assertEqual(result, "wait_success")
+
+    def test_submit_and_wait_propagates_exception(self):
+        with self.assertRaisesRegex(ValueError, "Test error from wait"):
+            self.tm.submit_and_wait(self._coro_that_raises(ValueError, "Test error from wait"))
+
+    def test_submit_and_wait_raises_if_called_from_loop_thread(self):
+        async def coro_caller():
+            # Catch the RuntimeWarning about unawaited coroutine specifically for this test
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always", RuntimeWarning) # Make sure we see it
+                with self.assertRaisesRegex(RuntimeError, "submit_and_wait cannot be called from the TaskManager's event loop thread"):
+                    self.tm.submit_and_wait(self._simple_coro()) # This should raise
+                # Check if the specific warning was issued
+                unawaited_coro_warning_found = False
+                for warning_msg in w:
+                    if issubclass(warning_msg.category, RuntimeWarning) and \
+                       "was never awaited" in str(warning_msg.message) and \
+                       "_simple_coro" in str(warning_msg.message):
+                        unawaited_coro_warning_found = True
+                        break
+                self.assertTrue(unawaited_coro_warning_found, "Expected RuntimeWarning for unawaited _simple_coro")
+            return "checked_runtime_error_in_loop_call"
+
+        result = self.tm.submit_and_wait(coro_caller())
+        self.assertEqual(result, "checked_runtime_error_in_loop_call")
+
+    def test_shutdown_sequence(self):
+        self.tm.ensure_loop_running()
+        self.assertTrue(self.tm.is_loop_running())
+        long_task_finished_event = asyncio.Event()
+
+        async def long_running_coro():
+            nonlocal long_task_finished_event
+            logging.debug("long_running_coro started")
+            try:
+                await asyncio.sleep(0.5)
+                logging.debug("long_running_coro finished sleep")
+                long_task_finished_event.set()
+                return "long_task_done"
+            except asyncio.CancelledError:
+                logging.debug("long_running_coro was cancelled")
+                raise # Re-raise CancelledError
+
+        task = self.tm.submit_task(long_running_coro())
+        time.sleep(0.05) # Give task a moment to start
+
+        self.tm.signal_shutdown()
+        self.assertTrue(self.tm._shutdown_event_sync.is_set()) # type: ignore
+
+        self.tm.wait_for_shutdown()
+        self.assertFalse(self.tm.is_loop_running())
+        self.assertIsNone(self.tm._loop_thread)
+        self.assertIsNone(self.tm._loop)
+
+        self.assertTrue(task.done())
+        if long_task_finished_event.is_set(): # type: ignore
+            # If event is set, task should have completed normally before cancellation took full effect
+            self.assertEqual(task.result(), "long_task_done")
+            self.assertFalse(task.cancelled())
+        else:
+            # If event is not set, task was cancelled during its sleep
+            self.assertTrue(task.cancelled(), "If task didn't set finished_event, it should have been cancelled.")
+            with self.assertRaises(asyncio.CancelledError):
+                task.result() # Accessing result of a cancelled task raises CancelledError
+
+    def test_wait_for_shutdown_without_start(self):
+        self.tm.signal_shutdown()
+        self.tm.wait_for_shutdown()
+        self.assertFalse(self.tm.is_loop_running())
+
+    def test_multiple_shutdown_signals(self):
+        self.tm.ensure_loop_running()
+        self.tm.signal_shutdown()
+        self.tm.signal_shutdown()
+        self.assertTrue(self.tm._shutdown_event_sync.is_set()) # type: ignore
+        self.tm.wait_for_shutdown()
+        self.assertFalse(self.tm.is_loop_running())
+
+    async def _wait_on_async_shutdown_event(self):
+        if self.tm._shutdown_event_async: # type: ignore
+            await self.tm._shutdown_event_async.wait() # type: ignore
+            return "async_shutdown_received"
+        return "async_event_not_ready"
+
+    def test_wait_for_shutdown_async(self):
+        self.tm.ensure_loop_running()
+        waiter_coro = self._wait_on_async_shutdown_event()
+        waiter_task_ref = self.tm.submit_task(waiter_coro)
+
+        time.sleep(0.05)
+        self.assertFalse(waiter_task_ref.done())
+
+        self.tm.signal_shutdown()
+
+        async def waiter(task_to_await):
+            return await task_to_await
+        result = self.tm.submit_and_wait(waiter(waiter_task_ref))
+        self.assertEqual(result, "async_shutdown_received")
+
+        self.tm.wait_for_shutdown()
+        self.assertFalse(self.tm.is_loop_running())
+
+    def test_task_submission_timeout(self):
         self.tm.ensure_loop_running()
         loop = self.tm.get_loop()
 
-        self.assertIsNotNone(loop, "get_loop() should return a loop object.")
-        self.assertIs(loop, self.tm._loop, "get_loop() should return the internally managed loop instance.")
-        logger.info("test_get_loop_returns_running_loop: Completed successfully.")
+        block_duration = _TASK_REF_TIMEOUT_SECONDS + 0.2
+        sync_block_done_event = threading.Event()
+        sync_block_started_event = threading.Event()
 
-    def test_get_loop_raises_if_ensure_loop_fails(self):
-        """Test get_loop() raises error if ensure_loop_running (called internally) fails."""
-        logger.info("test_get_loop_raises_if_ensure_loop_fails: Starting.")
-        simulated_startup_error = CoreTaskManagerError("Simulated critical failure in ensure_loop_running")
-        with patch.object(self.tm, 'ensure_loop_running', side_effect=simulated_startup_error):
-            with self.assertRaises(CoreTaskManagerError) as cm:
-                self.tm.get_loop()
-            self.assertIs(cm.exception, simulated_startup_error, "The specific error from ensure_loop_running should propagate.")
-        logger.info("test_get_loop_raises_if_ensure_loop_fails: Completed successfully.")
-    # End of pasted unchanged tests
+        def long_sync_block_in_loop_thread(duration, started_event, done_event):
+            logging.debug(f"Loop thread: long_sync_block_in_loop_thread starting for {duration}s.")
+            started_event.set()
+            time.sleep(duration)
+            logging.debug("Loop thread: long_sync_block_in_loop_thread finished sleep.")
+            done_event.set()
 
-    def test_submit_task_executes_coroutine_and_waits_for_result_correctly(self):
-        """Test submitting a task from the main thread and correctly waiting for its completion."""
-        self.tm.ensure_loop_running()
-        logger.info("test_submit_task_executes_coroutine: Starting test.")
+        loop.call_soon_threadsafe(
+            long_sync_block_in_loop_thread,
+            block_duration,
+            sync_block_started_event,
+            sync_block_done_event
+        )
 
-        expected_result = 123
-        async_result_container = []
+        if not sync_block_started_event.wait(timeout=1.0):
+            self.fail("The blocking function did not signal start in the loop thread.")
+        logging.debug("Main thread: Blocking function has started. Attempting submit_task.")
 
-        async def coro_to_run_for_submit():
-            logger.debug("coro_to_run_for_submit: Starting execution in loop thread.")
-            res = await simple_coro(duration=0.05, value_to_return=expected_result)
-            async_result_container.append(res)
-            logger.debug(f"coro_to_run_for_submit: Finished execution, result: {res}")
-            return res
+        with self.assertRaisesRegex(CoreTaskSubmissionError, "Timeout .* waiting for asyncio.Task reference"):
+            self.tm.submit_task(self._simple_coro(delay=0.01))
 
-        logger.info("test_submit_task_executes_coroutine: Submitting coro_to_run_for_submit via tm.submit_task.")
-        task = self.tm.submit_task(coro_to_run_for_submit())
-        self.assertIsInstance(task, asyncio.Task, "submit_task should return an asyncio.Task instance.")
-        logger.info(f"test_submit_task_executes_coroutine: asyncio.Task reference obtained: {task.get_name()}")
+        logging.debug("Main thread: Waiting for long_sync_block_in_loop_thread to complete for cleanup.")
+        if not sync_block_done_event.wait(timeout=block_duration + 1.0):
+            logging.warning("Main thread: Timeout waiting for the blocking function to complete after test.")
+            if self.tm.is_loop_running(): self.tm.signal_shutdown() # Help teardown if stuck
 
-        async def _waiter_for_task(task_to_await: asyncio.Task):
-            logger.debug(f"_waiter_for_task: Now awaiting the submitted task {task_to_await.get_name()}.")
-            return await task_to_await
 
-        logger.info("test_submit_task_executes_coroutine: Using submit_and_wait to await the submitted task's completion.")
+    def test_loop_startup_failure_exception_propagation(self):
+        original_new_event_loop = asyncio.new_event_loop
+        def mock_new_event_loop_raiser():
+            raise RuntimeError("Mocked new_event_loop failure")
+
+        asyncio.new_event_loop = mock_new_event_loop_raiser
         try:
-            final_result = self.tm.submit_and_wait(_waiter_for_task(task))
-            logger.info(f"test_submit_task_executes_coroutine: submit_and_wait for waiter completed. Final result: {final_result}")
-        except Exception as e_wait: # pragma: no cover
-            self.fail(f"Waiting for submitted task via submit_and_wait failed unexpectedly: {e_wait}")
-            return
+            with self.assertRaises(CoreTaskManagerError) as cm_outer: # Catch base CoreTaskManagerError
+                self.tm.ensure_loop_running()
 
-        self.assertTrue(task.done(), "The original submitted task (coro_to_run_for_submit) should be done.")
-        self.assertFalse(task.cancelled(), "Task should not be cancelled.")
-        if task.exception():  # pragma: no cover
-            logger.error(f"Task (coro_to_run_for_submit) had an exception: {task.exception()}")
-        self.assertIsNone(task.exception(), f"Task should not have an exception: {task.exception()}")
+            # Now check the properties of the caught exception
+            self.assertIsNotNone(cm_outer.exception.original_exception, "Original exception should be attached.")
+            self.assertIsInstance(cm_outer.exception.original_exception, RuntimeError)
+            self.assertIn("Mocked new_event_loop failure", str(cm_outer.exception.original_exception))
+            self.assertIn("Event loop thread failed during startup.", str(cm_outer.exception))
 
-        self.assertEqual(len(async_result_container), 1, "Coroutine side effect (container append) failed.")
-        self.assertEqual(async_result_container[0], expected_result, "Coroutine side effect result mismatch.")
-        self.assertEqual(task.result(), expected_result, "asyncio.Task.result() mismatch.")
-        self.assertEqual(final_result, expected_result, "Result from submit_and_wait (via waiter) mismatch.")
-        logger.info("test_submit_task_executes_coroutine: Completed successfully.")
+        finally:
+            asyncio.new_event_loop = original_new_event_loop
+        self.assertFalse(self.tm.is_loop_running())
 
 
-    def test_submit_task_from_loop_thread_itself(self):
-        """Test submitting a task when submit_task is called from within the loop thread."""
+    def test_active_tasks_tracking_and_cancellation(self):
         self.tm.ensure_loop_running()
-        logger.info("test_submit_task_from_loop_thread_itself: Starting.")
+        task_cancelled_event = asyncio.Event()
+        task_started_event = asyncio.Event()
 
-        async_result_container = []
-        task_ref_holder = {}
-
-        async def coro_inner_task():
-            logger.debug("coro_inner_task: Executing.")
-            res = await simple_coro(value_to_return="result_from_inner_task_in_loop_thread")
-            async_result_container.append(res)
-            logger.debug("coro_inner_task: Finished.")
-            return res
-
-        async def coro_submitter_in_loop():
-            logger.debug("coro_submitter_in_loop: Entered. Will call tm.submit_task for coro_inner_task.")
-            inner_task = self.tm.submit_task(coro_inner_task())
-            task_ref_holder['task'] = inner_task
-            logger.debug(f"coro_submitter_in_loop: Submitted coro_inner_task, got task ref: {inner_task.get_name()}. Now awaiting it.")
-            await inner_task
-            logger.debug("coro_submitter_in_loop: Awaited inner_task successfully.")
-            return "coro_submitter_done"
-
-        logger.info("test_submit_task_from_loop_thread_itself: Using submit_and_wait to run coro_submitter_in_loop.")
-        outer_result = self.tm.submit_and_wait(coro_submitter_in_loop())
-
-        self.assertEqual(outer_result, "coro_submitter_done", "Outer submitter coroutine did not return expected value.")
-        self.assertIn('task', task_ref_holder, "Task reference for inner task was not captured.")
-        self.assertIsInstance(task_ref_holder['task'], asyncio.Task, "Inner task reference is not an asyncio.Task.")
-        self.assertTrue(task_ref_holder['task'].done(), "Inner task should be done.")
-        self.assertEqual(len(async_result_container), 1, "Inner task did not append to result container.")
-        self.assertEqual(async_result_container[0], "result_from_inner_task_in_loop_thread", "Inner task result mismatch.")
-        logger.info("test_submit_task_from_loop_thread_itself: Completed successfully.")
-
-
-    def test_submit_and_wait_returns_value(self):
-        """Test submit_and_wait successfully returns a value from a coroutine."""
-        self.tm.ensure_loop_running()
-        expected_value = "value_from_submit_and_wait"
-        logger.info(f"test_submit_and_wait_returns_value: Calling submit_and_wait for simple_coro returning '{expected_value}'.")
-        result = self.tm.submit_and_wait(simple_coro(value_to_return=expected_value))
-        self.assertEqual(result, expected_value, "submit_and_wait did not return the correct value.")
-        logger.info("test_submit_and_wait_returns_value: Completed successfully.")
-
-    def test_submit_and_wait_propagates_exception(self):
-        """Test submit_and_wait correctly propagates exceptions from the coroutine."""
-        self.tm.ensure_loop_running()
-        custom_exception = ValueError("Test Exception from Coroutine for submit_and_wait")
-        logger.info(f"test_submit_and_wait_propagates_exception: Calling submit_and_wait for simple_coro raising '{custom_exception}'.")
-        with self.assertRaises(ValueError) as context_manager:
-            self.tm.submit_and_wait(simple_coro(value_to_return=custom_exception))
-
-        self.assertIs(context_manager.exception, custom_exception,
-                      "The specific exception instance from the coroutine should be propagated by submit_and_wait.")
-        logger.info("test_submit_and_wait_propagates_exception: Completed successfully (exception propagated as expected).")
-
-    def test_submit_and_wait_from_loop_thread_raises_runtime_error(self):
-        """Test submit_and_wait raises RuntimeError if called from the loop thread itself."""
-        self.tm.ensure_loop_running()
-        logger.info("test_saw_from_loop_raises: Starting.")
-
-        exception_details_holder = {}
-
-        async def coro_attempting_recursive_submit_and_wait():
-            logger.debug("coro_attempting_recursive_submit_and_wait: Entered. Will attempt illegal submit_and_wait.")
+        async def tracked_coro():
+            nonlocal task_started_event, task_cancelled_event
+            logging.debug("tracked_coro: Started.")
+            task_started_event.set()
             try:
-                # The simple_coro object is created but never awaited if RuntimeError is raised by submit_and_wait.
-                # This is expected and may cause a RuntimeWarning, which is acceptable for this test.
-                self.tm.submit_and_wait(simple_coro(duration=0.001, value_to_return="should_not_happen"))
-                logger.error("coro_attempting_recursive_submit_and_wait: Inner submit_and_wait DID NOT RAISE RuntimeError!") # pragma: no cover
-                exception_details_holder['raised'] = False
-            except RuntimeError as e_runtime:
-                logger.info(f"coro_attempting_recursive_submit_and_wait: Caught RuntimeError as expected: {e_runtime}")
-                if "cannot be called from within the TaskManager's own event loop thread" in str(e_runtime):
-                    exception_details_holder['raised'] = True
-                    exception_details_holder['message_correct'] = True
-                else: # pragma: no cover
-                    exception_details_holder['raised'] = True
-                    exception_details_holder['message_correct'] = False
-                    logger.error(f"coro_attempting_recursive_submit_and_wait: Caught RuntimeError, but message was unexpected: {e_runtime}")
-            except Exception as e_other: # pragma: no cover
-                logger.error(f"coro_attempting_recursive_submit_and_wait: Caught unexpected exception type: {type(e_other).__name__}: {e_other}")
-                exception_details_holder['raised'] = True
-                exception_details_holder['message_correct'] = False
-                exception_details_holder['other_exception'] = e_other
-
-            logger.debug("coro_attempting_recursive_submit_and_wait: Exiting.")
-            return "coro_attempting_recursive_done"
-
-        logger.info("test_saw_from_loop_raises: Calling outer submit_and_wait for coro_attempting_recursive_submit_and_wait.")
-        try:
-            outer_result = self.tm.submit_and_wait(coro_attempting_recursive_submit_and_wait())
-            self.assertEqual(outer_result, "coro_attempting_recursive_done", "Outer coroutine did not complete as expected.")
-        except Exception as e_outer_saw_call: # pragma: no cover
-            self.fail(f"The outer submit_and_wait call failed unexpectedly: {e_outer_saw_call}")
-
-        self.assertTrue(exception_details_holder.get('raised'),
-                        "Inner call to submit_and_wait from loop thread did not raise any exception.")
-        self.assertTrue(exception_details_holder.get('message_correct'),
-                        "Inner call to submit_and_wait raised a RuntimeError, but with an unexpected message.")
-        self.assertNotIn('other_exception', exception_details_holder,
-                         f"Inner call raised an unexpected exception type: {exception_details_holder.get('other_exception')}")
-        logger.info("test_saw_from_loop_raises: Completed successfully (RuntimeError correctly handled).")
-
-
-    def test_shutdown_sequence_cancels_pending_tasks(self):
-        """Test that the shutdown sequence signals effectively and cancels pending tasks."""
-        self.tm.ensure_loop_running()
-        self.assertTrue(self.tm.is_loop_running(), "Loop should be running before shutdown test.")
-        logger.info("test_shutdown_sequence: Loop running. Submitting a long task.")
-
-        long_task_was_cancelled_event = threading.Event()
-
-        async def long_running_coro_for_shutdown_test():
-            logger.debug("long_running_coro_for_shutdown_test: Started, entering long sleep.")
-            try:
-                await asyncio.sleep(10)
-                logger.error("long_running_coro_for_shutdown_test: Sleep completed unexpectedly (should have been cancelled).") # pragma: no cover
+                await asyncio.sleep(5)
+                logging.debug("tracked_coro: Finished sleep (should have been cancelled).")
             except asyncio.CancelledError:
-                logger.info("long_running_coro_for_shutdown_test: Correctly received CancelledError.")
-                long_task_was_cancelled_event.set()
+                logging.debug("tracked_coro: Successfully cancelled.")
+                task_cancelled_event.set()
                 raise
-            except Exception as e_in_long_task: # pragma: no cover
-                logger.error(f"long_running_coro_for_shutdown_test: Received unexpected error: {e_in_long_task}")
+            return "completed_unexpectedly"
 
+        task1 = self.tm.submit_task(tracked_coro())
+        self.assertIn(task1, self.tm._active_tasks) # type: ignore
 
-        submitted_long_task = self.tm.submit_task(long_running_coro_for_shutdown_test())
-        logger.info(f"test_shutdown_sequence: Long task {submitted_long_task.get_name()} submitted. Now signaling shutdown.")
-
-        time.sleep(0.1)
+        self.tm.submit_and_wait(task_started_event.wait())
+        logging.debug("Main thread: tracked_coro has started.")
 
         self.tm.signal_shutdown()
-        logger.info("test_shutdown_sequence: signal_shutdown() called.")
-
-        self.assertTrue(self.tm._sync_shutdown_wait_event.is_set(),
-                        "_sync_shutdown_wait_event should be set immediately by signal_shutdown.")
-
-        logger.info("test_shutdown_sequence: Calling wait_for_shutdown() to block until TM fully stops.")
         self.tm.wait_for_shutdown()
-        logger.info("test_shutdown_sequence: wait_for_shutdown() completed.")
 
-        self.assertFalse(self.tm.is_loop_running(), "Loop should not be running after wait_for_shutdown.")
-        self.assertIsNone(self.tm._loop_thread, "_loop_thread should be None after full shutdown.")
-        self.assertIsNone(self.tm._loop, "_loop should be None after full shutdown.")
+        self.assertTrue(task1.done())
+        self.assertTrue(task1.cancelled())
+        # To verify task_cancelled_event was set, it would need to be a threading.Event
+        # or checked before the loop fully closes in _perform_loop_cleanup.
+        # For this test, task1.cancelled() is the primary check.
+        self.assertFalse(self.tm._active_tasks, "Active tasks set should be empty after shutdown.") # type: ignore
 
-        self.assertTrue(long_task_was_cancelled_event.wait(timeout=1.0),
-                        "Long-running task did not signal that it was cancelled via its event.")
-
-        # Check the task's state
-        self.assertTrue(submitted_long_task.done(), "Cancelled task should be 'done'.")
-        self.assertTrue(submitted_long_task.cancelled(), "Task should be marked as 'cancelled'.")
-
-        # Accessing .exception() on a cancelled task raises CancelledError.
-        # So, we assert that this specific error is raised.
-        with self.assertRaises(asyncio.CancelledError):
-            submitted_long_task.exception()
-        logger.info("test_shutdown_sequence: Completed successfully.")
-
-
-    def test_wait_for_shutdown_async_unblocks_after_signal(self):
-        """Test that wait_for_shutdown_async (called from loop thread) unblocks after signal_shutdown."""
-        self.tm.ensure_loop_running()
-        logger.info("test_wait_for_shutdown_async: Starting.")
-
-        async def coroutine_that_waits_and_signals():
-            logger.debug("coroutine_that_waits_and_signals: Creating wait_for_shutdown_async task.")
-            waiter_task = asyncio.create_task(self.tm.wait_for_shutdown_async())
-
-            await asyncio.sleep(0.01)
-            self.assertFalse(waiter_task.done(),
-                             "wait_for_shutdown_async task should be waiting (not done yet).")
-
-            logger.debug("coroutine_that_waits_and_signals: Calling tm.signal_shutdown() from loop thread.")
-            self.tm.signal_shutdown()
-            logger.debug("coroutine_that_waits_and_signals: tm.signal_shutdown() called.")
-
-            try:
-                logger.debug("coroutine_that_waits_and_signals: Awaiting waiter_task.")
-                await asyncio.wait_for(waiter_task, timeout=1.0)
-                logger.debug("coroutine_that_waits_and_signals: waiter_task completed.")
-            except asyncio.TimeoutError: # pragma: no cover
-                self.fail("wait_for_shutdown_async task did not complete within timeout after being signaled.")
-
-            self.assertTrue(waiter_task.done(), "wait_for_shutdown_async task should be done after signal and await.")
-            if waiter_task.exception(): # pragma: no cover
-                 self.fail(f"wait_for_shutdown_async task raised an unexpected exception: {waiter_task.exception()}")
-            return "wait_and_signal_done"
-
-        logger.info("test_wait_for_shutdown_async: Using submit_and_wait to run coroutine_that_waits_and_signals.")
-        result = self.tm.submit_and_wait(coroutine_that_waits_and_signals())
-        self.assertEqual(result, "wait_and_signal_done")
-
-        logger.info("test_wait_for_shutdown_async: Performing full TM shutdown for test cleanup.")
-        self.tm.wait_for_shutdown()
-        logger.info("test_wait_for_shutdown_async: Completed successfully.")
-
-    # test_VERY_SIMPLE_submit_and_wait_from_loop_thread_raises_error and
-    # test_submit_and_wait_from_loop_thread_raises_runtime_error both test similar things.
-    # The "VERY_SIMPLE" one can be kept as a more focused version if desired, or merged.
-    # For now, I'll keep both, but the RuntimeWarning about unawaited coroutine applies.
-    # We accept this warning as it's a side effect of testing the error path of submit_and_wait.
-
-    # test_submit_and_wait_with_simple_async_inner_work seems like a good general test, keeping it.
-    def test_submit_and_wait_with_simple_async_inner_work(self):
-        """Test submit_and_wait with a coro that does simple async work and returns."""
-        self.tm.ensure_loop_running()
-        logger.debug("test_saw_simple_async: Starting")
-
-        async_result_container = []
-
-        async def simple_worker_coro():
-            logger.debug("simple_worker_coro: Starting sleep")
-            await asyncio.sleep(0.05)
-            logger.debug("simple_worker_coro: Finished sleep, appending result")
-            async_result_container.append("worker_done")
-            return "worker_returned_value"
-
-        logger.debug("test_saw_simple_async: Calling outer submit_and_wait")
-        try:
-            return_value = self.tm.submit_and_wait(simple_worker_coro())
-            logger.debug(f"test_saw_simple_async: Outer submit_and_wait returned: {return_value}")
-
-            self.assertEqual(return_value, "worker_returned_value")
-            self.assertEqual(async_result_container, ["worker_done"])
-        except Exception as e:  # pragma: no cover
-            logger.error(f"test_saw_simple_async failed: {e}")
-            self.fail(f"test_saw_simple_async failed unexpectedly: {e}")
-        logger.debug("test_saw_simple_async: Finished")
-
-    def test_VERY_SIMPLE_submit_and_wait_from_loop_thread_raises_error(self):
-        """Extremely simplified test for the problematic scenario, checking RuntimeError."""
-        self.tm.ensure_loop_running()
-        logger.info("test_VERY_SIMPLE_saw_from_loop: Starting")
-
-        exception_caught_in_coro = None
-
-        async def coro_caller_simplified():
-            nonlocal exception_caught_in_coro
-            logger.info("coro_caller_simplified: Entered")
-            try:
-                # This simple_coro() object will not be awaited if submit_and_wait raises,
-                # leading to a RuntimeWarning. This is an expected side effect of this test.
-                self.tm.submit_and_wait(simple_coro(duration=0.001)) # Intentionally call from loop thread
-                logger.error("coro_caller_simplified: Inner submit_and_wait DID NOT RAISE!")  # pragma: no cover
-            except RuntimeError as e:
-                logger.info(f"coro_caller_simplified: Caught expected RuntimeError: {e}")
-                exception_caught_in_coro = e
-            except Exception as e_other:  # pragma: no cover
-                logger.error(f"coro_caller_simplified: Caught unexpected error: {e_other}")
-                exception_caught_in_coro = e_other # Store to fail the test
-            logger.info("coro_caller_simplified: Exiting")
-            return "coro_caller_simplified_done"
-
-        logger.info("test_VERY_SIMPLE_saw_from_loop: Calling outer submit_and_wait")
-        try:
-            result = self.tm.submit_and_wait(coro_caller_simplified())
-            logger.info(f"test_VERY_SIMPLE_saw_from_loop: Outer submit_and_wait completed with result: {result}")
-            self.assertEqual(result, "coro_caller_simplified_done")
-            self.assertIsNotNone(exception_caught_in_coro, "No exception was caught in the coroutine.")
-            self.assertIsInstance(exception_caught_in_coro, RuntimeError, "Caught exception was not a RuntimeError.")
-            self.assertIn("cannot be called from within", str(exception_caught_in_coro), "RuntimeError message mismatch.")
-        except Exception as e_outer:  # pragma: no cover
-            logger.error(f"test_VERY_SIMPLE_saw_from_loop: Outer submit_and_wait failed: {e_outer}")
-            self.fail(f"Outer submit_and_wait failed: {e_outer}")
-
-        logger.info("test_VERY_SIMPLE_saw_from_loop: Finished")
-
-
-if __name__ == '__main__':  # pragma: no cover
-    if not logging.getLogger().hasHandlers():
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format="%(asctime)s.%(msecs)03d - %(name)-30s - %(levelname)-8s - [%(threadName)s (TID:%(thread)d)] - %(message)s",
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
-    test_runner_logger = logging.getLogger("unittest_main")
-    test_runner_logger.info("Starting CPythonTaskManager unit tests...")
-
+if __name__ == '__main__':
+    logging.basicConfig(
+        level=logging.INFO, # Changed to INFO to reduce noise from DEBUG
+        format="%(asctime)s - %(name)s - %(levelname)s - [%(threadName)s] - %(message)s"
+    )
     unittest.main()
-    test_runner_logger.info("CPythonTaskManager unit tests finished.")

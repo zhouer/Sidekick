@@ -12,9 +12,16 @@ To set up for development, clone the main Sidekick repository. For the Python li
 
 *   **`sidekick.config.ServerConfig` & `DEFAULT_SERVERS`**: Defines server connection configurations and a default list of servers (local, remote) to try.
 *   **`sidekick.utils.generate_session_id()`**: Generates session IDs for connecting to remote servers.
-*   **`sidekick.core.TaskManager`**: Manages an asyncio event loop.
-    *   **CPython (`CPythonTaskManager`):** Runs the loop in a dedicated background thread. Startup includes a two-stage confirmation (loop set + responsiveness probe) to ensure reliability. The loop's main task (`_loop_runner_task`) uses `asyncio.sleep(0)` to remain responsive to tasks submitted from other threads.
-    *   **Pyodide (`PyodideTaskManager`):** Uses the browser-provided event loop (in the Web Worker).
+*   **`sidekick.core.TaskManager` (ABC)**: Abstract base class for managing an asyncio event loop.
+    *   **`CPythonTaskManager`**: Runs an asyncio event loop in a dedicated background daemon thread.
+        *   **Startup**: The background thread creates a new event loop, sets it as the current loop for that thread, and then signals the main thread (or calling thread) via a `threading.Event` (`_loop_startup_event`) once this setup is complete. The `ensure_loop_running()` method in the main thread waits for this signal. If the background thread encounters an error during loop initialization, this error is stored and raised by `ensure_loop_running()`.
+        *   **Main Loop Coroutine (`_main_loop_coro`)**: After successful startup, the event loop thread runs a main coroutine (`_main_loop_coro`) using `loop.run_until_complete()`. This coroutine primarily `await`s an `asyncio.Event` (`_shutdown_event_async`), keeping the loop alive and processing tasks until `signal_shutdown()` sets this event.
+        *   **Task Submission**:
+            *   If `submit_task` is called from the event loop thread itself, it uses `loop.create_task()` directly.
+            *   If called from another thread (e.g., the main thread), it uses `loop.call_soon_threadsafe()` to schedule a helper function (`_schedule_task_in_loop`) in the event loop. This helper function then creates the `asyncio.Task` and uses a `concurrent.futures.Future` to pass the `asyncio.Task` reference back to the calling thread. The calling thread waits for this `Future` with a timeout (`_TASK_REF_TIMEOUT_SECONDS`). If this timeout occurs, it indicates the event loop is not processing `call_soon_threadsafe` callbacks promptly, and a `CoreTaskSubmissionError` is raised.
+        *   **Shutdown**: `signal_shutdown()` sets both an `asyncio.Event` (for `_main_loop_coro`) and a `threading.Event` (for `wait_for_shutdown`). `wait_for_shutdown()` blocks until the `threading.Event` is set, then joins the loop thread. The loop thread, upon receiving its shutdown signal, performs cleanup (cancelling tasks, shutting down async generators) before closing the loop and exiting.
+        *   **Task Tracking**: Tasks submitted via `submit_task` are tracked in an internal `_active_tasks` set, which is used during shutdown to explicitly cancel these managed tasks.
+    *   **`PyodideTaskManager`**: Uses the browser-provided event loop (in the Web Worker). It doesn't manage a separate thread or loop lifecycle.
     *   Accessed via the singleton factory `sidekick.core.factories.get_task_manager()`.
 *   **`sidekick.core.CommunicationManager` (ABC)**: Abstracts the raw transport layer.
     *   Concrete implementations: `WebSocketCommunicationManager` (CPython) and `PyodideCommunicationManager` (Pyodide).
@@ -33,7 +40,7 @@ To set up for development, clone the main Sidekick repository. For the Python li
     *   Dispatching incoming UI events (`event`, `error` messages) to the correct `Component` instance handlers (via `_handle_core_message` which routes to component-specific handlers).
     *   Managing the overall service status post-connection.
     *   **Connection Activation:**
-        *   `activate_connection_internally()`: This method is **non-blocking**. It ensures the asynchronous activation task (`_async_activate_and_run_message_queue`) is scheduled on the `TaskManager` if not already running or active. It does not wait for the activation to complete.
+        *   `activate_connection_internally()`: This method is **non-blocking**. It ensures the asynchronous activation task (`_async_activate_and_run_message_queue`) is scheduled on the `TaskManager` if not already running or active. The scheduling itself (calling `TaskManager.submit_task`) happens *after* releasing an internal lock (`_status_lock`) to prevent deadlocks if the submitted task also needs this lock or if the event loop is busy. It does not wait for the activation to complete.
         *   `wait_for_active_connection_sync()`: (CPython specific) A method used internally by `sidekick.wait_for_connection()` and `sidekick.run_forever()` to **synchronously block** the calling (non-event-loop) thread until the asynchronous activation completes or fails. It uses a `threading.Event` for this synchronization.
 *   **`sidekick.Component` (and subclasses like `Grid`, `Button`)**: User-facing classes representing UI elements.
     *   Their `__init__` methods are **non-blocking**. They send a "spawn" command via `ConnectionService.send_message_internally()`. If the service is not yet active, the command is queued, and `__init__` returns immediately.
@@ -49,7 +56,7 @@ To set up for development, clone the main Sidekick repository. For the Python li
 3.  **UI URL Prompt:** Handled by `ConnectionService` after successful remote connection by `ServerConnector`.
 4.  **Activation Process (Triggered by First Component or Explicit Call):**
     *   The *first* operation requiring communication (e.g., creating the first `sidekick.Grid()`, or an explicit `sidekick.activate_connection()`) triggers `ConnectionService.activate_connection_internally()`.
-    *   `ConnectionService.activate_connection_internally()` is **non-blocking**. It schedules `_async_activate_and_run_message_queue` on the `TaskManager`.
+    *   `ConnectionService.activate_connection_internally()` is **non-blocking**. It schedules `_async_activate_and_run_message_queue` on the `TaskManager` (this submission happens outside the `_status_lock`).
     *   The `_async_activate_and_run_message_queue` coroutine then:
         1.  Invokes `ServerConnector.connect_async()`, passing its internal handlers (`_handle_core_message`, `_handle_core_status_change`, `_handle_core_error`). `ServerConnector` relays these to the chosen `CommunicationManager`'s `connect_async` method. This ensures handlers are set *before* the `CommunicationManager` starts processing incoming messages, preventing race conditions.
         2.  `ServerConnector.connect_async()` returns a connected `CommunicationManager` (or raises an error).
@@ -84,11 +91,13 @@ This sub-package contains foundational abstractions and their implementations:
 *   **`core.exceptions`**: Defines `CoreConnectionError` and related low-level exceptions.
 *   **`core.utils.is_pyodide()`**: Detects execution environment.
 *   **`core.TaskManager` (ABC)**:
-    *   `CPythonTaskManager`: Manages an asyncio loop in a background thread.
-        *   `ensure_loop_running()`: Now implements a two-stage confirmation. First, it waits for the loop thread to signal it has set its event loop. Second, it submits a "probe" coroutine and waits for its completion to ensure the loop is responsive to tasks submitted from other threads.
-        *   `_loop_runner_task()`: The main coroutine for the event loop thread. It uses `asyncio.sleep(0)` in a `while` loop to continuously process tasks and check for shutdown, ensuring the loop remains responsive to `call_soon_threadsafe` calls.
-        *   `_shutdown_requested_event_for_loop`: This `asyncio.Event` is now created within `_run_loop_in_thread` to ensure it's bound to the correct event loop.
-    *   `PyodideTaskManager`: Uses Pyodide's existing asyncio loop.
+    *   **`CPythonTaskManager`**: Manages an asyncio loop in a background thread.
+        *   `ensure_loop_running()`: Starts the background thread if not already running. The background thread creates and sets its own event loop, then signals the calling thread via `threading.Event` (`_loop_startup_event`) upon successful loop initialization. Errors during loop thread startup are propagated.
+        *   `_run_loop_thread_target()`: The function run by the background thread. It sets up the loop, signals readiness, and then runs `_main_loop_coro()` until completion.
+        *   `_main_loop_coro()`: A coroutine that `await`s an `asyncio.Event` (`_shutdown_event_async`), keeping the loop processing tasks.
+        *   `submit_task()`: For cross-thread submission, uses `loop.call_soon_threadsafe` to schedule task creation in the loop thread. It then waits (with timeout) for a `concurrent.futures.Future` to receive the `asyncio.Task` reference. A timeout here indicates the event loop is unresponsive to `call_soon_threadsafe` calls, and a `CoreTaskSubmissionError` is raised.
+        *   `_perform_loop_cleanup()`: Called during shutdown to cancel tracked tasks and close async generators.
+    *   **`PyodideTaskManager`**: Uses Pyodide's existing asyncio loop. Does not manage threads.
     *   A singleton instance is provided by `core.factories.get_task_manager()`.
 *   **`core.CommunicationManager` (ABC)**:
     *   `connect_async` method now accepts handlers (`message_handler`, `status_change_handler`, `error_handler`) to ensure they are set before message processing begins.
@@ -108,7 +117,8 @@ The `ConnectionService` is the central orchestrator.
 *   **State Machine (`_ServiceStatus` Enum):** Tracks detailed lifecycle.
 *   **`activate_connection_internally()`:**
     *   This method is now **non-blocking**.
-    *   It checks the current service status. If activation is needed and not already in progress, it schedules the `_async_activate_and_run_message_queue` coroutine on the `TaskManager`.
+    *   It checks the current service status. If activation is needed and not already in progress, it prepares to schedule the `_async_activate_and_run_message_queue` coroutine.
+    *   **Crucially, the call to `self._task_manager.submit_task()` to schedule this coroutine happens *after* releasing the internal `_status_lock`**. This is to prevent deadlocks if the event loop is busy or if the `_async_activate_and_run_message_queue` itself (or code it calls) needs to acquire `_status_lock`.
     *   It uses `_sync_activation_complete_event` (`threading.Event`) and `_activation_exception` to communicate the result of the asynchronous activation back to any synchronous waiters (CPython).
 *   **`_async_activate_and_run_message_queue()`:**
     *   This is the core asynchronous activation task. It:
@@ -156,7 +166,7 @@ The `ConnectionService` is the central orchestrator.
     *   Calls `ConnectionService.activate_connection_internally()` (which is non-blocking for Pyodide).
     *   Awaits the completion of the internal `_async_activate_task` (or checks `is_active()`) before proceeding to `ConnectionService._task_manager.wait_for_shutdown_async()`.
 *   **`sidekick.shutdown()`:** Calls `ConnectionService.shutdown_service()`.
-*   **`sidekick.submit_task(coro)`:** Delegates to `TaskManager.submit_task(coro)`. The `CPythonTaskManager`'s `submit_task` is now more robust due to improvements in `ensure_loop_running`.
+*   **`sidekick.submit_task(coro)`:** Delegates to `TaskManager.submit_task(coro)`. The `CPythonTaskManager`'s `submit_task` will raise `CoreTaskSubmissionError` if the event loop is unresponsive to `call_soon_threadsafe` calls within a timeout.
 
 ## 3. API Design Notes
 
@@ -165,3 +175,4 @@ The `ConnectionService` is the central orchestrator.
 *   `run_forever()` now robustly waits for connection before blocking for task manager shutdown.
 *   Connection activation is an asynchronous process internally. Handlers for the core `CommunicationManager` are now passed during its `connect_async` call to prevent race conditions.
 *   Pyodide users continue to use an async-first approach.
+*   The `CPythonTaskManager` aims for a simpler, direct management of its background event loop. Potential deadlocks or unresponsiveness in the event loop (e.g., due to locks held by other parts of the system like `ConnectionService` while it synchronously waits for a task submitted to that same loop) will be exposed by timeouts in `CPythonTaskManager.submit_task()` or during `CPythonTaskManager.ensure_loop_running()`, rather than being masked by complex internal workarounds within the TaskManager itself.
