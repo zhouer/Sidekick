@@ -114,22 +114,6 @@ class PyodideTaskManager(TaskManager):
             logger.exception(f"PyodideTaskManager: Error submitting task: {e}")
             raise CoreTaskSubmissionError(f"Failed to submit task in Pyodide: {e}", original_exception=e) from e
 
-    def submit_and_wait(self, coro: Coroutine[Any, Any, Any]) -> Any:
-        """Synchronous waiting is not supported in Pyodide's TaskManager.
-
-        Blocking the Pyodide worker thread to wait for an async task would
-        freeze all execution in that worker, including the event loop itself.
-        Use `await submit_task(coro)` or handle the task asynchronously.
-
-        Raises:
-            NotImplementedError: Always, as this pattern is unsuitable for Pyodide.
-        """
-        err_msg = ("submit_and_wait is not implemented for PyodideTaskManager "
-                   "as it would block the single worker thread. "
-                   "Use an asynchronous approach (e.g., await task).")
-        logger.error(err_msg)
-        raise NotImplementedError(err_msg)
-
     def signal_shutdown(self) -> None:
         """Signals that a shutdown has been requested."""
         try:

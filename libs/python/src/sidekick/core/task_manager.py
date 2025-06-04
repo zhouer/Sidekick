@@ -43,34 +43,6 @@ class TaskManager(ABC):
         pass
 
     @abstractmethod
-    def submit_and_wait(self, coro: Coroutine[Any, Any, Any]) -> Any:
-        """Submits a coroutine to the loop and blocks until it completes, returning its result.
-
-        This method provides a synchronous way to execute an asynchronous task and
-        get its result.
-
-        Warning:
-            This method **SHOULD NOT** be used in environments where blocking the
-            current thread is problematic (e.g., in the main browser thread or
-            a Pyodide worker if it's the only thread handling events).
-            Implementations for such environments (like Pyodide) **MUST** raise
-            a `NotImplementedError` or a specific `RuntimeError`.
-
-        Args:
-            coro: The coroutine to execute.
-
-        Returns:
-            Any: The result of the coroutine.
-
-        Raises:
-            NotImplementedError: If called in an environment that does not support
-                                 synchronous blocking for async tasks (e.g., Pyodide).
-            Exception: Any exception raised by the coroutine during its execution
-                       will be propagated to the caller of `submit_and_wait`.
-        """
-        pass
-
-    @abstractmethod
     def wait_for_shutdown(self) -> None:
         """Blocks the calling thread until a shutdown is signaled via `signal_shutdown()`.
 

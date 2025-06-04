@@ -395,76 +395,6 @@ class CPythonTaskManager(TaskManager):
                 original_exception=e_get_ref
             )
 
-    def submit_and_wait(self, coro: Coroutine[Any, Any, Any]) -> Any:
-        """Submits a coroutine and blocks current thread until it completes.
-
-        Args:
-            coro (Coroutine[Any, Any, Any]): The coroutine to execute.
-
-        Returns:
-            Any: The result of the coroutine.
-
-        Raises:
-            RuntimeError: If called from the TaskManager's own event loop thread.
-            CoreLoopNotRunningError: If the event loop is not running.
-            Exception: Any exception raised by the coroutine.
-        """
-        loop = self.get_loop() # Ensures loop is running
-        coro_name = getattr(coro, '__name__', 'unknown_coro')
-
-        try:
-            if asyncio.get_running_loop() is loop:
-                # This is the critical check. If true, we are in the loop thread.
-                raise RuntimeError(
-                    "submit_and_wait cannot be called from the TaskManager's event loop thread."
-                )
-        except RuntimeError as e:
-            # We need to distinguish between the RuntimeError we just raised
-            # and the one raised by asyncio.get_running_loop() if no loop is running
-            # (which means we are in a non-loop, non-asyncio-managed thread).
-            if "submit_and_wait cannot be called from" in str(e):
-                logger.error(f"submit_and_wait for '{coro_name}' aborted: called from loop thread.")
-                raise e # Re-raise the specific RuntimeError we threw.
-            elif "no running event loop" in str(e).lower():
-                # This is the expected case if called from a non-loop, non-asyncio thread.
-                # It's safe to proceed with run_coroutine_threadsafe.
-                logger.debug(f"submit_and_wait: Called for '{coro_name}' from a non-loop thread, as expected.")
-            else: # pragma: no cover
-                # Any other RuntimeError from get_running_loop is unexpected here.
-                logger.error(f"submit_and_wait: Unexpected RuntimeError during running loop check for '{coro_name}': {e}")
-                raise CoreTaskManagerError(f"Unexpected error checking running loop for '{coro_name}'", original_exception=e) from e
-
-
-        # If we reached here, it means we are in a non-loop thread.
-        logger.debug(f"submit_and_wait: Submitting '{coro_name}' to loop thread and waiting for completion.")
-        cf_future = asyncio.run_coroutine_threadsafe(coro, loop)
-        # Add task to tracking if possible - run_coroutine_threadsafe doesn't directly return asyncio.Task
-        # For robust tracking with submit_and_wait, one might need to wrap `coro`
-        # to get its task and add it to _active_tasks from within the loop.
-        # For simplicity, submit_and_wait doesn't directly track via _active_tasks here.
-        # The _perform_loop_cleanup will still attempt to cancel tasks it finds via asyncio.all_tasks.
-
-        try:
-            # Poll with timeout for KeyboardInterrupt responsiveness
-            while not cf_future.done():
-                try:
-                    return cf_future.result(timeout=0.1) # Short poll
-                except concurrent.futures.TimeoutError:
-                    pass # Continue polling
-            return cf_future.result() # Get final result or exception
-        except KeyboardInterrupt: # pragma: no cover
-            logger.info(f"submit_and_wait: KeyboardInterrupt for '{coro_name}'. Signaling shutdown.")
-            self.signal_shutdown()
-            if not cf_future.done(): cf_future.cancel()
-            raise
-        except concurrent.futures.CancelledError: # pragma: no cover
-            logger.info(f"submit_and_wait: Coroutine '{coro_name}' future was cancelled.")
-            raise asyncio.CancelledError(f"Coroutine '{coro_name}' was cancelled.") from None
-        except Exception as e_coro: # Exception from the coroutine itself
-            logger.debug(f"submit_and_wait: Coroutine '{coro_name}' raised: {type(e_coro).__name__}")
-            raise
-
-
     def signal_shutdown(self) -> None:
         """Signals the event loop and synchronous waiters to shut down."""
         with self._lock:
@@ -547,4 +477,3 @@ class CPythonTaskManager(TaskManager):
         # If a fully async application uses this, it might need to ensure
         # the TaskManager instance itself is 'closed' or resources released
         # if it started the loop and thread.
-

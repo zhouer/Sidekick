@@ -70,7 +70,11 @@ class TestCPythonTaskManager(unittest.TestCase):
 
         async def waiter(task_to_await):
             return await task_to_await
-        result = self.tm.submit_and_wait(waiter(task_ref))
+
+        # Use run_coroutine_threadsafe directly instead of submit_and_wait
+        loop = self.tm.get_loop()
+        future = asyncio.run_coroutine_threadsafe(waiter(task_ref), loop)
+        result = future.result()
         self.assertEqual(result, "task_submitted")
 
     def test_submit_task_from_loop_thread(self):
@@ -78,37 +82,13 @@ class TestCPythonTaskManager(unittest.TestCase):
             inner_task = self.tm.submit_task(self._simple_coro(result="inner_done"))
             self.assertIsInstance(inner_task, asyncio.Task)
             return await inner_task
-        result = self.tm.submit_and_wait(coro_submitter())
+
+        # Use run_coroutine_threadsafe directly instead of submit_and_wait
+        loop = self.tm.get_loop()
+        future = asyncio.run_coroutine_threadsafe(coro_submitter(), loop)
+        result = future.result()
         self.assertEqual(result, "inner_done")
 
-    def test_submit_and_wait_from_main_thread(self):
-        result = self.tm.submit_and_wait(self._simple_coro(result="wait_success"))
-        self.assertEqual(result, "wait_success")
-
-    def test_submit_and_wait_propagates_exception(self):
-        with self.assertRaisesRegex(ValueError, "Test error from wait"):
-            self.tm.submit_and_wait(self._coro_that_raises(ValueError, "Test error from wait"))
-
-    def test_submit_and_wait_raises_if_called_from_loop_thread(self):
-        async def coro_caller():
-            # Catch the RuntimeWarning about unawaited coroutine specifically for this test
-            with warnings.catch_warnings(record=True) as w:
-                warnings.simplefilter("always", RuntimeWarning) # Make sure we see it
-                with self.assertRaisesRegex(RuntimeError, "submit_and_wait cannot be called from the TaskManager's event loop thread"):
-                    self.tm.submit_and_wait(self._simple_coro()) # This should raise
-                # Check if the specific warning was issued
-                unawaited_coro_warning_found = False
-                for warning_msg in w:
-                    if issubclass(warning_msg.category, RuntimeWarning) and \
-                       "was never awaited" in str(warning_msg.message) and \
-                       "_simple_coro" in str(warning_msg.message):
-                        unawaited_coro_warning_found = True
-                        break
-                self.assertTrue(unawaited_coro_warning_found, "Expected RuntimeWarning for unawaited _simple_coro")
-            return "checked_runtime_error_in_loop_call"
-
-        result = self.tm.submit_and_wait(coro_caller())
-        self.assertEqual(result, "checked_runtime_error_in_loop_call")
 
     def test_shutdown_sequence(self):
         self.tm.ensure_loop_running()
@@ -180,7 +160,11 @@ class TestCPythonTaskManager(unittest.TestCase):
 
         async def waiter(task_to_await):
             return await task_to_await
-        result = self.tm.submit_and_wait(waiter(waiter_task_ref))
+
+        # Use run_coroutine_threadsafe directly instead of submit_and_wait
+        loop = self.tm.get_loop()
+        future = asyncio.run_coroutine_threadsafe(waiter(waiter_task_ref), loop)
+        result = future.result()
         self.assertEqual(result, "async_shutdown_received")
 
         self.tm.wait_for_shutdown()
@@ -263,7 +247,10 @@ class TestCPythonTaskManager(unittest.TestCase):
         task1 = self.tm.submit_task(tracked_coro())
         self.assertIn(task1, self.tm._active_tasks) # type: ignore
 
-        self.tm.submit_and_wait(task_started_event.wait())
+        # Use run_coroutine_threadsafe directly instead of submit_and_wait
+        loop = self.tm.get_loop()
+        future = asyncio.run_coroutine_threadsafe(task_started_event.wait(), loop)
+        future.result()
         logging.debug("Main thread: tracked_coro has started.")
 
         self.tm.signal_shutdown()

@@ -139,11 +139,6 @@ class TestPyodideTaskManager(unittest.TestCase):
         self.assertIn("Failed to submit task in Pyodide: Simulated loop.create_task failure", str(cm.exception))
 
 
-    def test_submit_and_wait_raises_not_implemented_error(self):
-        with patch('sidekick.core.pyodide_task_manager.asyncio.get_running_loop', return_value=MagicMock(is_running=True)):
-            self.tm.ensure_loop_running()
-        with self.assertRaisesRegex(NotImplementedError, "submit_and_wait is not implemented for PyodideTaskManager"):
-            self.tm.submit_and_wait(dummy_coro())
 
     def test_wait_for_shutdown_raises_not_implemented_error(self):
         with patch('sidekick.core.pyodide_task_manager.asyncio.get_running_loop', return_value=MagicMock(is_running=True)):
