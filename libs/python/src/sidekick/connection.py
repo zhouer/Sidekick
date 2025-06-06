@@ -294,6 +294,9 @@ class ConnectionService:
                 self._communication_manager = connection_outcome.communication_manager
                 self._connected_server_name = connection_outcome.server_name
 
+                with self._status_lock: # Ensure thread-safe access if needed, though this coro runs in one thread
+                    self._activation_exception = None
+
                 if not self._communication_manager: # Should be caught by ServerConnector raising error
                     raise SidekickConnectionError("ServerConnector returned without a CommunicationManager.") # pragma: no cover
 
