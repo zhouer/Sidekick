@@ -169,7 +169,6 @@ async def run_forever_async() -> None:
 
     This function is intended for Pyodide or asyncio-based applications. It
     asynchronously waits for the connection to be established and then for a
-
     shutdown signal.
     """
     await _get_service_instance().run_service_forever_async()

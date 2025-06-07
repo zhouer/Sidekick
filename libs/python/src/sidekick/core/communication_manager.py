@@ -6,6 +6,7 @@ communication transports, such as WebSockets (for CPython environments) or
 JavaScript `postMessage` (for Pyodide environments).
 
 The `CommunicationManager` is responsible for:
+
 - Establishing and tearing down the raw communication link (e.g., WebSocket connection).
 - Sending raw string-based messages over the established link.
 - Receiving raw string-based messages from the link.

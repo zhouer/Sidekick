@@ -10,6 +10,7 @@ to a container's constructor. You can also provide an `instance_id` to uniquely
 identify the button.
 
 You can define the button's click behavior in several ways:
+
 1.  Using the `on_click` parameter in the constructor:
     `button = sidekick.Button("Run", on_click=my_run_function, instance_id="run-btn")`
 2.  Using the `button.on_click(callback)` method after creation:

@@ -5,6 +5,7 @@ list of servers that the Sidekick Python library will attempt to connect to.
 It also manages any user-defined URL set via `sidekick.set_url()`.
 
 The primary components are:
+
 - `ServerConfig`: A data class holding details for a single server endpoint,
   including its WebSocket URL, an optional UI URL (for remote servers), and
   flags indicating if a session ID is needed and if the UI URL should be shown.

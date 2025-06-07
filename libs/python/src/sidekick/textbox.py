@@ -12,6 +12,7 @@ to a container's constructor. You can also provide an `instance_id` to uniquely
 identify the textbox.
 
 You can define the textbox's submission behavior in several ways:
+
 1.  Using the `on_submit` parameter in the constructor:
     `query_box = sidekick.Textbox(on_submit=handle_query, instance_id="query-input")`
 2.  Using the `textbox.on_submit(callback)` method after creation:

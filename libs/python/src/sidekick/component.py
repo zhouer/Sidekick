@@ -483,6 +483,7 @@ class Component:
         to `None`.
 
         This practice is important for:
+
         -   Preventing callbacks from being invoked on a component that has been removed.
         -   Helping Python's garbage collector by breaking potential reference cycles
             that might otherwise keep the component object (and its callbacks) alive
@@ -500,6 +501,7 @@ class Component:
             It is **strongly recommended** to explicitly call the
             `component.remove()` method when a Sidekick component is no longer needed.
             Relying on `__del__` for cleanup in Python has several caveats:
+
             -   The timing of `__del__` execution is not guaranteed and can be unpredictable.
             -   `__del__` might not be called at all if the object is part of a reference cycle
                 that the garbage collector cannot break.

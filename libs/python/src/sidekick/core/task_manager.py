@@ -7,6 +7,7 @@ loop in a separate thread) and for Pyodide environments (using the
 browser's event loop provided by Pyodide).
 
 The TaskManager is responsible for:
+
 - Ensuring an event loop is running and providing access to it.
 - Submitting asynchronous tasks (coroutines) to be executed on the loop.
 - Providing mechanisms to request the loop to stop and to wait for its completion.

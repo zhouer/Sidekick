@@ -15,9 +15,11 @@ How it works:
 1.  Wrap your data: `my_list = sidekick.ObservableValue([1, 2])`
 2.  Show it in Viz: `viz.show("My List", my_list)`
 3.  Modify the data **using the wrapper's methods**:
+
     *   `my_list.append(3)`
     *   `my_list[0] = 99`
     *   `del my_list[1]`
+
 4.  Observe: The Viz panel in Sidekick updates instantly to show these changes,
     often highlighting exactly what was modified.
 

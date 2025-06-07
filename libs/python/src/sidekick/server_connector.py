@@ -3,6 +3,7 @@
 This module defines the `ServerConnector` class, which is responsible for
 attempting to establish a communication channel with a Sidekick server.
 It implements a prioritized connection strategy:
+
 1. If in a Pyodide environment, it attempts to use the Pyodide-specific bridge.
 2. If a URL has been explicitly set by the user (via `sidekick.set_url()`),
    it attempts to connect directly to that URL.

@@ -5,6 +5,7 @@ objects that are passed to user-defined callback functions registered with
 Sidekick components (e.g., `on_click`, `on_submit`, `on_error`).
 
 Using structured event objects provides several benefits:
+
 - **API Consistency:** All event callbacks receive a single event object argument.
 - **Type Safety:** Clear type hints improve code understanding and help static analysis.
 - **Extensibility:** Adding new information to events in the future can be done

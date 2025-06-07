@@ -4,6 +4,7 @@ Use the `sidekick.Row` class to create a container that lays out its child
 components horizontally, one after the other, from left to right.
 
 Components are added to a `Row` in several ways:
+
 1.  By passing the `Row` instance as the `parent` argument when creating the
     child component:
     `my_row = sidekick.Row(instance_id="button-bar")`

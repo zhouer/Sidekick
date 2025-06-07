@@ -4,6 +4,7 @@ Use the `sidekick.Column` class to create a container that lays out its child
 components vertically, one below the other, from top to bottom.
 
 Components are added to a `Column` in several ways:
+
 1.  By passing the `Column` instance as the `parent` argument when creating the
     child component:
     `my_col = sidekick.Column(instance_id="main-layout")`

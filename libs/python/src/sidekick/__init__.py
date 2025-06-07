@@ -15,8 +15,10 @@ for CPython users, while also supporting asynchronous operations for more
 advanced use cases, especially in Pyodide environments.
 
 Getting Started:
+
     1.  **Install:** `pip install sidekick-py`.
     2.  **Setup Sidekick UI:**
+
         *   **VS Code (Recommended):** Install the "Sidekick - Your Visual Coding Buddy"
             extension from the VS Code Marketplace (search for `sidekick-coding`).
             Then, open the Sidekick panel using `Ctrl+Shift+P` (or `Cmd+Shift+P`
@@ -24,6 +26,7 @@ Getting Started:
         *   **Remote/Cloud:** If not using the VS Code extension, your script might
             connect to a remote Sidekick server. If so, the library will print
             a UI URL to open in your browser.
+
     3.  **Import:** Start your script with `import sidekick`.
     4.  **Create Components:** E.g., `label = sidekick.Label("Hello!")`.
         Component creation is non-blocking. The connection to a Sidekick service

@@ -11,6 +11,7 @@ ensures that all state modifications and I/O operations are centralized within
 the event loop, significantly reducing threading complexity and race conditions.
 
 The `ConnectionService` is responsible for:
+
 - Managing the service's lifecycle via commands (ACTIVATE, SHUTDOWN).
 - Handling the Sidekick-specific protocol handshake (announce, clearAll).
 - Queuing and sending messages to the UI.
