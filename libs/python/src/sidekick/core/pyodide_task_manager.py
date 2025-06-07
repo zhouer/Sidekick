@@ -4,27 +4,17 @@ This TaskManager leverages the existing asyncio event loop provided by the
 Pyodide environment (typically running in a Web Worker). It does not create
 a new thread or manage the loop's lifecycle directly, as that is handled
 by the browser and Pyodide runtime.
+
+This class acts as a lightweight adapter to the externally-managed event loop,
+conforming to the `TaskManager` interface.
 """
 
 import asyncio
 import logging
-import threading # For RLock, though less critical for thread-safety here
-from typing import Awaitable, Any, Coroutine, Optional
-
-# Attempt to import Pyodide-specific types for type checking if possible,
-# but make them optional for environments where Pyodide isn't installed (e.g., CPython dev).
-try:
-    from pyodide.ffi import JsProxy, create_proxy # type: ignore[import-not-found]
-    import js # type: ignore[import-not-found]
-    _PYODIDE_AVAILABLE = True
-except ImportError: # pragma: no cover
-    _PYODIDE_AVAILABLE = False
-    JsProxy = Any # type: ignore[misc]
-
+from typing import Any, Coroutine, Optional
 
 from .task_manager import TaskManager
 from .exceptions import CoreLoopNotRunningError, CoreTaskSubmissionError
-# from .utils import is_pyodide # Not strictly needed by this class itself if factory handles choice
 
 logger = logging.getLogger(__name__)
 
@@ -33,143 +23,130 @@ class PyodideTaskManager(TaskManager):
 
     This implementation assumes that an asyncio event loop is already running
     or will be run by the Pyodide environment (e.g., when Python code is
-    executed via `pyodide.runPythonAsync`).
+    executed via `pyodide.runPythonAsync`). It acts as an interface to this
+    externally managed loop.
     """
 
     def __init__(self):
+        """Initializes the PyodideTaskManager."""
         self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._shutdown_requested_event: Optional[asyncio.Event] = None
-        self._initialization_lock = threading.RLock() # Protects one-time init of loop/event
-        self._initialized = False
+        # A flag to ensure one-time initialization of the loop reference.
+        self._initialized: bool = False
 
     def _ensure_initialized(self) -> None:
-        """Initializes the loop and shutdown event references if not already done.
-        Must set self._loop and self._shutdown_requested_event, or raise CoreLoopNotRunningError.
+        """Initializes the loop reference if not already done.
+
+        This method attempts to get the current running event loop provided by
+        the Pyodide environment. Since this manager does not create the loop,
+        this method's primary role is to obtain and store a reference to it.
+
+        Raises:
+            CoreLoopNotRunningError: If no event loop can be obtained from the
+                                     Pyodide/browser environment.
         """
-        with self._initialization_lock:
-            if self._initialized:
-                return
+        # This method is not thread-safe, but it's not expected to be called
+        # from multiple threads in a Pyodide (single-threaded) context.
+        if self._initialized:
+            return
 
-            current_loop: Optional[asyncio.AbstractEventLoop] = None
+        current_loop: Optional[asyncio.AbstractEventLoop] = None
+        try:
+            # This is the standard way to get the loop in an async context.
+            current_loop = asyncio.get_running_loop()
+            logger.debug("PyodideTaskManager: Acquired running loop via get_running_loop().")
+        except RuntimeError:
+            # Fallback for contexts where get_running_loop might not work but a loop is set.
+            logger.warning("PyodideTaskManager: No running loop from get_running_loop(), attempting get_event_loop().")
             try:
-                current_loop = asyncio.get_running_loop()
-                logger.debug("PyodideTaskManager: Acquired running loop via get_running_loop().")
-            except RuntimeError:
-                logger.debug("PyodideTaskManager: No running loop from get_running_loop(), attempting get_event_loop().")
-                try:
-                    current_loop = asyncio.get_event_loop()
-                    logger.debug("PyodideTaskManager: Acquired loop via get_event_loop().")
-                except RuntimeError as e_get_loop:
-                     err_msg = f"Failed to obtain an event loop in Pyodide environment: {e_get_loop}"
-                     logger.error(f"PyodideTaskManager: Could not get or set an event loop: {e_get_loop}")
-                     raise CoreLoopNotRunningError(err_msg) from e_get_loop # CRITICAL: Raise if both fail
+                current_loop = asyncio.get_event_loop()
+                logger.debug("PyodideTaskManager: Acquired loop via get_event_loop().")
+            except RuntimeError as e_get_loop:
+                 # If both methods fail, we cannot proceed.
+                 err_msg = f"Failed to obtain an event loop in Pyodide environment: {e_get_loop}"
+                 logger.error(f"PyodideTaskManager: Could not get or set an event loop: {e_get_loop}")
+                 raise CoreLoopNotRunningError(err_msg) from e_get_loop
 
-            if not current_loop: # Should be caught by the exception above # pragma: no cover
-                 err_msg_unreachable = "Event loop could not be initialized in Pyodide (current_loop is None)."
-                 logger.error(f"PyodideTaskManager: {err_msg_unreachable}")
-                 raise CoreLoopNotRunningError(err_msg_unreachable)
+        if not current_loop: # pragma: no cover
+             # This state should ideally be unreachable due to the exceptions above.
+             err_msg_unreachable = "Event loop could not be initialized in Pyodide (current_loop is None)."
+             logger.error(f"PyodideTaskManager: {err_msg_unreachable}")
+             raise CoreLoopNotRunningError(err_msg_unreachable)
 
-            self._loop = current_loop
-            # Create event associated with the found/created loop
-            self._shutdown_requested_event = asyncio.Event()
-            self._initialized = True
-            logger.info(f"PyodideTaskManager initialized with event loop: {self._loop}")
-
+        self._loop = current_loop
+        self._initialized = True
+        logger.info(f"PyodideTaskManager initialized with event loop: {self._loop}")
 
     def ensure_loop_running(self) -> None:
-        """Ensures loop and event references are initialized. Loop is managed by Pyodide."""
-        self._ensure_initialized() # This will raise if loop cannot be obtained
-        if not self._loop: # Defensive, should be caught by _ensure_initialized # pragma: no cover
+        """Ensures the loop reference is initialized. The loop itself is managed by Pyodide."""
+        self._ensure_initialized()
+        if not self._loop: # pragma: no cover
             raise CoreLoopNotRunningError("Pyodide's event loop reference is not available after initialization attempt.")
 
     def is_loop_running(self) -> bool:
         """Checks if the Pyodide-managed asyncio event loop is currently running."""
         try:
-            # ensure_initialized might fail if called very early before any loop is set by Pyodide/browser.
-            # In such a case, the loop is not "running" from our perspective yet.
             self._ensure_initialized()
             if self._loop:
                 return self._loop.is_running()
         except CoreLoopNotRunningError:
-            return False # If loop couldn't be obtained, it's not running for us
+            # If we can't even get a loop, it's not running from our perspective.
+            return False
         return False # Default if _loop is somehow None after ensure_initialized
 
     def get_loop(self) -> asyncio.AbstractEventLoop:
         """Returns the Pyodide-managed asyncio event loop."""
-        self._ensure_initialized() # Will raise CoreLoopNotRunningError if fails
-        if not self._loop: # Defensive # pragma: no cover
-            raise CoreLoopNotRunningError("Pyodide's event loop reference is not available (should have been caught by _ensure_initialized).")
+        self.ensure_loop_running()
+        if not self._loop: # pragma: no cover
+            raise CoreLoopNotRunningError("Pyodide's event loop reference is not available.")
         return self._loop
 
     def submit_task(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task:
-        """Submits a coroutine to Pyodide's event loop."""
-        self._ensure_initialized() # Ensures self._loop is set or raises
-        if not self._loop: # Defensive # pragma: no cover
-            raise CoreLoopNotRunningError("Loop not available for task submission (should have been caught by _ensure_initialized).")
+        """Submits a coroutine to Pyodide's event loop.
 
+        Args:
+            coro (Coroutine[Any, Any, Any]): The coroutine to execute.
+
+        Returns:
+            asyncio.Task: The task object representing the coroutine's execution.
+
+        Raises:
+            CoreTaskSubmissionError: If creating the task fails.
+        """
+        loop = self.get_loop()
         try:
-            task = self._loop.create_task(coro)
+            task = loop.create_task(coro)
             return task
         except RuntimeError as e: # pragma: no cover
             logger.exception(f"PyodideTaskManager: Error submitting task: {e}")
             raise CoreTaskSubmissionError(f"Failed to submit task in Pyodide: {e}", original_exception=e) from e
 
-    def signal_shutdown(self) -> None:
-        """Signals that a shutdown has been requested."""
-        try:
-            self._ensure_initialized()
-        except CoreLoopNotRunningError: # pragma: no cover
-            logger.warning("PyodideTaskManager: Cannot signal shutdown, loop not initialized properly.")
-            return
+    def create_event(self) -> asyncio.Event:
+        """Creates an `asyncio.Event` object associated with the managed event loop."""
+        self.ensure_loop_running()
+        # In Pyodide, we are always in the context of the single event loop,
+        # so direct instantiation is safe and correct.
+        return asyncio.Event()
 
-        if self._shutdown_requested_event and not self._shutdown_requested_event.is_set():
-            logger.info("PyodideTaskManager: Signaling shutdown via asyncio.Event.")
-            self._shutdown_requested_event.set()
-        else:
-            logger.debug("PyodideTaskManager: Shutdown already signaled or event not initialized.")
+    def stop_loop(self) -> None:
+        """Does nothing in the Pyodide environment.
 
-    def wait_for_shutdown(self) -> None:
-        """Synchronous waiting for shutdown is not supported in Pyodide.
-
-        Use `await wait_for_shutdown_async()` instead from an async context.
-
-        Raises:
-            NotImplementedError: Always, as this pattern is unsuitable for Pyodide.
+        The Pyodide/browser event loop lifecycle is not managed by this TaskManager
+        and should not be stopped from Python code, as it would terminate the
+        entire Web Worker's execution context. This method is a no-op to fulfill
+        the `TaskManager` interface contract.
         """
-        err_msg = ("wait_for_shutdown (synchronous) is not implemented for PyodideTaskManager. "
-                   "Use 'await wait_for_shutdown_async()' from an async function.")
-        logger.error(err_msg)
-        raise NotImplementedError(err_msg)
+        logger.debug("PyodideTaskManager.stop_loop() called. This is a no-op in the Pyodide environment.")
+        pass
 
-    async def wait_for_shutdown_async(self) -> None:
-        """Asynchronously waits until shutdown is signaled."""
-        self._ensure_initialized() # Ensures _shutdown_requested_event is created
-        if not self._shutdown_requested_event: # Defensive # pragma: no cover
-             raise CoreLoopNotRunningError("Shutdown event not initialized for async wait in Pyodide (should have been caught).")
+    def wait_for_stop(self) -> None:
+        """Immediately returns in the Pyodide environment.
 
-        logger.info("PyodideTaskManager: Asynchronously waiting for shutdown signal...")
-        await self._shutdown_requested_event.wait()
-        logger.info("PyodideTaskManager: Shutdown signal received.")
+        Since the event loop cannot be stopped by this manager, there is no
+        'stopped' state to wait for. This method is a no-op to maintain
+        interface compatibility.
 
-        # Perform a basic cleanup of tasks.
-        loop = self._loop # Loop should be valid here
-        if loop and not loop.is_closed(): # Check if loop still usable for cleanup # pragma: no cover
-            try:
-                all_tasks_in_loop = asyncio.all_tasks(loop=loop)
-                current_task_in_loop = asyncio.current_task(loop=loop)
-                tasks_to_cancel = [
-                    t for t in all_tasks_in_loop
-                    if t is not current_task_in_loop and not t.done()
-                ]
-                if tasks_to_cancel:
-                    logger.debug(f"PyodideTaskManager: Cancelling {len(tasks_to_cancel)} outstanding tasks on shutdown.")
-                    for task in tasks_to_cancel:
-                        task.cancel()
-                    await asyncio.gather(*tasks_to_cancel, return_exceptions=True)
-
-                if hasattr(loop, 'shutdown_asyncgens'):
-                     logger.debug("PyodideTaskManager: Shutting down async generators.")
-                     await loop.shutdown_asyncgens()
-            except Exception as e_cleanup:
-                logger.warning(f"PyodideTaskManager: Error during async cleanup on shutdown: {e_cleanup}")
-        logger.info("PyodideTaskManager: Async shutdown sequence complete.")
+        For synchronous applications that need to wait, this pattern is not
+        suitable for Pyodide. Asynchronous waiting should be used instead.
+        """
+        logger.debug("PyodideTaskManager.wait_for_stop() called. This is a no-op in the Pyodide environment.")
+        pass

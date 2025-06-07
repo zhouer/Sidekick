@@ -2,38 +2,78 @@
 
 This module provides the `TaskManager` Abstract Base Class (ABC), which outlines
 the contract for concrete implementations that manage an asyncio event loop.
-Different implementations will exist for standard CPython environments (typically
-managing a loop in a separate thread) and for Pyodide environments (using the
+Different implementations exist for standard CPython environments (managing a
+loop in a separate thread) and for Pyodide environments (using the
 browser's event loop provided by Pyodide).
 
 The TaskManager is responsible for:
-- Ensuring an event loop is running.
-- Submitting asynchronous tasks (coroutines) to the loop.
-- Providing mechanisms to wait for tasks to complete (synchronously or asynchronously).
-- Managing a shutdown signal for the loop.
+- Ensuring an event loop is running and providing access to it.
+- Submitting asynchronous tasks (coroutines) to be executed on the loop.
+- Providing mechanisms to request the loop to stop and to wait for its completion.
+- Creating event loop-specific synchronization primitives like asyncio.Event.
 """
 
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Awaitable, Any, Coroutine
+from typing import Any, Coroutine
 
 
 class TaskManager(ABC):
     """Abstract Base Class for managing an asyncio event loop and tasks.
 
-    Concrete subclasses will provide environment-specific implementations for
-    CPython and Pyodide.
+    This class defines the interface for an environment-aware asyncio loop
+    manager. Concrete subclasses will provide environment-specific implementations
+    for CPython and Pyodide. Its primary role is to provide a stable asynchronous
+    execution context for other services, like the ConnectionService.
     """
+
+    @abstractmethod
+    def ensure_loop_running(self) -> None:
+        """Ensures that the managed asyncio event loop is running.
+
+        If the loop is not already running (e.g., in CPython where it might run
+        in a separate thread), this method should start it and confirm its readiness.
+        If the loop is already running, this method should do nothing.
+
+        Raises:
+            CoreTaskManagerError: If the loop cannot be started or confirmed as running.
+        """
+        pass
+
+    @abstractmethod
+    def get_loop(self) -> asyncio.AbstractEventLoop:
+        """Returns the asyncio event loop instance managed by this TaskManager.
+
+        This method should typically call `ensure_loop_running()` implicitly to
+        guarantee that a running loop is returned.
+
+        Returns:
+            asyncio.AbstractEventLoop: The event loop instance.
+
+        Raises:
+            CoreLoopNotRunningError: If the loop has not been initialized or is not accessible.
+        """
+        pass
+
+    @abstractmethod
+    def is_loop_running(self) -> bool:
+        """Checks if the managed asyncio event loop is currently running.
+
+        Returns:
+            bool: True if the loop is active and responsive, False otherwise.
+        """
+        pass
 
     @abstractmethod
     def submit_task(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task:
         """Submits a coroutine to be executed on the managed event loop.
 
-        This method is non-blocking. It schedules the coroutine and returns
-        an `asyncio.Task` object immediately.
+        This method is non-blocking. It schedules the coroutine and should
+        immediately return an `asyncio.Task` object. For CPython, this method
+        must be thread-safe.
 
         Args:
-            coro: The coroutine to execute.
+            coro (Coroutine[Any, Any, Any]): The coroutine to execute.
 
         Returns:
             asyncio.Task: The task object representing the execution of the coroutine.
@@ -43,71 +83,41 @@ class TaskManager(ABC):
         pass
 
     @abstractmethod
-    def wait_for_shutdown(self) -> None:
-        """Blocks the calling thread until a shutdown is signaled via `signal_shutdown()`.
+    def create_event(self) -> asyncio.Event:
+        """Creates an `asyncio.Event` object associated with the managed event loop.
 
-        This method is typically used in the main thread of a CPython application
-        (like `sidekick.run_forever()`) to keep the application alive while the
-        asyncio loop in a background thread processes events.
+        This is a factory method to ensure that synchronization primitives are
+        created in the correct loop context, which is especially important in
+        multi-threaded CPython environments. For CPython, this method must be
+        thread-safe.
+
+        Returns:
+            asyncio.Event: A new event object tied to the managed loop.
+        """
+        pass
+
+    @abstractmethod
+    def stop_loop(self) -> None:
+        """Requests the managed event loop to begin its shutdown process.
+
+        This method is non-blocking and thread-safe. It signals the loop to stop
+        processing new tasks and to eventually terminate. For implementations that
+        manage the loop's lifecycle (like CPythonTaskManager), this will lead to the
+        loop stopping. For implementations that don't own the loop (like
+        PyodideTaskManager), this may be a no-op.
+        """
+        pass
+
+    @abstractmethod
+    def wait_for_stop(self) -> None:
+        """Blocks the calling thread until the managed event loop has fully stopped.
+
+        This method is synchronous and blocking. It's primarily intended for the
+        main thread of a CPython application to wait for the background event
+        loop thread to terminate cleanly.
 
         Note:
-            This method is synchronous and blocking. In an asyncio-native
-            application or Pyodide, `wait_for_shutdown_async()` should be used instead.
-        """
-        pass
-
-    @abstractmethod
-    async def wait_for_shutdown_async(self) -> None:
-        """Asynchronously waits until a shutdown is signaled via `signal_shutdown()`.
-
-        This method is suitable for use in an `async def` function, particularly
-        in Pyodide environments (e.g., `await sidekick.run_forever_async()`) or
-        asyncio-native CPython applications.
-
-        It allows other asyncio tasks to run while waiting for the shutdown signal.
-        """
-        pass
-
-    @abstractmethod
-    def signal_shutdown(self) -> None:
-        """Signals the TaskManager that a shutdown has been requested.
-
-        This will cause `wait_for_shutdown()` or `wait_for_shutdown_async()`
-        to unblock and return. It should also trigger the cleanup and stopping
-        of the managed event loop if the TaskManager is responsible for its lifecycle.
-        """
-        pass
-
-    @abstractmethod
-    def ensure_loop_running(self) -> None:
-        """Ensures that the managed asyncio event loop is running.
-
-        If the loop is not already running (e.g., in CPython where it might run
-        in a separate thread), this method should start it. If the loop is already
-        running, this method might do nothing.
-
-        This should be called before submitting any tasks if there's a chance
-        the loop isn't active.
-        """
-        pass
-
-    @abstractmethod
-    def get_loop(self) -> asyncio.AbstractEventLoop:
-        """Returns the asyncio event loop instance managed by this TaskManager.
-
-        Returns:
-            asyncio.AbstractEventLoop: The event loop.
-
-        Raises:
-            RuntimeError: If the loop has not been initialized or is not accessible.
-        """
-        pass
-
-    @abstractmethod
-    def is_loop_running(self) -> bool:
-        """Checks if the managed asyncio event loop is currently running.
-
-        Returns:
-            bool: True if the loop is active, False otherwise.
+            This method may not be applicable or may be a no-op in environments
+            where the loop's lifecycle is not managed by the TaskManager (e.g., Pyodide).
         """
         pass
