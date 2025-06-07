@@ -178,7 +178,6 @@ class ConnectionService:
                 logger.info(f"Successfully connected to Sidekick server: {conn_result.server_name or 'Unknown'}")
                 if conn_result.show_ui_url_hint and conn_result.ui_url_to_show:
                     print(f"Sidekick UI is available at: {conn_result.ui_url_to_show}")
-                    print("For the best experience, install the 'Sidekick - Your Visual Coding Buddy' VS Code extension.")
 
                 # 2. Perform Sidekick protocol handshake.
                 hero_announce = { "id": 0, "component": "system", "type": "announce", "payload": { "peerId": self._hero_peer_id, "role": "hero", "status": "online", "version": _version.__version__, "timestamp": int(time.time() * 1000) }}
