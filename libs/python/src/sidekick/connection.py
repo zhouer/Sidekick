@@ -173,6 +173,57 @@ async def run_forever_async() -> None:
     """
     await _get_service_instance().run_service_forever_async()
 
+async def _interval_runner(callback: Callable[[], Any], interval: float) -> None:
+    """Internal coroutine that repeatedly calls a callback at a given interval."""
+    is_async_callback = asyncio.iscoroutinefunction(callback)
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            if is_async_callback:
+                await callback()
+            else:
+                callback()
+        except asyncio.CancelledError:
+            logger.debug(f"Interval task for callback '{getattr(callback, '__name__', 'unknown')}' was cancelled.")
+            break
+        except Exception as e:
+            logger.exception(f"Error in interval callback '{getattr(callback, '__name__', 'unknown')}': {e}")
+            # Decide whether to break the loop or continue
+            # For now, we continue, to make it robust against single-frame errors.
+
+def submit_interval(
+    callback: Callable[[], Any],
+    interval: float
+) -> asyncio.Task:
+    """Submits a function to be called repeatedly at a specified interval.
+
+    This is a convenient way to create animations or run periodic tasks without
+    managing your own `while True` and `time.sleep()` loop. The task is
+    automatically managed by Sidekick's event loop and will be cleaned up
+    when `sidekick.shutdown()` is called.
+
+    Args:
+        callback (Callable[[], Any]): The function or coroutine to be
+            executed at each interval. It should take no arguments.
+        interval (float): The time in seconds to wait between each call.
+            For example, `1/60` for 60 frames per second.
+
+    Returns:
+        asyncio.Task: The task object representing the interval execution. You
+            can use this to manually cancel the interval if needed.
+
+    Raises:
+        ValueError: If `interval` is not a positive number.
+        TypeError: If `callback_or_coro` is not a callable function.
+    """
+    if not callable(callback):
+        raise TypeError("The first argument to submit_interval must be a callable function or coroutine.")
+    if not isinstance(interval, (int, float)) or interval <= 0:
+        raise ValueError("The interval must be a positive number.")
+
+    logger.info(f"Submitting interval task with interval {interval:.4f}s.")
+    return submit_task(_interval_runner(callback, interval))
+
 def submit_task(coro: Coroutine[Any, Any, Any]) -> asyncio.Task:
     """Submits a user-defined coroutine to Sidekick's managed event loop.
 

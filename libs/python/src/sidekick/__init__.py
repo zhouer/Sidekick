@@ -79,6 +79,7 @@ from .connection import (
     run_forever,                  # Keep script running (CPython), waits for connection first.
     run_forever_async,            # Keep script running (async), waits for connection first.
     shutdown,                     # Gracefully close the connection to Sidekick.
+    submit_interval,              # Submits a function to be called repeatedly at a specified interval.
     submit_task                   # Submit a user coroutine to Sidekick's event loop.
 )
 # Note: Internal methods like `send_message_internally` from connection.py are not re-exported.
@@ -142,6 +143,7 @@ __all__ = [
     'run_forever',
     'run_forever_async',
     'shutdown',
+    'submit_interval',
     'submit_task',
 
     # Observable Value (for Viz reactivity)
