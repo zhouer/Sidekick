@@ -1,23 +1,18 @@
 import sidekick
-import time
-import threading
-import sys
-from typing import List, Tuple, Optional, Callable, Iterator, Dict, Any
+import asyncio
+from typing import List, Tuple, Optional, Callable, Dict, Any, AsyncIterator
 from enum import Enum, auto
-from sidekick import Button, Row, Textbox
 
 # --- Configuration ---
 DEFAULT_NUM_DISKS = 3
 MAX_DISKS_FOR_LAYOUT = 8
-MOVE_DELAY = 0.5 # Adjusted delay
+MOVE_DELAY = 0.5
 
-# Disk Colors
-DISK_COLORS = [
-    "#FFADAD", "#FFD6A5", "#FDFFB6", "#CAFFBF", "#9BF6FF",
-    "#A0C4FF", "#BDB2FF", "#FFC6FF"
-]
-PEG_COLOR = "#cccccc" # Light gray for pegs/base
-EMPTY_COLOR = None    # Use default background for empty cells
+# Disk Colors and Peg/Base colors
+DISK_COLORS = ["#FFADAD", "#FFD6A5", "#FDFFB6", "#CAFFBF", "#9BF6FF", "#A0C4FF", "#BDB2FF", "#FFC6FF"]
+PEG_COLOR = "#cccccc"
+EMPTY_COLOR = None
+
 
 # --- State Enum ---
 class SolveState(Enum):
@@ -25,90 +20,59 @@ class SolveState(Enum):
     RUNNING = auto()
     PAUSED = auto()
     FINISHED = auto()
+    STOPPED = auto()
+
 
 # ==================================
 # Class 1: Visualizer (UI Only)
 # ==================================
 class HanoiVisualizer:
     """Handles all Sidekick UI interactions."""
+
     def __init__(self):
         self.grid: Optional[sidekick.Grid] = None
-        self.row: Optional[Row] = None
-        self.num_disks_input: Optional[Textbox] = None
-        self.start_pause_btn: Optional[Button] = None
+        self.controls_row: Optional[sidekick.Row] = None
+        self.num_disks_input: Optional[sidekick.Textbox] = None
+        self.start_pause_btn: Optional[sidekick.Button] = None
         self.status_console: Optional[sidekick.Console] = None
         self.grid_width = 0
         self.grid_height = 0
         self.peg_centers: List[int] = []
         self.peg_color_width = 1
         self.base_row_y = 0
-        self.top_padding = 0
+        self.top_padding = 2
         self.base_disk_width = 3
         self.disk_width_factor = 2
 
-        # Store button text for update
-        self._start_pause_btn_text: str = "Start"
-
     def setup_sidekick_ui(self, input_handler, click_handler):
-        """Creates initial Sidekick controls and console."""
         sidekick.clear_all()
-
-        # Create a row for the controls
-        self.row = Row()
-
-        # Create the text input for number of disks
-        self.num_disks_input = Textbox(
-            placeholder="Disks",
-            initial_value=str(DEFAULT_NUM_DISKS),
-            parent=self.row
+        self.controls_row = sidekick.Row()
+        self.num_disks_input = sidekick.Textbox(
+            placeholder="Disks", initial_value=str(DEFAULT_NUM_DISKS), parent=self.controls_row
         )
         self.num_disks_input.on_submit(input_handler)
-
-        # Create the start/pause button
-        self._start_pause_btn_text = "Start"
-        self.start_pause_btn = Button(text=self._start_pause_btn_text, parent=self.row)
-        self.start_pause_btn.on_click(lambda e: click_handler("start_pause"))
-
-        # Create the status console
-        self.status_console = sidekick.Console(initial_text="--- Hanoi Log ---\n") # Initial title
-        self.status_console.on_error(lambda msg: sidekick.logger.error(f"Status Console Error: {msg}"))
-
+        self.start_pause_btn = sidekick.Button(text="Start", parent=self.controls_row)
+        self.start_pause_btn.on_click(click_handler)
+        self.status_console = sidekick.Console(initial_text="--- Hanoi Log ---\n")
         self.grid = None
-        sidekick.logger.info("Sidekick UI components (row, buttons, status) created.")
+        sidekick.logger.info("Sidekick UI components created.")
 
-    def update_button_text(self, control_id: str, new_text: str):
-        """Updates button text."""
-        if control_id != "start_pause" or not self.start_pause_btn:
-            sidekick.logger.warning(f"Cannot update text for non-existent or unknown button: {control_id}")
-            return
-        try:
-            # Update stored text first
-            self._start_pause_btn_text = new_text
-            # Update the button text
+    def update_button_text(self, new_text: str):
+        if self.start_pause_btn:
             self.start_pause_btn.text = new_text
-            sidekick.logger.debug(f"Updated button '{control_id}' text to '{new_text}'")
-        except Exception as e:
-            sidekick.logger.error(f"Error updating button text for '{control_id}': {e}")
-
 
     def calculate_and_init_grid(self, num_disks: int):
-        """Calculates layout and creates/recreates the Sidekick Grid."""
         sidekick.logger.info(f"Visualizer calculating layout for {num_disks} disks.")
         if num_disks <= 0: raise ValueError("Number of disks must be positive.")
         if num_disks > MAX_DISKS_FOR_LAYOUT: num_disks = MAX_DISKS_FOR_LAYOUT
 
-        # --- Layout Constants ---
         self.base_disk_width = 3
         self.disk_width_factor = 2
-        spacing = 5
-        side_padding = 4
-        self.top_padding = 2
-        peg_extra_height = 2
+        spacing, side_padding, self.top_padding = 5, 4, 2
+        peg_extra_height, base_row_height = 2, 1
         self.peg_color_width = 1
-        base_row_height = 1
         min_width_per_peg = self.base_disk_width
 
-        # --- Calculations ---
         max_disk_width = self.base_disk_width + (num_disks - 1) * self.disk_width_factor
         if max_disk_width % 2 == 0: max_disk_width += 1
         width_per_peg = max(max_disk_width, min_width_per_peg)
@@ -121,478 +85,244 @@ class HanoiVisualizer:
         self.peg_centers = [
             side_padding + width_per_peg // 2,
             side_padding + width_per_peg + spacing + width_per_peg // 2,
-            side_padding + 2 * width_per_peg + 2 * spacing + width_per_peg // 2
+            side_padding + 2 * width_per_peg + 2 * spacing + width_per_peg // 2,
         ]
 
-        # --- Create/Recreate Grid ---
-        if self.grid:
-            try: self.grid.remove()
-            except Exception as e: sidekick.logger.warning(f"Could not remove previous grid: {e}")
-        try:
-            self.grid = sidekick.Grid(num_columns=self.grid_width, num_rows=self.grid_height)
-            self.grid.on_error(lambda msg: sidekick.logger.error(f"Grid Error: {msg}"))
-            sidekick.logger.info(f"Grid created/recreated ({self.grid_width}x{self.grid_height})")
-        except sidekick.SidekickConnectionError as e:
-             self.update_status(f"Connection Error creating grid: {e}")
-             raise
-        except Exception as e:
-             self.update_status(f"Error creating grid: {e}")
-             sidekick.logger.exception("Error creating grid")
-             raise RuntimeError("Failed to create grid") from e
+        if self.grid: self.grid.remove()
+        self.grid = sidekick.Grid(num_columns=self.grid_width, num_rows=self.grid_height)
+        sidekick.logger.info(f"Grid created/recreated ({self.grid_width}x{self.grid_height})")
 
     def draw_pegs_and_base(self):
-        """Draws the static elements (base, pegs)."""
         if not self.grid: return
-        sidekick.logger.debug("Drawing pegs and base")
-        self.grid.clear() # Clear everything first
-        # Draw Base
-        for x in range(self.grid_width):
-            self.grid.set_color(x, self.base_row_y, PEG_COLOR)
-        # Draw Pegs
+        self.grid.clear()
+        for x in range(self.grid_width): self.grid.set_color(x, self.base_row_y, PEG_COLOR)
         for center_x in self.peg_centers:
             peg_start_x = center_x - self.peg_color_width // 2
-            peg_end_x = center_x + self.peg_color_width // 2
-            for x_peg in range(peg_start_x, peg_end_x + 1):
-                if 0 <= x_peg < self.grid_width:
-                    # Draw from TOP_PADDING down to the base row
-                    for y in range(self.top_padding, self.base_row_y):
-                        self.grid.set_color(x_peg, y, PEG_COLOR)
+            for x_peg in range(peg_start_x, peg_start_x + self.peg_color_width):
+                for y in range(self.top_padding, self.base_row_y):
+                    self.grid.set_color(x_peg, y, PEG_COLOR)
 
-    def _get_disk_coords_and_width(self, disk_size: int, peg_index: int, disk_index_on_peg: int) -> Tuple[int, int, int]:
-        """Calculates the row, start/end columns for a specific disk."""
+    def _get_disk_coords_and_width(self, disk_size: int, peg_index: int, disk_index_on_peg: int) -> Tuple[
+        int, int, int]:
         center_x = self.peg_centers[peg_index]
         disk_visual_width = self.base_disk_width + (disk_size - 1) * self.disk_width_factor
-        if disk_visual_width % 2 == 0: disk_visual_width +=1
-
+        if disk_visual_width % 2 == 0: disk_visual_width += 1
         start_col = center_x - disk_visual_width // 2
-        end_col = center_x + disk_visual_width // 2
-        row = self.base_row_y - 1 - disk_index_on_peg
-        return row, start_col, end_col
+        return self.base_row_y - 1 - disk_index_on_peg, start_col, start_col + disk_visual_width - 1
 
     def draw_disk(self, disk_size: int, peg_index: int, disk_index_on_peg: int):
-        """Draws a single disk at the specified position."""
         if not self.grid: return
-        try:
-            row, start_col, end_col = self._get_disk_coords_and_width(disk_size, peg_index, disk_index_on_peg)
-            disk_color = DISK_COLORS[(disk_size - 1) % len(DISK_COLORS)]
-
-            if row >= 0:
-                for x in range(start_col, end_col + 1):
-                    if 0 <= x < self.grid_width:
-                        self.grid.set_color(x, row, disk_color)
-        except IndexError:
-             sidekick.logger.error(f"Error drawing disk: peg_index={peg_index}, centers={len(self.peg_centers)}")
-        except Exception as e:
-             sidekick.logger.error(f"Unexpected error drawing disk {disk_size} at peg {peg_index}: {e}")
+        row, start_col, end_col = self._get_disk_coords_and_width(disk_size, peg_index, disk_index_on_peg)
+        disk_color = DISK_COLORS[(disk_size - 1) % len(DISK_COLORS)]
+        for x in range(start_col, end_col + 1):
+            if 0 <= x < self.grid_width: self.grid.set_color(x, row, disk_color)
 
     def clear_disk(self, disk_size: int, peg_index: int, disk_index_on_peg: int):
-        """Clears the area where a disk was, revealing the peg/base."""
         if not self.grid: return
-        try:
-            row, start_col, end_col = self._get_disk_coords_and_width(disk_size, peg_index, disk_index_on_peg)
-            center_x = self.peg_centers[peg_index]
-
-            if row >= 0:
-                for x in range(start_col, end_col + 1):
-                    if 0 <= x < self.grid_width:
-                         peg_start_x = center_x - self.peg_color_width // 2
-                         peg_end_x = center_x + self.peg_color_width // 2
-                         is_peg_cell = peg_start_x <= x <= peg_end_x
-                         color_to_set = PEG_COLOR if is_peg_cell else EMPTY_COLOR
-                         self.grid.set_color(x, row, color_to_set)
-        except IndexError:
-             sidekick.logger.error(f"Error clearing disk: peg_index={peg_index}, centers={len(self.peg_centers)}")
-        except Exception as e:
-            sidekick.logger.error(f"Unexpected error clearing disk {disk_size} at peg {peg_index}: {e}")
+        row, start_col, end_col = self._get_disk_coords_and_width(disk_size, peg_index, disk_index_on_peg)
+        center_x = self.peg_centers[peg_index]
+        for x in range(start_col, end_col + 1):
+            if 0 <= x < self.grid_width:
+                peg_start_x = center_x - self.peg_color_width // 2
+                is_peg_cell = peg_start_x <= x < peg_start_x + self.peg_color_width
+                self.grid.set_color(x, row, PEG_COLOR if is_peg_cell else EMPTY_COLOR)
 
     def draw_all_disks(self, pegs_state: List[List[int]]):
-        """Draws all disks based on the provided state."""
         if not self.grid: return
-        sidekick.logger.debug("Drawing all disks")
         for peg_index, disks_on_peg in enumerate(pegs_state):
             for disk_index, disk_size in enumerate(disks_on_peg):
                 self.draw_disk(disk_size, peg_index, disk_index)
 
     def update_status(self, message: str):
-        """Appends a message to the status console."""
-        if self.status_console:
-            # Keep history, add newline
-            self.status_console.print(message, end='\n')
-        sidekick.logger.info(f"Status: {message}")
+        if self.status_console: self.status_console.print(message)
+
 
 # ==================================
 # Class 2: Solver (Algorithm Only)
 # ==================================
-MoveType = Tuple[int, int, int] # from_peg, to_peg, disk_size
+MoveType = Tuple[int, int, int]  # from_peg, to_peg, disk_size
 
 class HanoiSolver:
-    """Encapsulates the recursive Hanoi solving logic with pause/stop."""
-    def __init__(self, move_callback: Callable[[MoveType], None]):
-        self._stop_request = threading.Event()
-        self._paused = threading.Event() # True when paused, clear to resume
-        self._move_callback = move_callback
+    """Encapsulates the async recursive Hanoi solving logic."""
 
-    def pause(self):
-        """Signals the solver to pause."""
-        self._paused.set()
-        sidekick.logger.info("Solver pause requested.")
-
-    def resume(self):
-        """Signals the solver to resume."""
-        self._paused.clear()
-        sidekick.logger.info("Solver resume requested.")
+    def __init__(self):
+        self._stop_requested = False
 
     def stop(self):
-        """Signals the solver to stop."""
-        self._stop_request.set()
-        self._paused.clear() # Ensure it's not stuck waiting if stopped while paused
-        sidekick.logger.info("Solver stop requested.")
+        self._stop_requested = True
 
-    @property
-    def is_stop_requested(self):
-        return self._stop_request.is_set()
-
-    @property
-    def is_paused(self):
-        return self._paused.is_set()
-
-    def wait_if_paused(self):
-         """Blocks if paused, checking stop signal periodically."""
-         if self._paused.is_set():
-             sidekick.logger.debug(f"Solver paused, waiting...")
-             while self._paused.is_set():
-                 if self._stop_request.is_set():
-                      sidekick.logger.debug("Solver stopping while paused.")
-                      return True # Indicate stopped
-                 time.sleep(0.1)
-             sidekick.logger.debug(f"Solver resumed.")
-             # Check stop again immediately after resuming
-             if self._stop_request.is_set():
-                  sidekick.logger.debug("Solver stopping after resuming.")
-                  return True # Indicate stopped
-         return False # Indicate not stopped
-
-    def solve(self, n: int, source: int, destination: int, auxiliary: int):
-        """Starts the recursive solving process."""
-        sidekick.logger.info(f"Solver starting: n={n}, src={source}, dest={destination}, aux={auxiliary}")
-        self._stop_request.clear()
-        self._paused.clear()
-        try:
-            for move in self._hanoi_recursive(n, source, destination, auxiliary):
-                # Check stop signal *before* calling the callback
-                if self.is_stop_requested:
-                    sidekick.logger.info("Solver stopping during iteration.")
-                    break
-
-                # Callback handles the move, delay, AND pause waiting
-                self._move_callback(move)
-
-                # Check stop signal *after* the callback returns
-                if self.is_stop_requested:
-                    sidekick.logger.info("Solver stopping after move callback returned.")
-                    break
-
-        except Exception as e:
-             sidekick.logger.exception("Error during Hanoi solve recursion")
-             self._stop_request.set() # Ensure stop on error
-        finally:
-             sidekick.logger.info("Solver finished or stopped.")
-             self._stop_request.set()
-             self._paused.clear() # Ensure not left paused on exit
-
-    def _hanoi_recursive(self, n: int, source: int, destination: int, auxiliary: int) -> Iterator[MoveType]:
-        """Recursive generator yielding moves (from, to, disk_n)."""
-        if self.is_stop_requested: return
-        stopped_while_paused = self.wait_if_paused()
-        if stopped_while_paused or self.is_stop_requested: return
-
+    async def solve_generator(self, n: int, source: int, dest: int, aux: int) -> AsyncIterator[MoveType]:
+        """Async generator that yields moves for the Tower of Hanoi problem."""
+        if self._stop_requested: return
         if n > 0:
-            # Move n-1 disks from source to auxiliary
-            yield from self._hanoi_recursive(n - 1, source, auxiliary, destination)
-            if self.is_stop_requested: return
+            async for move in self.solve_generator(n - 1, source, aux, dest):
+                if self._stop_requested: return
+                yield move
 
-            # Check pause/stop again before yielding the actual move
-            stopped_while_paused = self.wait_if_paused()
-            if stopped_while_paused or self.is_stop_requested: return
+            if self._stop_requested: return
+            yield (source, dest, n)
 
-            # Yield the move for the nth disk
-            yield (source, destination, n) # Disk number is n here
-            if self.is_stop_requested: return # Check immediately after yielding
+            async for move in self.solve_generator(n - 1, aux, dest, source):
+                if self._stop_requested: return
+                yield move
 
-            # Move n-1 disks from auxiliary to destination
-            yield from self._hanoi_recursive(n - 1, auxiliary, destination, source)
-            if self.is_stop_requested: return
 
 # ==================================
 # Class 3: Controller (Orchestrator)
 # ==================================
 class HanoiController:
-    """Manages game state, threads, and communication between Solver and Visualizer."""
+    """Manages game state and communication between Solver and Visualizer, asynchronously."""
+
     def __init__(self):
         self.visualizer = HanoiVisualizer()
-        # Pass the method reference for the callback
-        self.solver = HanoiSolver(move_callback=self._handle_solver_move)
+        self.solver = HanoiSolver()
         self.num_disks = DEFAULT_NUM_DISKS
         self.pegs: List[List[int]] = []
         self.solve_state = SolveState.IDLE
-        self._solve_thread: Optional[threading.Thread] = None
-        # Lock for safely modifying pegs state from different threads
-        self._state_lock = threading.Lock()
+        self._solve_task: Optional[asyncio.Task] = None
 
     def setup(self):
         """Initial setup of UI and game."""
-        try:
-            self.visualizer.setup_sidekick_ui(
-                input_handler=self.handle_control_input,
-                click_handler=self.handle_control_click
-            )
-            self.initialize_game(self.num_disks)
-        except sidekick.SidekickConnectionError as e:
-             print(f"\nConnection Error during setup: {e}", file=sys.stderr)
-             raise # Propagate connection error to main loop
-        except Exception as e:
-             sidekick.logger.exception("Error during controller setup")
-             print(f"\nError during setup: {e}", file=sys.stderr)
-             # Might want to exit or handle differently
-             raise
-
+        self.visualizer.setup_sidekick_ui(self.handle_input, self.handle_click)
+        self.initialize_game(self.num_disks)
 
     def initialize_game(self, num_disks: int):
-        """Resets game state and visuals."""
         self.visualizer.update_status(f"Initializing for {num_disks} disks...")
-        self.stop_solver_thread() # Ensure any previous solve is stopped cleanly
+        self.stop_solve()  # Ensure any previous solve is stopped cleanly
 
-        # Double-check that solver thread is actually stopped before proceeding
-        if self._solve_thread and self._solve_thread.is_alive():
-            self.visualizer.update_status("Cannot initialize while solver is running. Try again later.")
-            return
+        if num_disks > MAX_DISKS_FOR_LAYOUT:
+            self.num_disks = MAX_DISKS_FOR_LAYOUT
+            self.visualizer.update_status(f"Using max {self.num_disks} disks.")
+        else:
+            self.num_disks = num_disks
 
-        try:
-            # Determine actual number of disks respecting MAX limit
-            if num_disks > MAX_DISKS_FOR_LAYOUT:
-                 self.num_disks = MAX_DISKS_FOR_LAYOUT
-                 self.visualizer.update_status(f"Using max {self.num_disks} disks.")
-            elif num_disks <= 0:
-                 self.visualizer.update_status("Number of disks must be positive.")
-                 return # Don't proceed with invalid disk count
-            else:
-                 self.num_disks = num_disks
+        self.visualizer.calculate_and_init_grid(self.num_disks)
 
-            # Calculate layout and recreate grid via visualizer
-            self.visualizer.calculate_and_init_grid(self.num_disks)
+        self.pegs = [[] for _ in range(3)]
+        for i in range(self.num_disks, 0, -1): self.pegs[0].append(i)
 
-        except RuntimeError as e: # Catch grid creation error
-             self.visualizer.update_status(f"Initialization failed: {e}")
-             return
-        except Exception as e:
-             self.visualizer.update_status(f"Layout/Init Error: {e}")
-             sidekick.logger.exception("Error initializing game layout/grid")
-             return
-
-        # Initialize peg state
-        with self._state_lock:
-            self.pegs = [[] for _ in range(3)]
-            for i in range(self.num_disks, 0, -1):
-                self.pegs[0].append(i)
-
-        # Initial Draw
         self.visualizer.draw_pegs_and_base()
         self.visualizer.draw_all_disks(self.pegs)
-        self.set_state(SolveState.IDLE) # Reset state machine
+        self.set_state(SolveState.IDLE)  # This will now correctly set button to "Start"
         self.visualizer.update_status(f"Ready with {self.num_disks} disks.")
 
     def set_state(self, new_state: SolveState):
-        """Updates the controller state and the button text."""
-        if self.solve_state == new_state: return # Avoid redundant updates
+        if self.solve_state == new_state: return
         self.solve_state = new_state
         sidekick.logger.info(f"Controller state changed to: {new_state.name}")
-        button_text = "Start"
-        if new_state == SolveState.RUNNING: button_text = "Pause"
-        elif new_state == SolveState.PAUSED: button_text = "Resume"
-        elif new_state == SolveState.FINISHED: button_text = "Start" # Ready for new game
+
+        button_text = "Start"  # Default text
+        if new_state == SolveState.IDLE:
+            button_text = "Start"
+        elif new_state == SolveState.RUNNING:
+            button_text = "Pause"
+        elif new_state == SolveState.PAUSED:
+            button_text = "Resume"
+        elif new_state in [SolveState.FINISHED, SolveState.STOPPED]:
+            button_text = "Restart"
+
+        self.visualizer.update_button_text(button_text)
+
+    def handle_click(self, event: sidekick.ButtonClickEvent):
+        """Handles button clicks: Start/Pause/Resume/Restart."""
+        if self.solve_state in [SolveState.IDLE, SolveState.FINISHED, SolveState.STOPPED]:
+            self.start_solve()
+        elif self.solve_state == SolveState.RUNNING:
+            self.pause_solve()
+        elif self.solve_state == SolveState.PAUSED:
+            self.resume_solve()
+
+    def handle_input(self, event: sidekick.TextboxSubmitEvent):
+        """Handles disk number input and resets the game."""
         try:
-            self.visualizer.update_button_text("start_pause", button_text)
-        except sidekick.SidekickConnectionError as e:
-            sidekick.logger.error(f"Connection error updating button text: {e}")
-            # Handle connection loss gracefully if needed
-
-
-    def handle_control_click(self, control_id: str):
-        """Handles button clicks: Start/Pause/Resume."""
-        if control_id == "start_pause":
-            if self.solve_state == SolveState.IDLE or self.solve_state == SolveState.FINISHED:
-                self.start_solve()
-            elif self.solve_state == SolveState.RUNNING:
-                self.pause_solve()
-            elif self.solve_state == SolveState.PAUSED:
-                self.resume_solve()
-
-    def handle_control_input(self, event: sidekick.TextboxSubmitEvent):
-        """Handles disk number input and reset."""
-        try:
-            # Validate input first before attempting to stop the solver
             num_disks_input = int(event.value)
             if num_disks_input <= 0:
                 self.visualizer.update_status("Number of disks must be positive.")
                 return
-
-            # Attempt to stop cleanly before re-initializing
-            # stop_solver_thread() will update state to IDLE if it stops something
-            current_state_before_stop = self.solve_state
-            self.stop_solver_thread()
-
-            # If stopping failed, ensure user is notified and don't proceed
-            if self._solve_thread and self._solve_thread.is_alive():
-                self.visualizer.update_status("Failed to stop previous solve. Cannot reset. Try again later.")
-                return
-
-            # Ensure state is IDLE before initialization
-            if current_state_before_stop != SolveState.IDLE:
-                self.set_state(SolveState.IDLE) # Explicitly set IDLE after stop
-
-            # Now safe to initialize the game with new disk count
-            self.initialize_game(num_disks_input) # Handles validation inside
+            self.initialize_game(num_disks_input)
         except ValueError:
             self.visualizer.update_status(f"Invalid input: '{event.value}'. Please enter a number.")
-        except Exception as e:
-            self.visualizer.update_status(f"Error setting disks: {e}")
-            sidekick.logger.exception("Error handling disk input")
 
     def start_solve(self):
-        """Starts a new solve process in a thread."""
-        if self.solve_state not in [SolveState.IDLE, SolveState.FINISHED]:
-            sidekick.logger.warning(f"Cannot start solve, state is {self.solve_state.name}.")
-            return
-        if not self.visualizer.grid or self.num_disks == 0:
-             self.visualizer.update_status("Please initialize with disks first.")
-             return
-
-        self.stop_solver_thread() # Ensure no old thread lingers
-
-        self.visualizer.update_status(f"--- Solving for {self.num_disks} disks START ---")
+        if self.solve_state not in [SolveState.IDLE, SolveState.FINISHED, SolveState.STOPPED]: return
+        self.initialize_game(self.num_disks)  # Reset board before starting
         self.set_state(SolveState.RUNNING)
+        self.visualizer.update_status(f"--- Solving for {self.num_disks} disks START ---")
 
-        def solve_thread_target():
-            try:
-                self.solver.solve(self.num_disks, 0, 2, 1)
-            except Exception as e:
-                sidekick.logger.exception("Exception escaped from solver thread target")
-                # Ensure state reflects the issue
-                self.set_state(SolveState.IDLE) # Or an ERROR state if defined
-                self.visualizer.update_status(f"--- Solver Error: {e} ---")
-                return # Exit thread on error
+        # We run the solving logic in a dedicated coroutine
+        self._solve_task = sidekick.submit_task(self._run_solve_loop())
 
-            # Check if stopped externally vs finished naturally
-            final_state = SolveState.FINISHED if not self.solver.is_stop_requested else SolveState.IDLE
-            self.set_state(final_state)
-            if final_state == SolveState.FINISHED:
+    async def _run_solve_loop(self):
+        """The main async loop that gets moves and animates them."""
+        self.solver = HanoiSolver()  # Create a fresh solver instance
+        try:
+            # The async generator yields one move at a time
+            async for from_peg, to_peg, disk_size in self.solver.solve_generator(self.num_disks, 0, 2, 1):
+                if self.solve_state == SolveState.PAUSED:
+                    # If paused, wait until state changes
+                    await self.wait_for_resume()
+
+                if self.solve_state == SolveState.STOPPED:
+                    break
+
+                # Animate the move
+                self.animate_move(from_peg, to_peg, disk_size)
+
+                # Wait for the next frame
+                await asyncio.sleep(MOVE_DELAY)
+
+            # Check if the loop finished naturally or was stopped
+            if self.solve_state != SolveState.STOPPED:
                 self.visualizer.update_status("--- Solve Complete! ---")
-            else:
-                self.visualizer.update_status("--- Solve Stopped/Reset ---")
+                self.set_state(SolveState.FINISHED)
 
+        except asyncio.CancelledError:
+            sidekick.logger.info("Solve loop task was cancelled.")
+            # The state should already be STOPPED from the stop_solve method
+        except Exception as e:
+            self.visualizer.update_status(f"--- Solver Error: {e} ---")
+            sidekick.logger.exception("Error in solve loop")
+            self.set_state(SolveState.IDLE)
 
-        self._solve_thread = threading.Thread(target=solve_thread_target, daemon=True)
-        self._solve_thread.start()
+    def animate_move(self, from_peg: int, to_peg: int, disk_size: int):
+        """Applies a single move to the state and visualizer."""
+        # Update internal state
+        from_peg_index = len(self.pegs[from_peg]) - 1
+        popped_disk = self.pegs[from_peg].pop()
+        to_peg_index = len(self.pegs[to_peg])
+        self.pegs[to_peg].append(popped_disk)
+
+        # Update visuals
+        self.visualizer.update_status(f"Move disk {disk_size} from {from_peg + 1} to {to_peg + 1}")
+        self.visualizer.clear_disk(disk_size, from_peg, from_peg_index)
+        self.visualizer.draw_disk(disk_size, to_peg, to_peg_index)
 
     def pause_solve(self):
-        """Signals the solver thread to pause."""
-        if self.solve_state != SolveState.RUNNING or not self._solve_thread or not self._solve_thread.is_alive():
-             sidekick.logger.warning("Cannot pause, not running.")
-             return
-        self.solver.pause()
+        if self.solve_state != SolveState.RUNNING: return
         self.set_state(SolveState.PAUSED)
         self.visualizer.update_status("Paused.")
 
     def resume_solve(self):
-        """Signals the solver thread to resume."""
-        if self.solve_state != SolveState.PAUSED:
-             sidekick.logger.warning("Cannot resume, not paused.")
-             return
-        self.solver.resume()
+        if self.solve_state != SolveState.PAUSED: return
         self.set_state(SolveState.RUNNING)
         self.visualizer.update_status("Resumed.")
 
-    def stop_solver_thread(self):
-        """Requests the solver thread to stop and waits briefly."""
-        if self._solve_thread and self._solve_thread.is_alive():
-            sidekick.logger.info("Requesting solver thread stop...")
-            self.solver.stop() # Signal the solver first
-            self._solve_thread.join(timeout=0.2) # Slightly longer wait
-            if self._solve_thread.is_alive():
-                 sidekick.logger.warning("Solver thread did not stop quickly.")
-                 # Consider stronger interrupt if needed, but risky
-            else:
-                 sidekick.logger.info("Solver thread stopped.")
-                 self._solve_thread = None  # Only set to None if thread actually stopped
-        elif self._solve_thread and not self._solve_thread.is_alive():
-            # Thread exists but is not alive, safe to set to None
-            self._solve_thread = None
-        # If stopping actively running/paused solve, reset state to IDLE
-        if self.solve_state not in [SolveState.IDLE, SolveState.FINISHED]:
-             self.set_state(SolveState.IDLE)
+    def stop_solve(self):
+        """Requests the async solver task to stop."""
+        task_was_running = self._solve_task and not self._solve_task.done()
+        if task_was_running:
+            sidekick.logger.info("Requesting solver task stop...")
+            self.solver.stop()  # Signal the generator to stop yielding
+            self._solve_task.cancel()
+            self.visualizer.update_status("--- Solve Stopped/Reset ---")
+            self.set_state(SolveState.STOPPED)
+        self._solve_task = None
 
-    def _handle_solver_move(self, move: MoveType):
-        """Callback executed by Solver thread when a move should occur."""
-        # Check stop signal early
-        if self.solver.is_stop_requested: return
-
-        from_peg, to_peg, disk_size = move
-        popped_disk = -1
-        from_peg_index = -1
-        to_peg_index = -1
-
-        try:
-            # Update internal state (Protected)
-            with self._state_lock:
-                if not self.pegs[from_peg]:
-                    raise ValueError(f"Solver requested move from empty peg {from_peg}")
-                from_peg_index = len(self.pegs[from_peg]) - 1
-                popped_disk = self.pegs[from_peg].pop()
-
-                if popped_disk != disk_size:
-                    self.pegs[from_peg].append(popped_disk) # Put back
-                    raise ValueError(f"Solver yielded disk {disk_size} but found {popped_disk} on peg {from_peg}")
-
-                to_peg_index = len(self.pegs[to_peg])
-                self.pegs[to_peg].append(popped_disk)
-
-            # Check stop signal after state change, before UI/delay
-            if self.solver.is_stop_requested: return
-
-            # --- Visual Updates ---
-            # Use try-except around UI calls to prevent UI errors from stopping solver logic
-            try:
-                self.visualizer.update_status(f"Move disk {disk_size} from {from_peg+1} to {to_peg+1}")
-                self.visualizer.clear_disk(disk_size, from_peg, from_peg_index)
-                self.visualizer.draw_disk(disk_size, to_peg, to_peg_index)
-            except sidekick.SidekickConnectionError as e_vis:
-                sidekick.logger.error(f"Connection error during visualization: {e_vis}")
-                self.solver.stop() # Stop solver if UI connection lost
-                return # Don't proceed with delay if UI failed
-            except Exception as e_vis:
-                sidekick.logger.exception(f"Error during visualization update for move {move}")
-                # Optionally stop solver on vis error, or just log and continue? Stopping is safer.
-                self.solver.stop()
-                return
-
-            # --- Pause Check Location (before delay) ---
-            stopped_while_paused = self.solver.wait_if_paused()
-            if stopped_while_paused or self.solver.is_stop_requested:
-                 sidekick.logger.info("Move handler stopping (during/after pause check).")
-                 return # Exit handler if stopped/paused
-
-            # --- Delay ---
-            # Check stop signal *again* right before sleeping
-            if self.solver.is_stop_requested:
-                 sidekick.logger.info("Move handler stopping before delay.")
-                 return
-
-            time.sleep(MOVE_DELAY)
-
-        except Exception as e:
-             sidekick.logger.exception(f"Error handling solver move {move}")
-             self.visualizer.update_status(f"Error processing move: {e}")
-             self.solver.stop() # Signal solver to stop on error
+    async def wait_for_resume(self):
+        """Asynchronously waits until the state is no longer PAUSED."""
+        while self.solve_state == SolveState.PAUSED:
+            if self.solver._stop_requested: break
+            await asyncio.sleep(0.1)  # Check every 100ms without blocking
 
 
 # --- Main Execution ---
@@ -600,4 +330,3 @@ if __name__ == "__main__":
     controller = HanoiController()
     controller.setup()
     sidekick.run_forever()
-    controller.stop_solver_thread()
