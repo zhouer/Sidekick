@@ -31,9 +31,11 @@ Welcome to the Sidekick Python Library! This guide will walk you through everyth
 *   [Chapter 5: Advanced Features](#chapter-5-advanced-features)
     *   [5.1 Reactive `Viz` with `ObservableValue`](#51-reactive-viz-with-observablevalue)
     *   [5.2 `Canvas` Double Buffering for Smooth Animations](#52-canvas-double-buffering-for-smooth-animations)
-    *   [5.3 Asynchronous Programming with Sidekick](#53-asynchronous-programming-with-sidekick)
-    *   [5.4 Custom Connection (`sidekick.set_url`)](#54-custom-connection-sidekickset_url)
-    *   [5.5 Clearing the UI](#55-clearing-the-ui)
+    *   [5.3 `sidekick.submit_task()` for Background Coroutines](#53-sidekicksubmit_task-for-background-coroutines)
+    *   [5.4 `sidekick.submit_interval()` for Periodic Tasks & Animations](#54-sidekicksubmit_interval-for-periodic-tasks--animations)
+    *   [5.5 `await sidekick.run_forever_async()` for Pyodide](#55-await-sidekickrun_forever_async-for-pyodide)
+    *   [5.6 Custom Connection (`sidekick.set_url`)](#56-custom-connection-sidekickset_url)
+    *   [5.7 Clearing the UI](#57-clearing-the-ui)
 *   [Chapter 6: Sidekick Python API Reference](#chapter-6-sidekick-python-api-reference)
     *   [6.1 Global Functions](#61-global-functions)
     *   [6.2 Component Base Class (`sidekick.Component`)](#62-component-base-class-sidekickcomponent)
@@ -778,71 +780,111 @@ Sidekick's `Canvas` provides a `buffer()` context manager:
 1.  All drawing commands within the `with canvas.buffer() as buf:` block are performed on a hidden, off-screen buffer.
 2.  When the `with` block exits, the entire content of this hidden buffer is drawn to the visible canvas at once.
 
-This results in smoother, flicker-free graphics.
+This results in smoother, flicker-free graphics. For animations, the recommended approach is to use `sidekick.submit_interval()` to repeatedly call a function that draws a single frame.
 
 ```python
 import sidekick
-import time
 import math
 
 canvas = sidekick.Canvas(200, 200)
-x, y = 100, 100
 radius = 20
 angle = 0
 
-try:
-    while True:
-        with canvas.buffer() as frame: # Use the buffer context manager
-            frame.clear() # Clear the off-screen buffer
+# This function will be called repeatedly to draw each animation frame.
+def render_frame():
+    global angle
+    # Use the buffer context manager for smooth, flicker-free drawing.
+    with canvas.buffer() as frame:
+        frame.draw_rect(0, 0, 200, 200, fill_color="white")
 
-            # Calculate new ball position for a simple circular motion
-            ball_x = 100 + 50 * math.cos(angle)
-            ball_y = 100 + 50 * math.sin(angle)
-            frame.draw_circle(int(ball_x), int(ball_y), radius, fill_color="blue")
+        # Calculate new ball position for a simple circular motion
+        ball_x = 100 + 50 * math.cos(angle)
+        ball_y = 100 + 50 * math.sin(angle)
+        frame.draw_circle(int(ball_x), int(ball_y), radius, fill_color="blue")
 
-            angle += 0.1 # Increment angle for next frame
+        angle += 0.1  # Increment angle for next frame
 
-        # When the 'with' block exits, 'frame' is drawn to the visible canvas.
-        time.sleep(0.05) # Control animation speed
-except KeyboardInterrupt:
-    print("Animation stopped.")
-finally:
-    sidekick.shutdown() # Ensure clean shutdown of Sidekick connection
+# Schedule render_frame to be called approximately 20 times per second.
+sidekick.submit_interval(render_frame, 1/20)
+
+# Keep the script running so the interval task can execute.
+sidekick.run_forever()
 ```
 
-### 5.3 Asynchronous Programming with Sidekick
+### 5.3 `sidekick.submit_task()` for Background Coroutines
 
-While Sidekick's API is primarily synchronous for ease of use in CPython, it also supports asynchronous operations, which is especially relevant when running in Pyodide (in a browser Web Worker).
+If you need to run a background asynchronous task (a coroutine) that runs concurrently with Sidekick's operations and your main script logic, you can use `sidekick.submit_task()`. This is useful for tasks that involve `await asyncio.sleep()` or other asynchronous I/O operations without blocking the entire Sidekick service.
 
-*   **`sidekick.run_forever_async()`:**
-    If you are writing an `async def` main function or running in Pyodide, use `await sidekick.run_forever_async()` instead of `sidekick.run_forever()`. It will ensure the connection is active before waiting for the shutdown signal.
+```python
+import sidekick
+import asyncio
 
-*   **`sidekick.submit_task(coroutine)`:**
-    You can submit your own custom coroutines to Sidekick's managed event loop. This is useful if you have background async tasks that need to run alongside Sidekick's communication.
+console = sidekick.Console()
 
-    ```python
-    import sidekick
-    import asyncio
+async def my_background_task():
+    console.print("Background task started.")
+    for i in range(3):
+        await asyncio.sleep(2) # Non-blocking sleep
+        console.print(f"Background task reporting: Tick {i+1}")
+    console.print("Background task finished.")
 
+# Submit the coroutine to Sidekick's managed event loop.
+sidekick.submit_task(my_background_task())
+
+console.print("Main script continues to run while background task executes.")
+sidekick.run_forever()
+```
+
+### 5.4 `sidekick.submit_interval()` for Periodic Tasks & Animations
+
+For tasks that need to run repeatedly at a regular interval, such as animations or periodic status checks, `sidekick.submit_interval(callback, interval)` is the perfect tool. It's a convenient wrapper around `submit_task` that handles the timing loop for you.
+
+*   `callback`: The function (or coroutine) to call at each interval.
+*   `interval`: The time in seconds between calls. For 60 FPS animation, use `1/60`.
+
+This is the recommended way to create animations, as shown in the updated Canvas double buffering example.
+
+```python
+import sidekick
+import datetime
+
+clock_label = sidekick.Label("Waiting for time...")
+
+def update_time():
+    # This is a regular (synchronous) function
+    now = datetime.datetime.now()
+    clock_label.text = now.strftime("%H:%M:%S")
+
+# Schedule update_time to be called every 1 second.
+sidekick.submit_interval(update_time, 1.0)
+
+sidekick.run_forever()
+```
+
+### 5.5 `await sidekick.run_forever_async()` for Pyodide
+
+If you are running your code in Pyodide (which operates on a browser's event loop), you must use the asynchronous version of `run_forever`.
+
+Instead of `sidekick.run_forever()`, you `await sidekick.run_forever_async()`. This correctly integrates with the existing event loop, ensuring the connection is active and then waiting for a shutdown signal without blocking.
+
+```python
+import sidekick
+import asyncio
+
+async def main():
+    # This is an async main function
     console = sidekick.Console()
+    console.print("Async script started.")
 
-    async def my_background_task():
-        for i in range(5):
-            await asyncio.sleep(2)
-            console.print(f"Background task reporting: Tick {i+1}")
-        console.print("Background task finished.")
-        # Example: if background task completion should end the program
-        # sidekick.shutdown()
+    # You can use async features like asyncio.sleep
+    await asyncio.sleep(1)
+    console.print("Async script continues after sleep.")
 
-    # Submit the task
-    sidekick.submit_task(my_background_task())
-    console.print("Main script continues while background task runs...")
+sidekick.submit_task(main())
+await sidekick.run_forever_async()
+```
 
-    # Use run_forever() or await run_forever_async() depending on context
-    sidekick.run_forever()
-    ```
-
-### 5.4 Custom Connection (`sidekick.set_url`)
+### 5.6 Custom Connection (`sidekick.set_url`)
 
 By default, `sidekick-py` tries to connect to a local Sidekick server (usually the VS Code extension on `ws://localhost:5163`) and then falls back to a cloud relay if configured.
 If you need to connect to a specific Sidekick server (e.g., a custom deployment or a different cloud instance), you can use `sidekick.set_url("your_websocket_url")`.
@@ -861,7 +903,7 @@ my_label = sidekick.Label("Connecting to custom server...")
 sidekick.run_forever()
 ```
 
-### 5.5 Clearing the UI
+### 5.7 Clearing the UI
 
 *   **`component.remove()`:** Removes a specific component instance from the Sidekick UI and cleans up its resources on the Python side.
     ```python
@@ -905,6 +947,7 @@ These functions are available directly under the `sidekick` module (e.g., `sidek
 *   `run_forever_async()`: (Pyodide/async) Asynchronously ensures connection is active, then keeps the Sidekick connection alive. `await` this function.
 *   `shutdown()`: Gracefully closes the connection to Sidekick and signals `run_forever` or `run_forever_async` to terminate.
 *   `submit_task(coro: Coroutine)`: Submits a user-defined coroutine to Sidekick's managed asyncio event loop. Returns an `asyncio.Task`.
+*   `submit_interval(callback: Callable, interval: float)`: Submits a function or coroutine to be called repeatedly at a specified interval. Returns an `asyncio.Task` representing the interval runner.
 
 ### 6.2 Component Base Class (`sidekick.Component`)
 
@@ -1025,7 +1068,7 @@ Located in `sidekick.exceptions`.
         *   If trying to connect to a remote/cloud server, check the URL and network connectivity.
 
 *   **Q: My animation on the `Canvas` is flickering.**
-    *   **A:** Use the `canvas.buffer()` context manager for double buffering. Draw all elements of a single animation frame within the `with canvas.buffer() as frame_buffer:` block.
+    *   **A:** Use the `canvas.buffer()` context manager for double buffering. Draw all elements of a single animation frame within the `with canvas.buffer() as frame_buffer:` block. Also, prefer using `sidekick.submit_interval()` to drive your animation loop instead of a manual `while/sleep` loop.
 
 ### 7.2 Getting More Help
 
