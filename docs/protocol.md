@@ -2,7 +2,7 @@
 
 ## 1. Introduction
 
-This document specifies the **definitive communication protocol** used within the Sidekick ecosystem.
+This document specifies the communication protocol used within the Sidekick ecosystem.
 It defines the structure and meaning of messages exchanged between the **Hero** (user's script/library, e.g., `sidekick-py`) and the **Sidekick Frontend UI** (typically a React application running in a VS Code Webview or as a standalone web page), relayed via the **Sidekick Server** component (usually running within the VS Code Extension) or handled directly in a client-side Python environment like Pyodide.
 
 Adherence to this protocol is **crucial** for interoperability between all components. Implementers of Hero libraries or Sidekick UI components **must** strictly follow this specification.

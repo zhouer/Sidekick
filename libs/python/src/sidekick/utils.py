@@ -33,7 +33,7 @@ def generate_unique_id(prefix: str) -> str:
     Note:
         This is intended for internal library use. You should not rely on the
         specific format of these generated IDs in your code, as it could change.
-        Always use the `target_id` attribute of a component instance if you need
+        Always use the `instance_id` attribute of a component instance if you need
         to reference its ID.
 
     Args:
