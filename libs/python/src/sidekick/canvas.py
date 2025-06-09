@@ -933,18 +933,3 @@ class Canvas(Component):
 
         # Call the base class's remove() method to handle the removal of the main canvas component.
         super().remove()
-
-    def __del__(self):
-        """Internal: Fallback cleanup attempt.
-
-        It's best to explicitly call `canvas.remove()` when done.
-        This `__del__` is a fallback, attempting to clean up if `remove()` wasn't called.
-        """
-        try:
-            # Call super().__del__() first if it exists and does something (e.g., Component's __del__)
-            # However, Component's __del__ already handles unregistering.
-            # The main concern for Canvas.__del__ would be its specific resources like buffers,
-            # but sending commands in __del__ is risky. The remove() method is preferred.
-            super().__del__() # Let Component handle its part of __del__
-        except Exception:
-            pass # Suppress errors in __del__
