@@ -3,12 +3,12 @@ import { MarkdownState, MarkdownSpawnPayload, MarkdownUpdatePayload } from './ty
 import { ChangeParentUpdate } from '../../types';
 
 export function getInitialState(instanceId: string, payload: MarkdownSpawnPayload): MarkdownState {
-    if (typeof payload.initialSource !== 'string') {
-        console.error(`MarkdownLogic ${instanceId}: Spawn failed - 'initialSource' must be a string.`);
-        throw new Error(`Markdown spawn failed for ${instanceId}: 'initialSource' is required and must be a string.`);
+    if (typeof payload.text !== 'string') {
+        console.error(`MarkdownLogic ${instanceId}: Spawn failed - 'text' must be a string.`);
+        throw new Error(`Markdown spawn failed for ${instanceId}: 'text' is required and must be a string.`);
     }
     return {
-        source: payload.initialSource,
+        text: payload.text,
     };
 }
 
@@ -23,9 +23,9 @@ export function updateState(
 
     const specificPayload = payload as MarkdownUpdatePayload;
     switch (specificPayload.action) {
-        case 'setSource':
-            if (typeof specificPayload.options?.source === 'string' && specificPayload.options.source !== currentState.source) {
-                return { ...currentState, source: specificPayload.options.source };
+        case 'setText':
+            if (typeof specificPayload.options?.text === 'string' && specificPayload.options.text !== currentState.text) {
+                return { ...currentState, text: specificPayload.options.text };
             }
             return currentState; // No change if source is same or invalid
         default:

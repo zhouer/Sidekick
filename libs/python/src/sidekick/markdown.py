@@ -20,22 +20,22 @@ from typing import Optional, Dict, Any, Union, Callable, Coroutine
 class Markdown(Component):
     """Represents a component that renders Markdown formatted text in the Sidekick UI.
 
-    Creates an area where Markdown source text is rendered as formatted content.
+    Creates an area where Markdown text is rendered as formatted content.
     You can set the initial Markdown string when creating the component and
-    update the displayed content later by setting the `markdown.source` property
+    update the displayed content later by setting the `markdown.text` property
     with a new Markdown string.
 
     Example:
         `md_display = sidekick.Markdown("# Title\\nSome *italic* text.", instance_id="doc-viewer")`
-        `md_display.source += "\\n- A list item"`
+        `md_display.text += "\\n- A list item"`
 
     Attributes:
         instance_id (str): The unique identifier for this Markdown instance.
-        source (str): The current Markdown source string being rendered.
+        text (str): The current Markdown text string being rendered.
     """
     def __init__(
         self,
-        source: str = "",
+        text: str = "",
         instance_id: Optional[str] = None,
         parent: Optional[Union['Component', str]] = None,
         on_error: Optional[Callable[[ErrorEvent], Union[None, Coroutine[Any, Any, None]]]] = None,
@@ -49,7 +49,7 @@ class Markdown(Component):
         rendering Markdown content.
 
         Args:
-            source (str): The initial Markdown source string to render.
+            text (str): The initial Markdown text to render.
             instance_id (Optional[str]): An optional, user-defined unique identifier
                 for this Markdown component. If `None`, an ID will be auto-generated.
                 Must be unique if provided.
@@ -68,12 +68,12 @@ class Markdown(Component):
             TypeError: If `parent` is an invalid type, or if `on_error` is
                 provided but is not a callable function.
         """
-        # Ensure initial source is a string.
-        self._source = str(source)
+        # Ensure initial text is a string.
+        self._text = str(text)
 
         # Prepare the payload for the 'spawn' command.
         spawn_payload: Dict[str, Any] = {
-            "initialSource": self._source # Protocol uses 'initialSource'
+            "text": self._text
         }
 
         super().__init__(
@@ -83,38 +83,32 @@ class Markdown(Component):
             parent=parent,
             on_error=on_error
         )
-        logger.info(
-            f"Markdown '{self.instance_id}' initialized with initial source " # Use self.instance_id
-            f"length {len(self._source)}."
-        )
+        logger.info(f"Markdown '{self.instance_id}' initialized with text '{self._text}'.") # Use self.instance_id
 
     @property
-    def source(self) -> str:
-        """str: The current Markdown source string being rendered.
+    def text(self) -> str:
+        """str: The current Markdown text being rendered.
 
         Setting this property updates the rendered content in the Sidekick UI
         by providing a new Markdown string. For example:
-        `my_markdown.source = "### New Section\\nDetails here."`
+        `my_markdown.text = "### New Section\\nDetails here."`
         """
-        return self._source
+        return self._text
 
-    @source.setter
-    def source(self, new_md_source: str):
-        """Sets the Markdown source string to be rendered."""
-        new_src_str = str(new_md_source) # Ensure it's a string
+    @text.setter
+    def text(self, new_text: str):
+        """Sets the Markdown text to be rendered."""
+        new_text_str = str(new_text) # Ensure it's a string
         # Update local state first
-        self._source = new_src_str
-        # Prepare payload for the 'setSource' update action.
+        self._text = new_text_str
+        # Prepare payload for the 'setText' update action.
         payload = {
-            "action": "setSource",
-            "options": {"source": new_src_str}
+            "action": "setText",
+            "options": {"text": new_text_str}
         }
         # Send the update command to the UI.
         self._send_update(payload)
-        logger.debug(
-            f"Markdown '{self.instance_id}' source updated " # Use self.instance_id
-            f"(new length: {len(new_src_str)})."
-        )
+        logger.debug(f"Markdown '{self.instance_id}' text set to '{new_text_str}'.") # Use self.instance_id
 
     # Markdown components are typically non-interactive from the Python script's
     # perspective (e.g., clicks on rendered links are handled by the browser/webview).

@@ -200,7 +200,7 @@ sidekick.run_forever()
 
 Displays text output, similar to a standard terminal, and optionally provides a field for user text input.
 
-*   **Constructor:** `Console(initial_text: str = "", show_input: bool = False, instance_id: Optional[str] = None, parent: Optional[Component] = None, on_submit: Optional[Callable] = None, ...)`
+*   **Constructor:** `Console(text: str = "", show_input: bool = False, instance_id: Optional[str] = None, parent: Optional[Component] = None, on_submit: Optional[Callable] = None, ...)`
 *   **Key Methods/Properties:**
     *   `print(*args, sep=' ', end='\n')`: Appends text to the console, similar to Python's built-in print.
     *   `clear()`: Removes all text from the console.
@@ -354,7 +354,7 @@ sidekick.run_forever()
 
 A single-line text input field.
 
-*   **Constructor:** `Textbox(initial_value: str = "", placeholder: str = "", instance_id: Optional[str] = None, parent: Optional[Component] = None, on_submit: Optional[Callable] = None, ...)`
+*   **Constructor:** `Textbox(value: str = "", placeholder: str = "", instance_id: Optional[str] = None, parent: Optional[Component] = None, on_submit: Optional[Callable] = None, ...)`
 *   **Key Methods/Properties:**
     *   `.value`: Get or set the text content.
     *   `.placeholder`: Get or set the placeholder text.
@@ -380,9 +380,9 @@ sidekick.run_forever()
 
 Displays text formatted with Markdown.
 
-*   **Constructor:** `Markdown(source: str = "", instance_id: Optional[str] = None, parent: Optional[Component] = None, ...)`
+*   **Constructor:** `Markdown(text: str = "", instance_id: Optional[str] = None, parent: Optional[Component] = None, ...)`
 *   **Key Methods/Properties:**
-    *   `.source`: Get or set the Markdown source string.
+    *   `.text`: Get or set the Markdown text.
 
 **Example:**
 ```python
@@ -393,16 +393,11 @@ md_content = """
 This is a **Sidekick Markdown** component.
 - Item 1
 - Item 2
-
-```python
-print("Hello from code block!")
-```
-Visit [Sidekick on GitHub](https://github.com/zhouer/Sidekick).
 """
 
 md_display = sidekick.Markdown(md_content)
 # To update:
-# md_display.source = "## New Content\\n*Updated*"
+# md_display.text = "## New Content\\n*Updated*"
 
 # To keep the Markdown content visible after the script finishes its main logic:
 sidekick.run_forever()
@@ -971,7 +966,7 @@ All visual components inherit from `Component`.
     *   Methods: `clear(buffer_id=None)`, `draw_line(...)`, `draw_rect(...)`, `draw_circle(...)`, `draw_polyline(...)`, `draw_polygon(...)`, `draw_ellipse(...)`, `draw_text(...)`, `buffer()`, `on_click(callback)`, `@click` decorator.
     *   `buffer_id` in drawing methods defaults to `Canvas.ONSCREEN_BUFFER_ID` (0). Inside `with canvas.buffer() as buf:`, `buf.draw_line(...)` automatically targets an offscreen buffer.
 
-*   **`sidekick.Console(initial_text="", show_input=False, **kwargs)`**
+*   **`sidekick.Console(text="", show_input=False, **kwargs)`**
     *   Methods: `print(*args, sep=' ', end='\n')`, `clear()`, `on_submit(callback)`, `@submit` decorator.
 
 *   **`sidekick.Grid(num_columns, num_rows, **kwargs)`**
@@ -990,12 +985,12 @@ All visual components inherit from `Component`.
     *   Property: `.text: str` (get/set).
     *   Methods: `on_click(callback)`, `@click` decorator.
 
-*   **`sidekick.Textbox(initial_value="", placeholder="", **kwargs)`**
+*   **`sidekick.Textbox(value="", placeholder="", **kwargs)`**
     *   Properties: `.value: str` (get/set), `.placeholder: str` (get/set).
     *   Methods: `on_submit(callback)`, `@submit` decorator.
 
-*   **`sidekick.Markdown(source="", **kwargs)`**
-    *   Property: `.source: str` (get/set).
+*   **`sidekick.Markdown(text="", **kwargs)`**
+    *   Property: `.text: str` (get/set).
 
 ### 6.5 Layout Components API
 
@@ -1021,7 +1016,7 @@ Located in `sidekick.events`. All inherit from `BaseSidekickEvent`.
 
 ### 6.7 `sidekick.ObservableValue` API
 
-*   **Constructor:** `ObservableValue(initial_value: Any)`
+*   **Constructor:** `ObservableValue(value: Any)`
 *   **Methods:**
     *   `get() -> Any`: Returns the wrapped Python value.
     *   `set(new_value: Any)`: Replaces the wrapped value entirely.

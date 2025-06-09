@@ -3,7 +3,7 @@ import { ChangeParentUpdate } from '../../types';
 
 export function getInitialState(instanceId: string, payload: TextboxSpawnPayload): TextboxState {
     return {
-        currentValue: payload.initialValue || '',
+        currentValue: payload.value || '',
         placeholder: payload.placeholder,
     };
 }

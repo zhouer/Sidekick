@@ -387,7 +387,7 @@ interface ChangeParentUpdatePayload {
     ```typescript
     interface MarkdownSpawnPayload extends BaseSpawnPayload {
       /** Required: The initial Markdown string to be rendered. */
-      initialSource: string;
+      text: string;
     }
     ```
 *   **`update` (Hero -> Sidekick)**
@@ -395,10 +395,10 @@ interface ChangeParentUpdatePayload {
     ```typescript
     type MarkdownUpdatePayload =
       | {
-          action: "setSource";
+          action: "setText";
           options: {
             /** Required: The new Markdown string to render. */
-            source: string;
+            text: string;
           };
         };
     ```
@@ -436,7 +436,7 @@ interface ChangeParentUpdatePayload {
     *   **Payload:** `TextboxSpawnPayload`
     ```typescript
     interface TextboxSpawnPayload extends BaseSpawnPayload {
-      initialValue?: string; // Optional: Initial text in the textbox.
+      value?: string; // Optional: Initial text in the textbox.
       placeholder?: string; // Optional: Placeholder text.
     }
     ```

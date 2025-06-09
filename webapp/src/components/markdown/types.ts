@@ -3,19 +3,19 @@ import { BaseSpawnPayload } from "../../types";
 
 // --- State ---
 export interface MarkdownState {
-    source: string; // The raw Markdown string
+    text: string; // The raw Markdown string
 }
 
 // --- Payloads ---
 export interface MarkdownSpawnPayload extends BaseSpawnPayload {
-    initialSource: string;
+    text: string;
 }
 
 export type MarkdownUpdatePayload =
     | {
-    action: "setSource";
+    action: "setText";
     options: {
-        source: string;
+        text: string;
     };
 };
 

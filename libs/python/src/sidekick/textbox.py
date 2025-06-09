@@ -49,7 +49,7 @@ class Textbox(Component):
     """
     def __init__(
         self,
-        initial_value: str = "",
+        value: str = "",
         placeholder: str = "",
         instance_id: Optional[str] = None,
         parent: Optional[Union['Component', str]] = None,
@@ -64,7 +64,7 @@ class Textbox(Component):
         It sends a message to the Sidekick UI to display a new text input field.
 
         Args:
-            initial_value (str): The text initially displayed in the input field.
+            value (str): The text initially displayed in the input field.
                 Defaults to "".
             placeholder (str): Hint text shown when the input field is empty.
                 Defaults to "".
@@ -92,7 +92,7 @@ class Textbox(Component):
             TypeError: If `parent` is an invalid type, or if `on_submit` or
                 `on_error` are provided but are not callable functions.
         """
-        self._value = str(initial_value)
+        self._value = str(value)
         self._placeholder = str(placeholder)
         # Callback function provided by the user via on_submit or decorator.
         # Initialize here.
@@ -102,8 +102,8 @@ class Textbox(Component):
         spawn_payload: Dict[str, Any] = {}
         # Only include keys in the payload if they have non-default (non-empty) values,
         # as per protocol examples, to keep messages concise.
-        if self._value: # Check against initial_value (converted to str)
-            spawn_payload["initialValue"] = self._value
+        if self._value: # Check against value (converted to str)
+            spawn_payload["value"] = self._value
         if self._placeholder: # Check against placeholder (converted to str)
             spawn_payload["placeholder"] = self._placeholder
 

@@ -95,15 +95,15 @@ class ObservableValue:
     # internal state vs. delegating to the wrapped value.
     _obs_internal_attrs = ('_value', '_subscribers', '_obs_value_id')
 
-    def __init__(self, initial_value: Any):
+    def __init__(self, value: Any):
         """Initializes the ObservableValue by wrapping the provided Python value.
 
         Args:
-            initial_value: The Python value (e.g., a list, dict, set, number,
-                string, etc.) that you want to make observable.
+            value: The Python value (e.g., a list, dict, set, number, string, etc.)
+                that you want to make observable.
         """
         # The actual Python object being wrapped and observed.
-        self._value: Any = initial_value
+        self._value: Any = value
         # A set holding the callback functions of active subscribers (like Viz).
         self._subscribers: Set[SubscriptionCallback] = set()
         # A relatively stable internal ID string based on the memory address of this

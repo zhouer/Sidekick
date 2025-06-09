@@ -8,7 +8,7 @@ export interface TextboxState {
 
 // --- Payloads ---
 export interface TextboxSpawnPayload extends BaseSpawnPayload {
-    initialValue?: string;
+    value?: string;
     placeholder?: string;
 }
 

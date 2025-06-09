@@ -97,7 +97,7 @@ Perfect for anyone learning or teaching Python, from young students to experienc
 
 4.  **[`Markdown`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.markdown)** - Formatted Text Display
     *   `Markdown()`: Display text formatted with Markdown.
-    *   `.source` property: Get or set the Markdown source string.
+    *   `.text` property: Get or set the Markdown text string.
 
 ### Layout Components
 

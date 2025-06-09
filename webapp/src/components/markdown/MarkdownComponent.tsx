@@ -26,7 +26,7 @@ const customSchema = {
 
 const MarkdownComponent = forwardRef<ComponentHandle | null, MarkdownComponentProps>(
     ({ id, state }, ref) => {
-        const { source } = state;
+        const { text } = state;
 
         const rehypePlugins: ReactMarkdownOptions['rehypePlugins'] = useMemo(() => [
             [rehypeSanitize, customSchema]
@@ -36,7 +36,7 @@ const MarkdownComponent = forwardRef<ComponentHandle | null, MarkdownComponentPr
         return (
             <div className="markdown-component" data-testid={`markdown-${id}`}>
                 <ReactMarkdown rehypePlugins={rehypePlugins}>
-                    {source}
+                    {text}
                 </ReactMarkdown>
             </div>
         );

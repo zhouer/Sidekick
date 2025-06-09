@@ -48,12 +48,12 @@ class HanoiVisualizer:
         sidekick.clear_all()
         self.controls_row = sidekick.Row()
         self.num_disks_input = sidekick.Textbox(
-            placeholder="Disks", initial_value=str(DEFAULT_NUM_DISKS), parent=self.controls_row
+            placeholder="Disks", value=str(DEFAULT_NUM_DISKS), parent=self.controls_row
         )
         self.num_disks_input.on_submit(input_handler)
         self.start_pause_btn = sidekick.Button(text="Start", parent=self.controls_row)
         self.start_pause_btn.on_click(click_handler)
-        self.status_console = sidekick.Console(initial_text="--- Hanoi Log ---\n")
+        self.status_console = sidekick.Console(text="--- Hanoi Log ---\n")
         self.grid = None
         sidekick.logger.info("Sidekick UI components created.")
 

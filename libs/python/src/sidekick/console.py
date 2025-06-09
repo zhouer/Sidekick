@@ -64,7 +64,7 @@ class Console(Component):
     """
     def __init__(
         self,
-        initial_text: str = "",
+        text: str = "",
         show_input: bool = False,
         instance_id: Optional[str] = None,
         parent: Optional[Union['Component', str]] = None,
@@ -81,7 +81,7 @@ class Console(Component):
         It sends a message to the Sidekick UI to display a new console area.
 
         Args:
-            initial_text (str): Text to display in the console area immediately
+            text (str): Text to display in the console area immediately
                 after it's created. Defaults to an empty string.
             show_input (bool): If `True`, an input field will be shown at the
                 bottom of the console, allowing users to type and submit text
@@ -113,10 +113,8 @@ class Console(Component):
         spawn_payload: Dict[str, Any] = {
             "showInput": bool(show_input) # Ensure it's a boolean
         }
-        # Only include 'text' in payload if initial_text is provided,
-        # to keep the spawn message concise, similar to protocol examples.
-        if initial_text:
-             spawn_payload["text"] = str(initial_text)
+        if text:
+             spawn_payload["text"] = str(text)
 
         # Initialize before super() in case super() triggers events or uses these.
         self._submit_callback: Optional[Callable[[ConsoleSubmitEvent], Union[None, Coroutine[Any, Any, None]]]] = None
@@ -130,7 +128,7 @@ class Console(Component):
         )
         logger.info(
             f"Console '{self.instance_id}' initialized " # Use self.instance_id
-            f"(show_input={show_input}, initial_text='{initial_text[:50]}{'...' if len(initial_text)>50 else ''}')."
+            f"(show_input={show_input}, text='{text[:50]}{'...' if len(text) > 50 else ''}')."
         )
 
         # Register on_submit callback if provided in the constructor.
