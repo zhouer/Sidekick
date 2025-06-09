@@ -2,7 +2,7 @@
   "name": "sidekick-coding",
   "displayName": "Sidekick - Your Visual Coding Buddy",
   "description": "See your code come to life, right inside VS Code!",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "publisher": "sidekick-coding",
   "engines": {
     "vscode": "^1.75.0"

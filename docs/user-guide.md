@@ -281,7 +281,7 @@ import sidekick
 data_viewer = sidekick.Viz(instance_id="data-inspector")
 
 my_list = [1, 2, {"nested": True, "items": [10, 20]}]
-my_dict = {"name": "Sidekick", "version": "0.0.6", "features": ["Grid", "Canvas", "Viz"]}
+my_dict = {"name": "Sidekick", "version": "0.0.7", "features": ["Grid", "Canvas", "Viz"]}
 
 class MyObject:
     def __init__(self, x, y):

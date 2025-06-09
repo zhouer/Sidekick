@@ -19,7 +19,7 @@ on_message_proxy = create_proxy(on_message)
 registerSidekickMessageHandler(on_message_proxy)
 print('python handler registered')
 
-announce = {'id': 0, 'component': 'system', 'type': 'announce', 'payload': {'peerId': 'hero-1', 'role': 'hero', 'status': 'online', 'version': '0.0.6', 'timestamp': int(time.time() * 1000)}}
+announce = {'id': 0, 'component': 'system', 'type': 'announce', 'payload': {'peerId': 'hero-1', 'role': 'hero', 'status': 'online', 'version': '0.0.7', 'timestamp': int(time.time() * 1000)}}
 sendHeroMessage(json.dumps(announce))
 print('python send announce')
 
@@ -41,7 +41,7 @@ try:
 except KeyboardInterrupt:
     print('python KeyboardInterrupt')
 
-announce = {'id': 0, 'component': 'system', 'type': 'announce', 'payload': {'peerId': 'hero-1', 'role': 'hero', 'status': 'offline', 'version': '0.0.6', 'timestamp': int(time.time() * 1000)}}
+announce = {'id': 0, 'component': 'system', 'type': 'announce', 'payload': {'peerId': 'hero-1', 'role': 'hero', 'status': 'offline', 'version': '0.0.7', 'timestamp': int(time.time() * 1000)}}
 sendHeroMessage(json.dumps(announce))`;
 
         return new Response(testPyContent, {

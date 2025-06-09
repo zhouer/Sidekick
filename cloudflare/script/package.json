@@ -1,6 +1,6 @@
 {
   "name": "sidekick-script",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Cloudflare Worker for Sidekick script",
   "type": "module",
   "scripts": {
