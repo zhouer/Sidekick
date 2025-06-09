@@ -5,7 +5,8 @@
 [![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/sidekick-coding.sidekick-coding?label=VS%20Code%20Marketplace)](https://marketplace.visualstudio.com/items?itemName=sidekick-coding.sidekick-coding)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-This library provides the Python interface for interacting with the [Sidekick Visual Coding Buddy](https://github.com/zhouer/Sidekick) frontend UI, typically running within VS Code. It allows your Python scripts to easily create, update, and interact with visual components like grids (`Grid`), consoles (`Console`), variable visualizers (`Viz`), drawing canvases (`Canvas`).
+This library provides a Pythonic API to interact with the [Sidekick](https://github.com/zhouer/Sidekick) environment,
+enabling you to bring your code to life through interactive visualizations and user interfaces directly from Python scripts.
 
 ## Quick Start
 
@@ -29,7 +30,7 @@ This library provides the Python interface for interacting with the [Sidekick Vi
     # Create a 5x5 Grid
     grid = sidekick.Grid(5, 5)
     colors = ["khaki", "lavender", "peachpuff", "pink", "plum", "powderblue"]
-    
+
     @grid.click # Use decorator for click handler
     def handle_cell_click(event):
         random_color = random.choice(colors)
@@ -41,7 +42,7 @@ This library provides the Python interface for interacting with the [Sidekick Vi
     ```
 
     Run your Python script (e.g., `python your_file.py`) from your terminal, or use the "Run" button in VS Code.
-  
+
     *   **If you have the VS Code extension installed and the Sidekick Panel open,** you will see the 5x5 Grid appear directly in the panel.
     *   **If the VS Code extension is not active or not installed,** the Python script will attempt to connect to a cloud relay server. In this case, a UI URL will be printed in your terminal; open this URL in your web browser to see and interact with the Grid.
 
