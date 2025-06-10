@@ -1,11 +1,12 @@
 {
   "name": "webapp",
   "private": true,
-  "version": "0.0.7",
+  "version": "0.0.8",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:vscode": "tsc -b && vite build --mode vscode",
     "lint": "eslint .",
     "preview": "vite preview"
   },
