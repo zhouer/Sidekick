@@ -52,66 +52,56 @@ Perfect for anyone learning or teaching Python, from young students to experienc
 *   **Real-time Visual Feedback:** See your code in action instantly with interactive visualizations. Watch data structures change, algorithms execute, and user interactions trigger responses in real-time. This makes abstract programming concepts more tangible and easier to understand.
 *   **Intuitive, Pythonic Syntax:** Focus on learning programming concepts rather than complex UI programming. Sidekick's beginner-friendly API keeps your code clean and readable with minimal boilerplate.
 *   **Integrated Development Experience:** Seamlessly embedded in VS Code, Sidekick lets you see results immediately without switching applications. This tight feedback loop is invaluable for learning and debugging.
-*   **Building Blocks, Not Frameworks:** Sidekick provides essential visual and UI building blocks. It doesn't aim to be a complete UI framework like Qt or Tkinter, but rather empowers you to create unlimited possibilities with your imagination by combining these fundamental components.
+*   **Building Blocks, Not Frameworks:** Sidekick provides essential visual and UI components. It doesn't aim to be a complete UI framework like Qt or Tkinter, but rather empowers you to create unlimited possibilities with your imagination by combining these fundamental components.
 
-## Features
+## Components and API Overview
 
 ### Visual Components
 
 1.  **[`Canvas`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.canvas)** - 2D Graphics and Animation
-    *   `Canvas(width, height)`: Create a drawing canvas.
     *   `draw_line()`, `draw_rect()`, `draw_circle()`, `draw_polygon()`, `draw_ellipse()`, `draw_text()`: Draw shapes and text.
     *   `buffer()`: Context manager for smooth, double-buffered animations.
-    *   `on_click()`: Respond to clicks on the canvas.
+    *   `on_click(), @canvas.click`: Respond to clicks on the canvas.
 
 2.  **[`Console`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.console)** - Text-Based Input and Output
-    *   `Console(show_input=False)`: Create a console area.
     *   `print()`: Display output text.
-    *   `on_submit()`: Handle user text submission (if `show_input=True`).
+    *   `on_submit(), @console.submit`: Handle user text submission.
 
 3.  **[`Grid`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.grid)** - Interactive Cell-Based Visualizations
-    *   `Grid(num_columns, num_rows)`: Create a grid.
     *   `set_color()`, `set_text()`: Set cell colors and text.
-    *   `on_click()`: Handle user clicks on cells.
+    *   `on_click(), @grid.click`: Handle user clicks on cells.
 
 4.  **[`Viz`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.viz)** - Data Structure Visualization
-    *   `Viz()`: Create a panel for visualizing variables.
     *   `show()`: Display complex data (lists, dicts, sets, objects).
     *   `ObservableValue`: Wrap data for automatic visualization updates on change.
 
 ### UI Components
 
-1.  **[`Label`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.label)** - Simple Text Display
-    *   `Label(text)`: Display a line of text.
-    *   `.text` property: Get or set the displayed text.
-
-2.  **[`Button`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.button)** - Clickable Buttons
-    *   `Button(text)`: Create a button.
+1.  **[`Button`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.button)** - Clickable Buttons
     *   `.text` property: Get or set the button label.
     *   `on_click()`, `@button.click`: Handle button clicks.
+ 
+2. **[`Label`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.label)** - Simple Text Display
+    *   `.text` property: Get or set the displayed text.
 
-3.  **[`Textbox`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.textbox)** - Single-Line Text Input
-    *   `Textbox()`: Create a text input field.
+3.  **[`Markdown`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.markdown)** - Formatted Text Display
+    *   `.text` property: Get or set the Markdown text string.
+
+4.  **[`Textbox`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.textbox)** - Single-Line Text Input
     *   `.value` property: Get or set the text content.
     *   `on_submit()`, `@textbox.submit`: Handle text submission (on Enter/blur).
-
-4.  **[`Markdown`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.markdown)** - Formatted Text Display
-    *   `Markdown()`: Display text formatted with Markdown.
-    *   `.text` property: Get or set the Markdown text string.
 
 ### Layout Components
 
 1.  **[`Row()`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.row)** - Arranges child components horizontally
-    *   Use `container.add_child(component)` or `Component(..., parent=container)` to structure layouts.
 
 2.  **[`Column()`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#module-sidekick.column)** - Arranges child components vertically
-    *   Use `container.add_child(component)` or `Component(..., parent=container)` to structure layouts.
 
 ### Managing Script Lifecycle
 
-1.  **[`sidekick.run_forever()`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#sidekick.run_forever)** - Keeps your script running to handle UI interactions (clicks, input) and ensures the Sidekick panel remains active. This is **necessary** for any script with interactive components or if you want the UI to persist after the main logic finishes. (For asyncio scripts, use `await sidekick.run_forever_async()`).
+1.  **[`run_forever()`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#sidekick.run_forever)** - Keeps your script running to handle UI interactions (clicks, input) and ensures the Sidekick panel remains active. This is **necessary** for any script with interactive components or if you want the UI to persist after the main logic finishes. (For asyncio scripts, use `await sidekick.run_forever_async()`).
 
-2.  **[`sidekick.shutdown()`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#sidekick.shutdown)** - Gracefully stops the script's interaction with Sidekick and allows `run_forever()` to terminate. This can be called from your event callbacks (e.g., a "Quit" button's click handler).
+2.  **[`shutdown()`](https://sidekick-py.readthedocs.io/en/latest/sidekick.html#sidekick.shutdown)** - Gracefully stops the script's interaction with Sidekick and allows `run_forever()` to terminate. This can be called from your event callbacks (e.g., a "Quit" button's click handler).
 
 ## Learn More
 
