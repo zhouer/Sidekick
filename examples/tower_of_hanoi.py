@@ -313,7 +313,8 @@ class HanoiController:
         if task_was_running:
             sidekick.logger.info("Requesting solver task stop...")
             self.solver.stop()  # Signal the generator to stop yielding
-            self._solve_task.cancel()
+            if self._solve_task is not None:
+                self._solve_task.cancel()
             self.visualizer.update_status("--- Solve Stopped/Reset ---")
             self.set_state(SolveState.STOPPED)
         self._solve_task = None
